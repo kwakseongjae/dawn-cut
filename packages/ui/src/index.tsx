@@ -858,6 +858,9 @@ function Preview() {
           >
             ⟲ reset
           </button>
+          {selectedOverlay.kind === 'subtitle' && selectedOverlay.text && (
+            <CueEditor overlay={selectedOverlay} onUpdate={updateOverlay} />
+          )}
           <button
             type="button"
             className="btn ghost"
@@ -868,6 +871,54 @@ function Preview() {
         </div>
       )}
     </div>
+  );
+}
+
+function CueEditor({
+  overlay,
+  onUpdate,
+}: {
+  overlay: { id: string; text?: string; cueStyle?: SubtitleStyle };
+  onUpdate: (id: string, patch: { text?: string; cueStyle?: SubtitleStyle; src?: string }) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const reRasterize = async (text: string, style: SubtitleStyle) => {
+    setBusy(true);
+    try {
+      const res = await window.dawn?.writeAsset(rasterizeSubtitle(text, style));
+      if (res) onUpdate(overlay.id, { text, cueStyle: style, src: res.path });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const style = overlay.cueStyle ?? {};
+  return (
+    <>
+      <label className="ov-field" style={{ flexBasis: '100%' }}>
+        caption
+        <input
+          className="input"
+          data-testid="cue-text"
+          defaultValue={overlay.text}
+          disabled={busy}
+          onBlur={(e) => {
+            const t = e.target.value.trim();
+            if (t && t !== overlay.text) reRasterize(t, style);
+          }}
+          style={{ flex: 1 }}
+        />
+      </label>
+      <label className="ov-field">
+        cue color
+        <input
+          type="color"
+          data-testid="cue-color"
+          value={style.color ?? '#ffffff'}
+          disabled={busy}
+          onChange={(e) => reRasterize(overlay.text ?? '', { ...style, color: e.target.value })}
+        />
+      </label>
+    </>
   );
 }
 
@@ -956,6 +1007,7 @@ function Transcript() {
         addOverlayWith({
           kind: 'subtitle',
           name: c.text.slice(0, 24),
+          text: c.text,
           src: res.path,
           x: pos.x,
           y: pos.y,
@@ -1173,6 +1225,13 @@ function Transcript() {
               <option value="Georgia, serif">serif</option>
               <option value="'Courier New', monospace">mono</option>
               <option value="Impact, sans-serif">impact</option>
+              <option
+                value={
+                  '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
+                }
+              >
+                CJK (Korean)
+              </option>
             </select>
           </label>
         </div>

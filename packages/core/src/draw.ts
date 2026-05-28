@@ -54,6 +54,16 @@ export const SUBTITLE_PRESETS: Record<string, SubtitleStyle> = {
     fontFamily: 'system-ui, sans-serif',
     fontScale: 0.42,
   },
+  korean: {
+    color: '#ffffff',
+    bg: 'rgba(0,0,0,0.65)',
+    stroke: 'rgba(0,0,0,0.8)',
+    strokeWidth: 5,
+    // Apple SD Gothic Neo first (macOS), Pretendard / Noto common on Linux/Win.
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontScale: 0.38,
+  },
 };
 export type SubtitlePresetId = keyof typeof SUBTITLE_PRESETS;
 

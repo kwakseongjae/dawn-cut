@@ -73,6 +73,11 @@ export interface Overlay {
   id: string;
   kind: 'image' | 'sticker' | 'gif' | 'subtitle' | 'video';
   name: string;
+  // Original caption text (for subtitles only) — kept so we can re-rasterize
+  // this single overlay if the user tweaks its per-cue style or text.
+  text?: string;
+  // Per-cue override of the global subtitle style. Falls back to global on burn.
+  cueStyle?: SubtitleStyle;
   src?: string; // file path for image/gif; undefined for emoji sticker (preview until rasterized)
   // placement (normalized) — mirrors core OverlayClip
   x: number;
