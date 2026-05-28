@@ -604,18 +604,39 @@ function Preview() {
     return () => cancelAnimationFrame(raf);
   }, [edl, playing, setPlayhead, setPlaying]);
 
-  const toggle = () => {
+  // Sync video element play/pause to store `playing` state — lets Space key /
+  // external triggers control playback without going through the toolbar button.
+  useEffect(() => {
     const v = videoRef.current;
     if (!v || !edl) return;
     if (playing) {
-      v.pause();
-      setPlaying(false);
-    } else {
       if (playheadUs >= edl.totalDuration - 1)
         v.currentTime = (edl.segments[0]?.sourceStart ?? 0) / US;
       v.play().catch(() => {});
-      setPlaying(true);
+    } else {
+      v.pause();
     }
+  }, [playing, edl, playheadUs]);
+
+  // Seek the video element when playhead changes externally (arrow keys / scrub).
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !edl || playing) return;
+    const seg =
+      edl.segments.find(
+        (g) =>
+          playheadUs >= g.programStart &&
+          playheadUs < g.programStart + (g.sourceEnd - g.sourceStart),
+      ) ?? edl.segments.at(-1);
+    if (seg) {
+      const target = (seg.sourceStart + (playheadUs - seg.programStart)) / US;
+      if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target;
+    }
+  }, [playheadUs, edl, playing]);
+
+  const toggle = () => {
+    if (!edl) return;
+    setPlaying(!playing);
   };
   const seek = (e: MouseEvent<HTMLDivElement>) => {
     const v = videoRef.current;
@@ -839,6 +860,37 @@ function Preview() {
 const rasterizeSubtitle = (text: string, style: SubtitleStyle = {}) =>
   rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text, style));
 
+function SubtitlePreview({ style }: { style: SubtitleStyle }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    // soft frame backdrop so transparent bgs are visible
+    const grad = ctx.createLinearGradient(0, 0, 0, c.height);
+    grad.addColorStop(0, '#2a3a55');
+    grad.addColorStop(1, '#16213a');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, c.width, c.height);
+    drawSubtitle(ctx, c.width, c.height, 'preview caption', style);
+  }, [style]);
+  return (
+    <canvas
+      ref={ref}
+      width={320}
+      height={60}
+      data-testid="sub-preview"
+      style={{
+        borderRadius: 6,
+        border: '1px solid var(--border)',
+        display: 'block',
+      }}
+    />
+  );
+}
+
 const ANCHORS: { id: string; label: string; x: number; y: number }[] = [
   { id: 'tl', label: '↖', x: 0.02, y: 0.02 },
   { id: 'tc', label: '↑', x: 0.1, y: 0.02 },
@@ -899,6 +951,17 @@ function Transcript() {
         });
     }
   };
+  // Debounced re-burn — slider drags (every onChange tick) used to fire one
+  // full re-burn per tick (N cues × IPC writeAsset). Coalesce to the last value.
+  const burnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReburn = (pos: { x: number; y: number; scale: number }, style: SubtitleStyle) => {
+    if (!burnt) return;
+    if (burnTimer.current) clearTimeout(burnTimer.current);
+    burnTimer.current = setTimeout(async () => {
+      clearOverlaysByKind('subtitle');
+      await doBurn(pos, style);
+    }, 180);
+  };
   const burnSubtitles = async () => {
     if (!transcript || !timeline) return;
     if (burnt) {
@@ -916,13 +979,10 @@ function Transcript() {
       await doBurn(next, subtitleStyle);
     }
   };
-  const applyStyle = async (patch: SubtitleStyle) => {
+  const applyStyle = (patch: SubtitleStyle) => {
     const next = { ...subtitleStyle, ...patch };
     setSubtitleStyle(patch);
-    if (burnt) {
-      clearOverlaysByKind('subtitle');
-      await doBurn(subtitlePos, next);
-    }
+    scheduleReburn(subtitlePos, next);
   };
   const applyPreset = async (presetId: string) => {
     const next = SUBTITLE_PRESETS[presetId] ?? {};
@@ -948,6 +1008,7 @@ function Transcript() {
         </button>
       </div>
       <div className="sub-pos" data-testid="subtitle-pos">
+        <SubtitlePreview style={subtitleStyle} />
         <div className="sub-pos-grid">
           {ANCHORS.map((a) => {
             const sel =
@@ -979,10 +1040,7 @@ function Transcript() {
               onChange={async (e) => {
                 const x = Number(e.target.value) / 100;
                 setSubtitlePos({ x });
-                if (burnt) {
-                  clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, x }, subtitleStyle);
-                }
+                scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
               }}
             />
           </label>
@@ -997,10 +1055,7 @@ function Transcript() {
               onChange={async (e) => {
                 const y = Number(e.target.value) / 100;
                 setSubtitlePos({ y });
-                if (burnt) {
-                  clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, y }, subtitleStyle);
-                }
+                scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
               }}
             />
           </label>
@@ -1015,10 +1070,7 @@ function Transcript() {
               onChange={async (e) => {
                 const scale = Number(e.target.value) / 100;
                 setSubtitlePos({ scale });
-                if (burnt) {
-                  clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, scale }, subtitleStyle);
-                }
+                scheduleReburn({ ...subtitlePos, scale }, subtitleStyle);
               }}
             />
           </label>
@@ -1231,11 +1283,48 @@ export function AppShell() {
     };
   }, []);
   useEffect(() => {
+    const isTextInput = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable;
+    };
+    const SEEK_STEP_US = 100_000; // 0.1s
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) s.redo();
         else s.undo();
+        return;
+      }
+      if (isTextInput(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      const st = useEditor.getState();
+      const dur = st.durationProgramUs;
+      if (e.code === 'Space') {
+        if (!st.timeline) return;
+        e.preventDefault();
+        st.setPlaying(!st.playing);
+        return;
+      }
+      if (e.key === 'ArrowRight') {
+        if (!dur) return;
+        e.preventDefault();
+        st.setPlayhead(Math.min(dur, st.playheadUs + SEEK_STEP_US));
+        return;
+      }
+      if (e.key === 'ArrowLeft') {
+        if (!dur) return;
+        e.preventDefault();
+        st.setPlayhead(Math.max(0, st.playheadUs - SEEK_STEP_US));
+        return;
+      }
+      if (e.key === 'Home') {
+        e.preventDefault();
+        st.setPlayhead(0);
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        st.setPlayhead(dur);
       }
     };
     window.addEventListener('keydown', onKey);
