@@ -779,45 +779,41 @@ body {
   accent-color: var(--accent);
 }
 
-/* asset library grid */
-.lib-grid {
+/* subtitle position UI (3×3 anchor + sliders) */
+.sub-pos {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 18px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+.sub-pos-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-top: 10px;
+  grid-template-columns: repeat(3, 22px);
+  grid-template-rows: repeat(3, 22px);
+  gap: 2px;
 }
-.lib-tile {
-  position: relative;
-  aspect-ratio: 16 / 10;
-  padding: 0;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  background: var(--bg);
+.sub-pos-grid button {
+  font-size: 11px;
   border: 1px solid var(--border);
-  transition: transform 0.06s, border-color 0.12s;
+  background: var(--bg);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0;
 }
-.lib-tile:hover {
-  transform: translateY(-1px);
+.sub-pos-grid button:hover {
   border-color: var(--accent);
 }
-.lib-tile img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.sub-pos-grid button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(80, 160, 255, 0.08);
 }
-.lib-tile .lib-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 2px 6px;
-  font-size: 10px;
-  color: #fff;
-  background: linear-gradient(0deg, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
+.sub-pos-sliders {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }

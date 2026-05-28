@@ -37,6 +37,7 @@ interface EditorState {
   frameW: number;
   frameH: number;
   selectedOverlayId: string | null;
+  subtitlePos: { x: number; y: number; scale: number };
 
   importPath: (path: string) => Promise<void>;
   toggleWord: (id: string) => void;
@@ -61,6 +62,7 @@ interface EditorState {
   updateOverlay: (id: string, patch: Partial<Overlay>) => void;
   generateVoiceover: (voice: string, text: string) => Promise<void>;
   removeOverlay: (id: string) => void;
+  setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -194,6 +196,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   frameW: 0,
   frameH: 0,
   selectedOverlayId: null,
+  subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
+
+  setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>

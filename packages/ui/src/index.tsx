@@ -838,6 +838,25 @@ function Preview() {
 const rasterizeSubtitle = (text: string) =>
   rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text));
 
+const ANCHORS: { id: string; label: string; x: number; y: number }[] = [
+  { id: 'tl', label: '↖', x: 0.02, y: 0.02 },
+  { id: 'tc', label: '↑', x: 0.1, y: 0.02 },
+  { id: 'tr', label: '↗', x: 0.18, y: 0.02 },
+  { id: 'ml', label: '←', x: 0.02, y: 0.45 },
+  { id: 'mc', label: '·', x: 0.1, y: 0.45 },
+  { id: 'mr', label: '→', x: 0.18, y: 0.45 },
+  { id: 'bl', label: '↙', x: 0.02, y: 0.85 },
+  { id: 'bc', label: '↓', x: 0.1, y: 0.85 },
+  { id: 'br', label: '↘', x: 0.18, y: 0.85 },
+];
+// x is the left edge of the rasterized subtitle (scale = width fraction).
+// horizontal anchors assume scale=0.8: L=0.02, C=(1-0.8)/2=0.1, R=1-0.8-0.02=0.18
+function anchorXForScale(anchorX: number, scale: number): number {
+  if (anchorX < 0.05) return 0.02;
+  if (anchorX > 0.15) return Math.max(0, 1 - scale - 0.02);
+  return (1 - scale) / 2;
+}
+
 function Transcript() {
   const {
     transcript,
@@ -848,6 +867,8 @@ function Transcript() {
     addOverlayWith,
     clearOverlaysByKind,
     overlays,
+    subtitlePos,
+    setSubtitlePos,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -855,12 +876,8 @@ function Transcript() {
     [timeline, transcript, playheadUs],
   );
   const burnt = overlays.some((o) => o.kind === 'subtitle');
-  const burnSubtitles = async () => {
+  const doBurn = async (pos: { x: number; y: number; scale: number }) => {
     if (!transcript || !timeline) return;
-    if (burnt) {
-      clearOverlaysByKind('subtitle');
-      return;
-    }
     for (const c of transcriptToCues(transcript, timeline)) {
       const res = await window.dawn?.writeAsset(rasterizeSubtitle(c.text));
       if (res)
@@ -868,14 +885,31 @@ function Transcript() {
           kind: 'subtitle',
           name: c.text.slice(0, 24),
           src: res.path,
-          x: 0.1,
-          y: 0.8,
-          scale: 0.8,
+          x: pos.x,
+          y: pos.y,
+          scale: pos.scale,
           opacity: 1,
           startUs: c.startUs,
           endUs: c.endUs,
           z: 100,
         });
+    }
+  };
+  const burnSubtitles = async () => {
+    if (!transcript || !timeline) return;
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      return;
+    }
+    await doBurn(subtitlePos);
+  };
+  const applyAnchor = async (ax: number, ay: number) => {
+    const x = anchorXForScale(ax, subtitlePos.scale);
+    const next = { ...subtitlePos, x, y: ay };
+    setSubtitlePos({ x, y: ay });
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(next);
     }
   };
   return (
@@ -892,6 +926,83 @@ function Transcript() {
         >
           {burnt ? '✓ subtitles burned' : 'Burn subtitles'}
         </button>
+      </div>
+      <div className="sub-pos" data-testid="subtitle-pos">
+        <div className="sub-pos-grid">
+          {ANCHORS.map((a) => {
+            const sel =
+              Math.abs(subtitlePos.y - a.y) < 0.05 &&
+              Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                className={sel ? 'on' : ''}
+                data-testid={`sub-anchor-${a.id}`}
+                title={`anchor ${a.id}`}
+                onClick={() => applyAnchor(a.x, a.y)}
+              >
+                {a.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="sub-pos-sliders">
+          <label className="ov-field">
+            x
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(subtitlePos.x * 100)}
+              data-testid="sub-x"
+              onChange={async (e) => {
+                const x = Number(e.target.value) / 100;
+                setSubtitlePos({ x });
+                if (burnt) {
+                  clearOverlaysByKind('subtitle');
+                  await doBurn({ ...subtitlePos, x });
+                }
+              }}
+            />
+          </label>
+          <label className="ov-field">
+            y
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(subtitlePos.y * 100)}
+              data-testid="sub-y"
+              onChange={async (e) => {
+                const y = Number(e.target.value) / 100;
+                setSubtitlePos({ y });
+                if (burnt) {
+                  clearOverlaysByKind('subtitle');
+                  await doBurn({ ...subtitlePos, y });
+                }
+              }}
+            />
+          </label>
+          <label className="ov-field">
+            size
+            <input
+              type="range"
+              min={20}
+              max={100}
+              value={Math.round(subtitlePos.scale * 100)}
+              data-testid="sub-scale"
+              onChange={async (e) => {
+                const scale = Number(e.target.value) / 100;
+                setSubtitlePos({ scale });
+                if (burnt) {
+                  clearOverlaysByKind('subtitle');
+                  await doBurn({ ...subtitlePos, scale });
+                }
+              }}
+            />
+          </label>
+        </div>
       </div>
       <div className="transcript-body" data-testid="transcript-panel">
         {!transcript && (
