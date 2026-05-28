@@ -10,6 +10,7 @@ import {
   timelineToEdl,
   transcriptToCues,
   videoClips,
+  wordToProgram,
 } from '@dawn-cut/core';
 import type { Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
@@ -931,6 +932,7 @@ function Transcript() {
     selected,
     playheadUs,
     toggleWord,
+    setPlayhead,
     addOverlayWith,
     clearOverlaysByKind,
     overlays,
@@ -1203,8 +1205,19 @@ function Transcript() {
                   className={cls}
                   data-testid="word"
                   data-dead={isDead ? 'true' : 'false'}
-                  onClick={() => !isDead && toggleWord(id)}
+                  onClick={(e) => {
+                    if (isDead) return;
+                    if (e.metaKey || e.ctrlKey) {
+                      if (timeline) {
+                        const p = wordToProgram(timeline, w);
+                        if (p) setPlayhead(p.start);
+                      }
+                      return;
+                    }
+                    toggleWord(id);
+                  }}
                   onKeyDown={() => {}}
+                  title={timeline ? '⌘/Ctrl+click to seek here' : undefined}
                 >
                   {w.text}{' '}
                 </span>
