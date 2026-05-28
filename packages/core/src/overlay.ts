@@ -47,13 +47,57 @@ export function buildOverlayFilter(
     const t1 = t(o.endUs);
     const dur = `(${t1}-${t0})`;
     const u = `clip((t-${t0})/${dur},0,1)`;
-    const eased = easeExpr(o.to?.easing ?? 'linear', u);
-    const lerp = (a: number, b: number) => (a === b ? `${a}` : `${a}+(${b}-${a})*${eased}`);
+    const defaultEasing = o.to?.easing ?? 'linear';
+
+    type Axis = 'x' | 'y' | 'scale';
+    const pickKf = (k: NonNullable<OverlayClip['keyframes']>[number], a: Axis) =>
+      a === 'x' ? k.x : a === 'y' ? k.y : k.scale;
+    const toPxAxis = (n: number, a: Axis) =>
+      a === 'scale'
+        ? Math.max(2, Math.round(n * frameW))
+        : a === 'x'
+          ? Math.round(n * frameW)
+          : Math.round(n * frameH);
+
+    /** Build an ffmpeg expression for one axis. Honours `keyframes` (multi-point)
+     *  if present, else `to` (2-point), else returns a constant. */
+    const buildAxis = (axis: Axis, baseVal: number, toVal: number) => {
+      if (o.keyframes?.length) {
+        let last = baseVal;
+        const sorted = [...o.keyframes].sort((a, b) => a.u - b.u);
+        const pts: { u: number; v: number; easing: typeof defaultEasing }[] = [
+          { u: 0, v: baseVal, easing: defaultEasing },
+        ];
+        for (const k of sorted) {
+          const raw = pickKf(k, axis);
+          const v = raw != null ? toPxAxis(raw, axis) : last;
+          last = v;
+          pts.push({ u: Math.max(0, Math.min(1, k.u)), v, easing: k.easing ?? defaultEasing });
+        }
+        if (pts.every((p) => p.v === pts[0]!.v)) return { expr: `${pts[0]!.v}`, animated: false };
+        let expr = `${pts[pts.length - 1]!.v}`;
+        for (let i = pts.length - 1; i >= 1; i--) {
+          const a = pts[i - 1]!.v;
+          const b = pts[i]!.v;
+          const ua = pts[i - 1]!.u;
+          const ub = pts[i]!.u;
+          if (ub <= ua) continue;
+          const seg = `((${u}-${ua})/(${ub}-${ua}))`;
+          const eased = easeExpr(pts[i]!.easing, seg);
+          expr = `if(lt(${u},${ub}),${a}+(${b}-${a})*${eased},${expr})`;
+        }
+        return { expr, animated: true };
+      }
+      if (baseVal === toVal) return { expr: `${baseVal}`, animated: false };
+      const eased = easeExpr(defaultEasing, u);
+      return { expr: `${baseVal}+(${toVal}-${baseVal})*${eased}`, animated: true };
+    };
 
     // animated scale (width-expression) when `to.scale` differs from base
     const w1 = o.to?.scale != null ? Math.max(2, Math.round(o.to.scale * frameW)) : w0;
-    const wExpr = w1 === w0 ? `${w0}` : lerp(w0, w1);
-    const needsScaleEval = w1 !== w0;
+    const aw = buildAxis('scale', w0, w1);
+    const wExpr = aw.expr;
+    const needsScaleEval = aw.animated;
     const scaleEval = needsScaleEval ? ':eval=frame' : '';
     let scaleChain = `[${inputIdx}:v]scale=w='${wExpr}':h=-1${scaleEval}`;
     if (o.rotation && o.rotation !== 0) {
@@ -63,12 +107,14 @@ export function buildOverlayFilter(
     scaleChain += `,format=rgba,colorchannelmixer=aa=${op}[ov${i}]`;
     scaleParts.push(scaleChain);
 
-    // animated position (x/y expressions) when `to.x`/`to.y` differs
+    // animated position (x/y expressions)
     const x1 = o.to?.x != null ? Math.round(o.to.x * frameW) : x0;
     const y1 = o.to?.y != null ? Math.round(o.to.y * frameH) : y0;
-    const xExpr = x1 === x0 ? `${x0}` : lerp(x0, x1);
-    const yExpr = y1 === y0 ? `${y0}` : lerp(y0, y1);
-    const animatedPos = x1 !== x0 || y1 !== y0;
+    const ax = buildAxis('x', x0, x1);
+    const ay = buildAxis('y', y0, y1);
+    const xExpr = ax.expr;
+    const yExpr = ay.expr;
+    const animatedPos = ax.animated || ay.animated;
 
     const next = `vo${i}`;
     const posEval = animatedPos ? ':eval=frame' : '';

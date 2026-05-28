@@ -1,4 +1,5 @@
 import type { Edl, OverlayClip } from '@dawn-cut/core';
+import type { LibAsset, ProviderId } from '@dawn-cut/sidecar-library';
 import type { ProbeResult, SilenceInterval, TranscribeResult } from '@dawn-cut/ui';
 import { contextBridge, ipcRenderer } from 'electron';
 
@@ -37,6 +38,11 @@ const bridge = {
   saveProject: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('project:save', path, content),
   openProject: (path: string): Promise<string> => ipcRenderer.invoke('project:open', path),
+  libraryProviders: (): Promise<ProviderId[]> => ipcRenderer.invoke('library:providers'),
+  librarySearch: (provider: ProviderId, query: string, limit?: number): Promise<LibAsset[]> =>
+    ipcRenderer.invoke('library:search', provider, query, limit),
+  libraryFetch: (asset: LibAsset): Promise<{ path: string }> =>
+    ipcRenderer.invoke('library:fetch', asset),
   openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile'),
 };

@@ -77,13 +77,24 @@ export interface OverlayClip {
   startUs: number; // program coords
   endUs: number; // program coords
   z: number; // stacking order (lower = below)
-  /** Interpolated target. When set, x/y/scale animate base→to over [startUs,endUs]. */
+  /** 2-keyframe shortcut: animate base→to over [startUs,endUs]. */
   to?: {
     x?: number;
     y?: number;
     scale?: number;
     easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
   };
+  /**
+   * Multi-keyframe motion path. Each entry has `u` in [0,1] (normalized progress
+   * over [startUs,endUs]). Missing fields carry forward. Takes precedence over `to`.
+   */
+  keyframes?: Array<{
+    u: number;
+    x?: number;
+    y?: number;
+    scale?: number;
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+  }>;
   /** Constant rotation in degrees (optional). */
   rotation?: number;
   /** GPU-style blend mode (optional). Defaults to plain alpha overlay. */

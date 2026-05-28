@@ -63,7 +63,7 @@ interface EditorState {
   removeOverlay: (id: string) => void;
 }
 
-export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
+export type PanelId = 'media' | 'text' | 'sticker' | 'effect' | 'library';
 export interface Overlay {
   id: string;
   kind: 'image' | 'sticker' | 'gif' | 'subtitle' | 'video';
@@ -77,9 +77,22 @@ export interface Overlay {
   startUs: number;
   endUs: number;
   z: number;
-  // animation (linear interp base→to over [startUs,endUs]) + constant rotation (deg)
-  to?: { x?: number; y?: number; scale?: number };
+  // animation (linear/eased interp) + multi-keyframe + rotation + blend mode
+  to?: {
+    x?: number;
+    y?: number;
+    scale?: number;
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+  };
+  keyframes?: Array<{
+    u: number;
+    x?: number;
+    y?: number;
+    scale?: number;
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+  }>;
   rotation?: number;
+  blend?: 'normal' | 'screen' | 'multiply' | 'overlay' | 'lighten' | 'darken';
 }
 // default corner placements (with margin), cycled by index
 const CORNERS = [
@@ -132,7 +145,9 @@ function toClips(overlays: Overlay[], durationUs: number): OverlayClip[] {
         endUs,
         z: o.z,
         ...(o.to ? { to: o.to } : {}),
+        ...(o.keyframes ? { keyframes: o.keyframes } : {}),
         ...(o.rotation ? { rotation: o.rotation } : {}),
+        ...(o.blend && o.blend !== 'normal' ? { blend: o.blend } : {}),
       };
     });
 }

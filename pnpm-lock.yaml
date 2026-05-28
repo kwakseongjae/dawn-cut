@@ -17,6 +17,9 @@ importers:
       '@dawn-cut/sidecar-ffmpeg':
         specifier: workspace:*
         version: link:sidecar/ffmpeg
+      '@dawn-cut/sidecar-library':
+        specifier: workspace:*
+        version: link:sidecar/library
       '@dawn-cut/sidecar-stt':
         specifier: workspace:*
         version: link:sidecar/stt
@@ -59,6 +62,9 @@ importers:
       '@dawn-cut/sidecar-ffmpeg':
         specifier: workspace:*
         version: link:../../sidecar/ffmpeg
+      '@dawn-cut/sidecar-library':
+        specifier: workspace:*
+        version: link:../../sidecar/library
       '@dawn-cut/sidecar-stt':
         specifier: workspace:*
         version: link:../../sidecar/stt
@@ -126,6 +132,8 @@ importers:
       '@dawn-cut/core':
         specifier: workspace:*
         version: link:../../packages/core
+
+  sidecar/library: {}
 
   sidecar/stt:
     dependencies:

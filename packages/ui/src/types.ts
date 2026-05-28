@@ -16,6 +16,17 @@ export interface TranscribeResult {
   language: string;
   words: Word[];
 }
+export type LibProviderId = 'bundle' | 'tenor' | 'pexels';
+export interface LibAsset {
+  id: string;
+  title: string;
+  url: string;
+  thumb?: string;
+  kind: 'gif' | 'video' | 'image';
+  provider: LibProviderId;
+  width?: number;
+  height?: number;
+}
 
 /** Typed IPC bridge exposed by the Electron preload (contextBridge). */
 export interface DawnBridge {
@@ -42,6 +53,9 @@ export interface DawnBridge {
   synthesizeTts: (text: string, voice: string) => Promise<{ wavPath: string; engine: string }>;
   saveProject: (path: string, content: string) => Promise<{ path: string }>;
   openProject: (path: string) => Promise<string>;
+  libraryProviders: () => Promise<LibProviderId[]>;
+  librarySearch: (provider: LibProviderId, query: string, limit?: number) => Promise<LibAsset[]>;
+  libraryFetch: (asset: LibAsset) => Promise<{ path: string }>;
   openFile: () => Promise<string | null>;
   saveFile: () => Promise<string | null>;
 }

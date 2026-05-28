@@ -12,6 +12,13 @@ import {
   renderEdl,
   writeSrt,
 } from '@dawn-cut/sidecar-ffmpeg';
+import {
+  type LibAsset,
+  type ProviderId,
+  availableProviders,
+  fetchAsset,
+  searchLibrary,
+} from '@dawn-cut/sidecar-library';
 import { transcribe } from '@dawn-cut/sidecar-stt';
 import { synthesizeTts } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
@@ -53,6 +60,15 @@ ipcMain.handle('tts:synthesize', async (_e, text: string, voice: string) => {
   const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
   const out = join(dir, 'voice.wav');
   return synthesizeTts(text, out, { voice });
+});
+
+ipcMain.handle('library:providers', () => availableProviders());
+ipcMain.handle('library:search', (_e, provider: ProviderId, query: string, limit?: number) =>
+  searchLibrary(provider, query, limit),
+);
+ipcMain.handle('library:fetch', async (_e, asset: LibAsset) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dawn-lib-'));
+  return fetchAsset(asset, dir);
 });
 
 // Rasterized sticker/asset PNG (data URL → temp file) for real compositing.
