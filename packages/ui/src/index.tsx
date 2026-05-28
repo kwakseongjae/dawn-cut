@@ -36,7 +36,8 @@ function fmt(us: number): string {
 const pickOpen = async () => (await window.dawn?.openFile()) ?? null;
 const pickSave = async () => (await window.dawn?.saveFile()) ?? null;
 const isVideo = (n: string) => /\.(mp4|mov|m4v|webm|mkv)$/i.test(n);
-const isImage = (n: string) => /\.(png|jpe?g|gif|webp|avif)$/i.test(n);
+const isImage = (n: string) => /\.(png|jpe?g|webp|avif)$/i.test(n);
+const isGif = (n: string) => /\.gif$/i.test(n);
 const filePath = (f: File) => (f as File & { path?: string }).path ?? '';
 
 // ── Toolbar ──────────────────────────────────────────────────────────
@@ -199,7 +200,6 @@ const RAIL: { id: PanelId; ico: string; label: string; short: string }[] = [
   { id: 'media', ico: '🎬', label: 'Media', short: 'Media' },
   { id: 'text', ico: '🗣', label: 'Text · TTS', short: 'TTS' },
   { id: 'sticker', ico: '✨', label: 'Sticker · GIF', short: 'GIF' },
-  { id: 'library', ico: '📚', label: 'Library (Tenor/Pexels/Bundle)', short: 'Lib' },
   { id: 'effect', ico: '🎚', label: 'Effects', short: 'FX' },
 ];
 
@@ -258,13 +258,21 @@ function Dropzone({ onFiles, hint }: { onFiles: (f: File[]) => void; hint: strin
 }
 
 function MediaPanel() {
-  const { mediaPath, transcript, importPath, overlays, addImageOverlay, removeOverlay } =
-    useEditor();
+  const {
+    mediaPath,
+    transcript,
+    importPath,
+    overlays,
+    addImageOverlay,
+    addOverlaySrc,
+    removeOverlay,
+  } = useEditor();
   const handle = (files: File[]) => {
     for (const f of files) {
       const p = filePath(f);
       if (!p) continue;
       if (isVideo(f.name)) importPath(p);
+      else if (isGif(f.name)) addOverlaySrc('gif', f.name, p);
       else if (isImage(f.name)) addImageOverlay(p);
     }
   };
@@ -488,142 +496,12 @@ function EffectPanel() {
   );
 }
 
-function LibraryPanel() {
-  const { addOverlaySrc, durationProgramUs } = useEditor();
-  const [providers, setProviders] = useState<('bundle' | 'tenor' | 'pexels')[]>(['bundle']);
-  const [provider, setProvider] = useState<'bundle' | 'tenor' | 'pexels'>('bundle');
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<
-    Array<{
-      id: string;
-      title: string;
-      url: string;
-      thumb?: string;
-      kind: 'gif' | 'video' | 'image';
-      provider: 'bundle' | 'tenor' | 'pexels';
-    }>
-  >([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    window.dawn?.libraryProviders().then((ps) => {
-      if (ps?.length) {
-        setProviders(ps);
-        setProvider(ps[0]!);
-      }
-    });
-  }, []);
-
-  const doSearch = async () => {
-    if (!window.dawn) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await window.dawn.librarySearch(provider, query, 24);
-      setResults(r);
-    } catch (e) {
-      setError(String((e as Error).message ?? e));
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-  // initial featured fetch when provider changes (don't re-fire when search state changes)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: provider change is the intended trigger
-  useEffect(() => {
-    doSearch();
-  }, [provider]);
-
-  const pick = async (a: (typeof results)[number]) => {
-    if (!window.dawn) return;
-    setLoading(true);
-    try {
-      const { path } = await window.dawn.libraryFetch(a);
-      addOverlaySrc(
-        a.kind === 'video' ? 'video' : a.kind === 'image' ? 'image' : 'gif',
-        a.title || a.id,
-        path,
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="dock-body">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>Library</strong>
-        <span className="badge live">{provider}</span>
-      </div>
-      <div className="field">Provider</div>
-      <select
-        className="select"
-        value={provider}
-        onChange={(e) => setProvider(e.target.value as typeof provider)}
-      >
-        {providers.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
-      <div className="field">Search</div>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          className="input"
-          placeholder={provider === 'bundle' ? 'filename (e.g. mandelbrot)' : 'fire, confetti, …'}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && doSearch()}
-          data-testid="library-search"
-        />
-        <button
-          type="button"
-          className="btn"
-          onClick={doSearch}
-          disabled={loading}
-          data-testid="library-go"
-        >
-          {loading ? '…' : 'Go'}
-        </button>
-      </div>
-      {error && (
-        <p className="muted-note" style={{ color: 'var(--danger)' }}>
-          {error}
-        </p>
-      )}
-      <div className="lib-grid" data-testid="library-grid">
-        {results.map((a) => (
-          <button
-            key={`${a.provider}:${a.id}`}
-            type="button"
-            className="lib-tile"
-            data-testid="library-item"
-            title={a.title}
-            onClick={() => pick(a)}
-          >
-            {a.thumb ? <img src={a.thumb} alt={a.title} /> : <span>{a.kind}</span>}
-            <span className="lib-label">{a.title.slice(0, 28) || a.id}</span>
-          </button>
-        ))}
-      </div>
-      <p className="muted-note">
-        Set <code>TENOR_API_KEY</code> for trending GIFs · <code>PEXELS_API_KEY</code> for stock
-        video. Bundle is offline (run <code>pnpm make:library</code>).{' '}
-        {durationProgramUs ? '' : 'Import a video first to place items.'}
-      </p>
-    </div>
-  );
-}
-
 function Dock() {
   const { panel } = useEditor();
   const titles: Record<PanelId, string> = {
     media: 'Media',
     text: 'Text · TTS',
     sticker: 'Sticker · GIF',
-    library: 'Library',
     effect: 'Effects',
   };
   return (
@@ -632,7 +510,6 @@ function Dock() {
       {panel === 'media' && <MediaPanel />}
       {panel === 'text' && <TextPanel />}
       {panel === 'sticker' && <StickerPanel />}
-      {panel === 'library' && <LibraryPanel />}
       {panel === 'effect' && <EffectPanel />}
     </div>
   );
@@ -650,6 +527,7 @@ function Preview() {
     durationProgramUs,
     importPath,
     addImageOverlay,
+    addOverlaySrc,
     overlays,
     selectedOverlayId,
     selectOverlay,
@@ -755,8 +633,10 @@ function Preview() {
     e.preventDefault();
     for (const f of Array.from(e.dataTransfer.files)) {
       const p = filePath(f);
-      if (isVideo(f.name) && p) importPath(p);
-      else if (isImage(f.name) && p) addImageOverlay(p);
+      if (!p) continue;
+      if (isVideo(f.name)) importPath(p);
+      else if (isGif(f.name)) addOverlaySrc('gif', f.name, p);
+      else if (isImage(f.name)) addImageOverlay(p);
     }
   };
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;

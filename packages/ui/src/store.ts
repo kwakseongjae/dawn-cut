@@ -63,7 +63,7 @@ interface EditorState {
   removeOverlay: (id: string) => void;
 }
 
-export type PanelId = 'media' | 'text' | 'sticker' | 'effect' | 'library';
+export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
 export interface Overlay {
   id: string;
   kind: 'image' | 'sticker' | 'gif' | 'subtitle' | 'video';

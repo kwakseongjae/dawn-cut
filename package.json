@@ -25,7 +25,6 @@
     "verify": "bash scripts/verify.sh",
     "setup:binaries": "bash scripts/setup-binaries.sh",
     "make:fixture": "bash scripts/make-fixture.sh",
-    "make:library": "bash scripts/make-library.sh",
     "demo:assets": "bash scripts/make-demo-assets.sh",
     "demo:run": "vitest run --config vitest.demo.config.ts",
     "demo:ui": "pnpm --filter @dawn-cut/desktop build && playwright test --config playwright.demo.config.ts"
@@ -36,7 +35,6 @@
     "@dawn-cut/sidecar-ffmpeg": "workspace:*",
     "@dawn-cut/sidecar-stt": "workspace:*",
     "@dawn-cut/sidecar-tts": "workspace:*",
-    "@dawn-cut/sidecar-library": "workspace:*",
     "@napi-rs/canvas": "^1.0.0",
     "@playwright/test": "^1.49.1",
     "@types/node": "^22.10.2",

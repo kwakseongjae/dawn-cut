@@ -8,15 +8,13 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "dist:mac": "electron-vite build && electron-builder --mac dmg --config.mac.identity=null",
-    "dist:win": "electron-vite build && electron-builder --win nsis --x64 --arm64 --config.win.signAndEditExecutable=false"
+    "dist:mac": "electron-vite build && electron-builder --mac dmg --config.mac.identity=null"
   },
   "dependencies": {
     "@dawn-cut/core": "workspace:*",
     "@dawn-cut/sidecar-ffmpeg": "workspace:*",
     "@dawn-cut/sidecar-stt": "workspace:*",
     "@dawn-cut/sidecar-tts": "workspace:*",
-    "@dawn-cut/sidecar-library": "workspace:*",
     "@dawn-cut/ui": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -46,13 +44,6 @@
     "dmg": {
       "title": "dawn-cut",
       "writeUpdateInfo": false
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
     }
   }
 }
