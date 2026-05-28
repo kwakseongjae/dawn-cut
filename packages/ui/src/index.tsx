@@ -1282,6 +1282,7 @@ export function AppShell() {
       },
     };
   }, []);
+  const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {
     const isTextInput = (t: EventTarget | null) => {
       if (!(t instanceof HTMLElement)) return false;
@@ -1294,6 +1295,44 @@ export function AppShell() {
         e.preventDefault();
         if (e.shiftKey) s.redo();
         else s.undo();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === 's' && useEditor.getState().timeline) {
+          e.preventDefault();
+          (async () => {
+            const p = await window.dawn?.saveFile();
+            if (p) await useEditor.getState().saveProject(p);
+          })();
+          return;
+        }
+        if (k === 'o') {
+          e.preventDefault();
+          (async () => {
+            const p = await window.dawn?.openFile();
+            if (p) await useEditor.getState().openProject(p);
+          })();
+          return;
+        }
+        if (k === 'e' && useEditor.getState().timeline) {
+          e.preventDefault();
+          (async () => {
+            const p = await window.dawn?.saveFile();
+            if (p) await useEditor.getState().exportTo(p);
+          })();
+          return;
+        }
+      }
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        if (!isTextInput(e.target)) {
+          e.preventDefault();
+          setShowHelp((v) => !v);
+          return;
+        }
+      }
+      if (e.key === 'Escape' && showHelp) {
+        setShowHelp(false);
         return;
       }
       if (isTextInput(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1329,7 +1368,7 @@ export function AppShell() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [s]);
+  }, [s, showHelp]);
   return (
     <div className="app">
       <Toolbar />
@@ -1341,6 +1380,53 @@ export function AppShell() {
       </div>
       <Timeline />
       <StatusBar />
+      {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
     </div>
+  );
+}
+
+function HelpOverlay({ onClose }: { onClose: () => void }) {
+  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+  const mod = isMac ? '⌘' : 'Ctrl';
+  const rows: [string, string][] = [
+    [`${mod} Z / ${mod} ⇧ Z`, 'Undo / Redo'],
+    [`${mod} S`, 'Save project (.dawn)'],
+    [`${mod} O`, 'Open project (.dawn)'],
+    [`${mod} E`, 'Export MP4'],
+    ['Space', 'Play / pause'],
+    ['← / →', 'Seek ±0.1s'],
+    ['Home / End', 'Jump to start / end'],
+    ['?', 'Show / hide this help'],
+    ['Esc', 'Close overlays'],
+  ];
+  return (
+    <button
+      type="button"
+      className="help-overlay"
+      data-testid="help-overlay"
+      onClick={onClose}
+      aria-label="Close help"
+    >
+      <div className="help-card" onClick={(e) => e.stopPropagation()}>
+        <div className="help-head">
+          <strong>Keyboard shortcuts</strong>
+          <button type="button" className="x" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <table>
+          <tbody>
+            {rows.map(([k, d]) => (
+              <tr key={k}>
+                <td>
+                  <code>{k}</code>
+                </td>
+                <td>{d}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </button>
   );
 }

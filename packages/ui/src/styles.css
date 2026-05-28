@@ -817,3 +817,61 @@ body {
   gap: 10px;
   flex-wrap: wrap;
 }
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+.help-card {
+  background: var(--elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  min-width: 320px;
+  max-width: 480px;
+  color: var(--text);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+.help-head .x {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.help-card table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.help-card td {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+.help-card td:first-child {
+  white-space: nowrap;
+  color: var(--accent);
+  width: 40%;
+}
+.help-card code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
