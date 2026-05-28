@@ -267,7 +267,9 @@ function MediaPanel() {
     addImageOverlay,
     addOverlaySrc,
     removeOverlay,
+    clearOverlaysByKind,
   } = useEditor();
+  const imageOverlays = overlays.filter((o) => o.kind === 'image' || o.kind === 'gif');
   const handle = (files: File[]) => {
     for (const f of files) {
       const p = filePath(f);
@@ -295,24 +297,36 @@ function MediaPanel() {
           <span className="badge live">source</span>
         </div>
       )}
-      {overlays
-        .filter((o) => o.kind === 'image')
-        .map((o) => (
-          <div className="asset-card" key={o.id}>
-            <div className="thumb">🖼</div>
-            <div className="meta">
-              <div className="name">{o.name}</div>
-              <div className="sub">image overlay</div>
-            </div>
-            <span className="badge">preview</span>
-            <button type="button" className="x" onClick={() => removeOverlay(o.id)}>
-              ✕
-            </button>
+      {imageOverlays.map((o) => (
+        <div className="asset-card" key={o.id}>
+          <div className="thumb">{o.kind === 'gif' ? 'GIF' : '🖼'}</div>
+          <div className="meta">
+            <div className="name">{o.name}</div>
+            <div className="sub">{o.kind} overlay</div>
           </div>
-        ))}
+          <span className="badge live">composited</span>
+          <button type="button" className="x" onClick={() => removeOverlay(o.id)}>
+            ✕
+          </button>
+        </div>
+      ))}
+      {imageOverlays.length > 1 && (
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="clear-image-overlays"
+          onClick={() => {
+            clearOverlaysByKind('image');
+            clearOverlaysByKind('gif');
+          }}
+          style={{ marginTop: 8, fontSize: 11 }}
+        >
+          ✕ clear all ({imageOverlays.length})
+        </button>
+      )}
       <p className="muted-note">
-        Reference images/B-roll attach to the timeline as overlays. Compositing onto the video is on
-        the roadmap — shown here as <b>preview</b>.
+        Drop images or .gif files to attach as composited overlays. Animated GIFs use{' '}
+        <code>-ignore_loop 0</code> for natural looping.
       </p>
     </div>
   );
@@ -992,6 +1006,15 @@ function Transcript() {
       await doBurn(subtitlePos, next);
     }
   };
+  const resetSubtitleSettings = async () => {
+    const defaultPos = { x: 0.1, y: 0.8, scale: 0.8 };
+    setSubtitlePos(defaultPos);
+    replaceSubtitleStyle({});
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(defaultPos, {});
+    }
+  };
   return (
     <div className="transcript">
       <div className="panel-head">
@@ -1005,6 +1028,16 @@ function Transcript() {
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
           {burnt ? '✓ subtitles burned' : 'Burn subtitles'}
+        </button>
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="reset-subtitle-settings"
+          onClick={resetSubtitleSettings}
+          title="Reset subtitle position + style to defaults"
+          style={{ fontSize: 11, padding: '4px 8px' }}
+        >
+          ⟲ reset
         </button>
       </div>
       <div className="sub-pos" data-testid="subtitle-pos">
