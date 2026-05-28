@@ -65,6 +65,7 @@ interface EditorState {
   removeOverlay: (id: string) => void;
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
+  replaceSubtitleStyle: (style: SubtitleStyle) => void;
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -203,6 +204,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
   setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
+  replaceSubtitleStyle: (style) => set({ subtitleStyle: style }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>

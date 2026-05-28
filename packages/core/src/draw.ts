@@ -20,6 +20,43 @@ export interface DrawCtx {
   strokeText(text: string, x: number, y: number, maxWidth?: number): void;
 }
 
+/** Named presets for common social-video caption looks. */
+export const SUBTITLE_PRESETS: Record<string, SubtitleStyle> = {
+  default: {},
+  tiktok: {
+    color: '#ffffff',
+    bg: 'transparent',
+    stroke: 'rgba(0,0,0,0.95)',
+    strokeWidth: 10,
+    fontFamily: 'Impact, sans-serif',
+    fontScale: 0.55,
+  },
+  podcast: {
+    color: '#ffffff',
+    bg: 'rgba(0,0,0,0.75)',
+    stroke: '',
+    fontFamily: 'system-ui, sans-serif',
+    fontScale: 0.32,
+  },
+  cinematic: {
+    color: '#f4e9c1',
+    bg: 'transparent',
+    stroke: 'rgba(0,0,0,0.9)',
+    strokeWidth: 4,
+    fontFamily: 'Georgia, serif',
+    fontWeight: 'normal',
+    fontScale: 0.38,
+  },
+  highlight: {
+    color: '#111111',
+    bg: 'rgba(255,235,59,0.95)',
+    stroke: '',
+    fontFamily: 'system-ui, sans-serif',
+    fontScale: 0.42,
+  },
+};
+export type SubtitlePresetId = keyof typeof SUBTITLE_PRESETS;
+
 /** Subtitle styling — defaults reproduce the original translucent-bar look. */
 export interface SubtitleStyle {
   color?: string; // text fill (default '#fff')

@@ -1,4 +1,5 @@
 import {
+  SUBTITLE_PRESETS,
   clampRange,
   drawBadge,
   drawEmoji,
@@ -871,6 +872,7 @@ function Transcript() {
     setSubtitlePos,
     subtitleStyle,
     setSubtitleStyle,
+    replaceSubtitleStyle,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -917,6 +919,14 @@ function Transcript() {
   const applyStyle = async (patch: SubtitleStyle) => {
     const next = { ...subtitleStyle, ...patch };
     setSubtitleStyle(patch);
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(subtitlePos, next);
+    }
+  };
+  const applyPreset = async (presetId: string) => {
+    const next = SUBTITLE_PRESETS[presetId] ?? {};
+    replaceSubtitleStyle(next);
     if (burnt) {
       clearOverlaysByKind('subtitle');
       await doBurn(subtitlePos, next);
@@ -1014,6 +1024,22 @@ function Transcript() {
           </label>
         </div>
         <div className="sub-pos-sliders">
+          <label className="ov-field">
+            preset
+            <select
+              className="select"
+              data-testid="sub-preset"
+              defaultValue="default"
+              onChange={(e) => applyPreset(e.target.value)}
+              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
+            >
+              {Object.keys(SUBTITLE_PRESETS).map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="ov-field">
             color
             <input
