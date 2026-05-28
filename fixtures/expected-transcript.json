@@ -1,0 +1,29 @@
+{
+  "fps": 30,
+  "keywords": [
+    "quick",
+    "brown",
+    "fox",
+    "jumps",
+    "lazy",
+    "dog",
+    "dawn",
+    "cut",
+    "editing",
+    "simple",
+    "remove",
+    "silence",
+    "automatically"
+  ],
+  "silences": [
+    {
+      "startUs": 2496625,
+      "endUs": 3496625
+    },
+    {
+      "startUs": 5164313,
+      "endUs": 6164313
+    }
+  ],
+  "totalAudioUs": 8001063
+}

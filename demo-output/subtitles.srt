@@ -1,0 +1,23 @@
+1
+00:00:00,007 --> 00:00:03,120
+Cut the open source You can edit your
+
+2
+00:00:03,120 --> 00:00:04,160
+video simply by
+
+3
+00:00:05,110 --> 00:00:08,153
+a word and the timeline updates It removes
+
+4
+00:00:08,153 --> 00:00:11,310
+silent gaps Export to MP 4 G IF
+
+5
+00:00:11,510 --> 00:00:12,831
+or subtitles in
+
+6
+00:00:13,947 --> 00:00:15,097
+runs locally on

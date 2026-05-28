@@ -1,0 +1,19 @@
+{
+  "name": "@dawn-cut/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable editing core (pure TS). MUST NOT import electron/fs/child_process — see 00-SEED CONSTRAINT #1.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

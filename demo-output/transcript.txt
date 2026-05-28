@@ -1,0 +1,1 @@
+Welcome to Don Cut the open source video editor You can edit your video simply by editing the text Delete a word and the timeline updates instantly It removes silent gaps automatically Export to MP 4 G IF or subtitles in one click Everything runs locally on your machine

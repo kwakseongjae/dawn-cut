@@ -1,0 +1,397 @@
+{
+  "language": "en",
+  "words": [
+    {
+      "id": "4db974f3-da1f-40f6-9c98-b4f47d5b5b2d",
+      "text": "Welcome",
+      "sourceStart": 10000,
+      "sourceEnd": 620000,
+      "confidence": 0.842351,
+      "mediaId": "demo"
+    },
+    {
+      "id": "25f13208-78cc-43f5-8463-f4c6f3e48bd0",
+      "text": "to",
+      "sourceStart": 620000,
+      "sourceEnd": 790000,
+      "confidence": 0.99111,
+      "mediaId": "demo"
+    },
+    {
+      "id": "66791103-aad9-451b-a333-2477d1394f42",
+      "text": "Don",
+      "sourceStart": 790000,
+      "sourceEnd": 1040000,
+      "confidence": 0.484682,
+      "mediaId": "demo"
+    },
+    {
+      "id": "a8f25c70-a6f0-4519-884b-e5b48c3fa610",
+      "text": "Cut",
+      "sourceStart": 1040000,
+      "sourceEnd": 1450000,
+      "confidence": 0.336409,
+      "mediaId": "demo"
+    },
+    {
+      "id": "2f03556d-4503-410b-811c-1b38cbe292a4",
+      "text": "the",
+      "sourceStart": 1480000,
+      "sourceEnd": 1790000,
+      "confidence": 0.864342,
+      "mediaId": "demo"
+    },
+    {
+      "id": "cacf8bf6-f656-4ab0-94cf-c975abf1afdf",
+      "text": "open",
+      "sourceStart": 1790000,
+      "sourceEnd": 2090000,
+      "confidence": 0.664656,
+      "mediaId": "demo"
+    },
+    {
+      "id": "aeb3e2b7-8303-4868-9706-8ea410980b4e",
+      "text": "source",
+      "sourceStart": 2090000,
+      "sourceEnd": 2620000,
+      "confidence": 0.736672,
+      "mediaId": "demo"
+    },
+    {
+      "id": "dc2c12b9-b7fe-4ffd-acb6-9f8eda3284aa",
+      "text": "video",
+      "sourceStart": 2620000,
+      "sourceEnd": 3590000,
+      "confidence": 0.935101,
+      "mediaId": "demo"
+    },
+    {
+      "id": "96a5cffa-85aa-4663-a233-99dd895a89f3",
+      "text": "editor",
+      "sourceStart": 3590000,
+      "sourceEnd": 3880000,
+      "confidence": 0.987121,
+      "mediaId": "demo"
+    },
+    {
+      "id": "7d66e303-6fcb-480c-bd25-79b68eae69d7",
+      "text": "You",
+      "sourceStart": 3900000,
+      "sourceEnd": 4190000,
+      "confidence": 0.99111,
+      "mediaId": "demo"
+    },
+    {
+      "id": "c93e01de-a29f-419a-898a-67309e76ac4d",
+      "text": "can",
+      "sourceStart": 4190000,
+      "sourceEnd": 4380000,
+      "confidence": 0.998586,
+      "mediaId": "demo"
+    },
+    {
+      "id": "bdaa8760-1fe0-4b31-ac1e-9e8ac2f8c409",
+      "text": "edit",
+      "sourceStart": 4380000,
+      "sourceEnd": 4700000,
+      "confidence": 0.996839,
+      "mediaId": "demo"
+    },
+    {
+      "id": "c77ee49a-ee55-4092-b1d4-a610cc8d2030",
+      "text": "your",
+      "sourceStart": 4700000,
+      "sourceEnd": 5020000,
+      "confidence": 0.999436,
+      "mediaId": "demo"
+    },
+    {
+      "id": "f779e344-7d2e-4af3-b838-7caa75a5bd6e",
+      "text": "video",
+      "sourceStart": 5020000,
+      "sourceEnd": 5420000,
+      "confidence": 0.861268,
+      "mediaId": "demo"
+    },
+    {
+      "id": "cddfd073-e5fa-4947-aa10-bd66688d147e",
+      "text": "simply",
+      "sourceStart": 5420000,
+      "sourceEnd": 5910000,
+      "confidence": 0.997931,
+      "mediaId": "demo"
+    },
+    {
+      "id": "2d67fc50-6251-494a-85c5-4a98f7f5cd6c",
+      "text": "by",
+      "sourceStart": 5910000,
+      "sourceEnd": 6060000,
+      "confidence": 0.999085,
+      "mediaId": "demo"
+    },
+    {
+      "id": "f68a1411-6ad1-4953-83c4-f7716a4d3754",
+      "text": "editing",
+      "sourceStart": 6060000,
+      "sourceEnd": 6620000,
+      "confidence": 0.998765,
+      "mediaId": "demo"
+    },
+    {
+      "id": "41b65383-2bfc-4936-ac36-dc816dc163a2",
+      "text": "the",
+      "sourceStart": 6620000,
+      "sourceEnd": 6860000,
+      "confidence": 0.996485,
+      "mediaId": "demo"
+    },
+    {
+      "id": "24e6e659-1b24-48d1-8ea2-f0ab1830e583",
+      "text": "text",
+      "sourceStart": 6860000,
+      "sourceEnd": 7180000,
+      "confidence": 0.997809,
+      "mediaId": "demo"
+    },
+    {
+      "id": "76dd19ce-96f3-4b82-801a-8cd5d0d79279",
+      "text": "Delete",
+      "sourceStart": 7460000,
+      "sourceEnd": 7910000,
+      "confidence": 0.973835,
+      "mediaId": "demo"
+    },
+    {
+      "id": "a7722683-766c-4f60-8358-8d617322d1be",
+      "text": "a",
+      "sourceStart": 7910000,
+      "sourceEnd": 7980000,
+      "confidence": 0.986786,
+      "mediaId": "demo"
+    },
+    {
+      "id": "9e493fdf-24ab-4481-9445-2a571db4d0b1",
+      "text": "word",
+      "sourceStart": 7980000,
+      "sourceEnd": 8360000,
+      "confidence": 0.915625,
+      "mediaId": "demo"
+    },
+    {
+      "id": "cf3ff3f5-5206-48ca-b305-a8f0097466ee",
+      "text": "and",
+      "sourceStart": 8440000,
+      "sourceEnd": 8910000,
+      "confidence": 0.971803,
+      "mediaId": "demo"
+    },
+    {
+      "id": "809c1787-90ea-4593-963a-1b37ea4909c7",
+      "text": "the",
+      "sourceStart": 8910000,
+      "sourceEnd": 8920000,
+      "confidence": 0.995524,
+      "mediaId": "demo"
+    },
+    {
+      "id": "dee65114-b58f-48b2-abd4-9a5465b5da50",
+      "text": "timeline",
+      "sourceStart": 8920000,
+      "sourceEnd": 9550000,
+      "confidence": 0.958354,
+      "mediaId": "demo"
+    },
+    {
+      "id": "66af521a-e2e9-4376-9b64-542a0b4951a4",
+      "text": "updates",
+      "sourceStart": 9550000,
+      "sourceEnd": 10100000,
+      "confidence": 0.979217,
+      "mediaId": "demo"
+    },
+    {
+      "id": "2ac335c5-1ef8-4ff6-af23-0b1694a24395",
+      "text": "instantly",
+      "sourceStart": 10100000,
+      "sourceEnd": 10810000,
+      "confidence": 0.996768,
+      "mediaId": "demo"
+    },
+    {
+      "id": "a29a074f-c3e0-4220-b47d-b838901a1bf0",
+      "text": "It",
+      "sourceStart": 11080000,
+      "sourceEnd": 11240000,
+      "confidence": 0.996801,
+      "mediaId": "demo"
+    },
+    {
+      "id": "9fb0b74e-0a04-45a8-92fd-0a9d74e5b4b4",
+      "text": "removes",
+      "sourceStart": 11240000,
+      "sourceEnd": 11820000,
+      "confidence": 0.994215,
+      "mediaId": "demo"
+    },
+    {
+      "id": "9e130e0a-b887-40fa-a445-cdfef88eb4ff",
+      "text": "silent",
+      "sourceStart": 11820000,
+      "sourceEnd": 12530000,
+      "confidence": 0.958119,
+      "mediaId": "demo"
+    },
+    {
+      "id": "b2a9cb45-b336-41a6-9468-109ffffd751d",
+      "text": "gaps",
+      "sourceStart": 12530000,
+      "sourceEnd": 12650000,
+      "confidence": 0.982986,
+      "mediaId": "demo"
+    },
+    {
+      "id": "90c3320b-2219-4833-bfc0-baea6355b555",
+      "text": "automatically",
+      "sourceStart": 12650000,
+      "sourceEnd": 13730000,
+      "confidence": 0.997232,
+      "mediaId": "demo"
+    },
+    {
+      "id": "4881cba0-d2c5-45ee-bcb6-6e6909901293",
+      "text": "Export",
+      "sourceStart": 14000000,
+      "sourceEnd": 14610000,
+      "confidence": 0.956368,
+      "mediaId": "demo"
+    },
+    {
+      "id": "164919a3-3adb-4763-9618-cf876465154a",
+      "text": "to",
+      "sourceStart": 14610000,
+      "sourceEnd": 14900000,
+      "confidence": 0.998121,
+      "mediaId": "demo"
+    },
+    {
+      "id": "80b3e78b-9ade-4720-b486-ded85a851d97",
+      "text": "MP",
+      "sourceStart": 14900000,
+      "sourceEnd": 15010000,
+      "confidence": 0.635108,
+      "mediaId": "demo"
+    },
+    {
+      "id": "61172679-c7e0-4663-a9bc-ba7c38eddba2",
+      "text": "4",
+      "sourceStart": 15010000,
+      "sourceEnd": 15450000,
+      "confidence": 0.997898,
+      "mediaId": "demo"
+    },
+    {
+      "id": "bc60c6f8-881c-45a9-8773-4edfd40bb62e",
+      "text": "G",
+      "sourceStart": 15510000,
+      "sourceEnd": 15610000,
+      "confidence": 0.708892,
+      "mediaId": "demo"
+    },
+    {
+      "id": "33ffacd7-ae5e-49c5-b42f-a56f980d56cc",
+      "text": "IF",
+      "sourceStart": 15610000,
+      "sourceEnd": 15810000,
+      "confidence": 0.927057,
+      "mediaId": "demo"
+    },
+    {
+      "id": "4f6fe50a-f6ba-4dc6-ad04-b09a929789eb",
+      "text": "or",
+      "sourceStart": 16010000,
+      "sourceEnd": 16300000,
+      "confidence": 0.996326,
+      "mediaId": "demo"
+    },
+    {
+      "id": "4eb27782-7430-4efa-9ed8-cda880beea5c",
+      "text": "subtitles",
+      "sourceStart": 16300000,
+      "sourceEnd": 17330000,
+      "confidence": 0.592056,
+      "mediaId": "demo"
+    },
+    {
+      "id": "502c3a82-83ef-4c1d-aea2-9ed0157c7ec0",
+      "text": "in",
+      "sourceStart": 17330000,
+      "sourceEnd": 17331000,
+      "confidence": 0.990033,
+      "mediaId": "demo"
+    },
+    {
+      "id": "cabf8d04-30a2-4aeb-8b89-c988eb371030",
+      "text": "one",
+      "sourceStart": 17330000,
+      "sourceEnd": 17880000,
+      "confidence": 0.977238,
+      "mediaId": "demo"
+    },
+    {
+      "id": "9e17454f-35e8-45a5-baa4-3e1e9d930afe",
+      "text": "click",
+      "sourceStart": 17880000,
+      "sourceEnd": 18140000,
+      "confidence": 0.984326,
+      "mediaId": "demo"
+    },
+    {
+      "id": "7c02c2ef-dfa3-46f1-bdb7-17dc7a36868e",
+      "text": "Everything",
+      "sourceStart": 18520000,
+      "sourceEnd": 19380000,
+      "confidence": 0.991563,
+      "mediaId": "demo"
+    },
+    {
+      "id": "5883d599-102c-43b4-b7bd-1b598469fd8f",
+      "text": "runs",
+      "sourceStart": 19380000,
+      "sourceEnd": 19970000,
+      "confidence": 0.99902,
+      "mediaId": "demo"
+    },
+    {
+      "id": "48f0ca70-79c7-40a2-8fcc-4223d23b5186",
+      "text": "locally",
+      "sourceStart": 19970000,
+      "sourceEnd": 20350000,
+      "confidence": 0.99867,
+      "mediaId": "demo"
+    },
+    {
+      "id": "6415cd9c-f1f0-44ee-ba55-5dc8af4538b0",
+      "text": "on",
+      "sourceStart": 20350000,
+      "sourceEnd": 20530000,
+      "confidence": 0.999756,
+      "mediaId": "demo"
+    },
+    {
+      "id": "5d647479-8b1b-47a1-abe9-d78c2ad892c6",
+      "text": "your",
+      "sourceStart": 20530000,
+      "sourceEnd": 20870000,
+      "confidence": 0.999336,
+      "mediaId": "demo"
+    },
+    {
+      "id": "17b0fd0d-9e7d-4b80-8701-7c310ec1dd70",
+      "text": "machine",
+      "sourceStart": 20870000,
+      "sourceEnd": 21480000,
+      "confidence": 0.998654,
+      "mediaId": "demo"
+    }
+  ]
+}

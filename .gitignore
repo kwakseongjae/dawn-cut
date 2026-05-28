@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+out/
+*.tsbuildinfo
+
+# whisper.cpp source/build + models
+vendor/
+*.bin
+
+# gate evidence (CI uploads separately)
+artifacts/
+
+# fixtures: keep sample.mp4 + expected-transcript.json, ignore intermediates
+fixtures/*.aiff
+fixtures/*.wav
+fixtures/voice*
+
+# playwright
+test-results/
+playwright-report/
+.playwright/
+
+# os / editor
+.DS_Store
+*.log
+release/

@@ -1,0 +1,48 @@
+{
+  "name": "dawn-cut",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source AI video editor — text-based editing, auto subtitles, auto silence removal. No subscriptions, no watermarks.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.32.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild", "@biomejs/biome"]
+  },
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/*\" build",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "boundary": "depcruise packages/core --config .dependency-cruiser.cjs",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "test:e2e": "pnpm --filter @dawn-cut/desktop build && playwright test",
+    "verify:unit": "pnpm test:unit",
+    "verify:int": "pnpm test:int",
+    "verify:e2e": "pnpm test:e2e",
+    "verify": "bash scripts/verify.sh",
+    "setup:binaries": "bash scripts/setup-binaries.sh",
+    "make:fixture": "bash scripts/make-fixture.sh",
+    "demo:assets": "bash scripts/make-demo-assets.sh",
+    "demo:run": "vitest run --config vitest.demo.config.ts",
+    "demo:ui": "pnpm --filter @dawn-cut/desktop build && playwright test --config playwright.demo.config.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@dawn-cut/core": "workspace:*",
+    "@dawn-cut/sidecar-ffmpeg": "workspace:*",
+    "@dawn-cut/sidecar-stt": "workspace:*",
+    "@dawn-cut/sidecar-tts": "workspace:*",
+    "@napi-rs/canvas": "^1.0.0",
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
+    "dependency-cruiser": "^16.8.0",
+    "electron": "^33.2.1",
+    "fast-check": "^3.23.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

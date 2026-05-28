@@ -1,0 +1,14 @@
+{
+  "name": "@dawn-cut/sidecar-tts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Text-to-speech sidecar. Default engine = macOS `say` (offline); Piper supported via env.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit"
+  }
+}

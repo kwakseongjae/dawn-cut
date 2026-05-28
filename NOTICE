@@ -1,0 +1,19 @@
+dawn-cut
+Copyright (c) 2026 dawn-cut contributors
+Licensed under the MIT License.
+
+This product relies on the following third-party components (invoked as
+separate processes or referenced as design/library sources):
+
+- whisper.cpp — MIT License — https://github.com/ggml-org/whisper.cpp
+  Used for local speech-to-text. Bundled/built under vendor/.
+
+- FFmpeg — LGPL v2.1+ — https://ffmpeg.org
+  Invoked as a subprocess only (no static/dynamic linking, no --enable-gpl).
+  License remains LGPL; no GPL components are enabled.
+
+- OpenCut — MIT License — https://github.com/OpenCut-app/OpenCut
+  Referenced for design/architecture; any borrowed code retains MIT notice.
+
+GPL-licensed editors (Kdenlive, Shotcut, OpenShot) are NOT used as code
+sources — referenced for UX only.

@@ -1,0 +1,17 @@
+{
+  "name": "@dawn-cut/sidecar-stt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "whisper.cpp subprocess wrapper (Node-only). Produces word-level timestamps. MIT (whisper.cpp).",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dawn-cut/core": "workspace:*"
+  }
+}

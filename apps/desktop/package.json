@@ -1,0 +1,49 @@
+{
+  "name": "@dawn-cut/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "dist:mac": "electron-vite build && electron-builder --mac dmg --config.mac.identity=null"
+  },
+  "dependencies": {
+    "@dawn-cut/core": "workspace:*",
+    "@dawn-cut/sidecar-ffmpeg": "workspace:*",
+    "@dawn-cut/sidecar-stt": "workspace:*",
+    "@dawn-cut/sidecar-tts": "workspace:*",
+    "@dawn-cut/ui": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "dev.dawncut.app",
+    "productName": "dawn-cut",
+    "asar": true,
+    "files": ["out/**/*", "package.json"],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.video",
+      "identity": null
+    },
+    "dmg": {
+      "title": "dawn-cut",
+      "writeUpdateInfo": false
+    }
+  }
+}

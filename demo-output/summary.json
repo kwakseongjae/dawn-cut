@@ -1,0 +1,18 @@
+{
+  "source": {
+    "durationUs": 23600000,
+    "fps": 30,
+    "hasAudio": true
+  },
+  "transcript": {
+    "language": "en",
+    "wordCount": 49
+  },
+  "afterDeleteWordsUs": 22566677,
+  "silencesDetected": 6,
+  "finalDurationUs": 17300063,
+  "clips": 7,
+  "removedUs": 6299937,
+  "overlays": 2,
+  "exportedMp4DurationUs": 17300000
+}

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    # macOS runner: PoC targets macOS; needs `say` for fixtures + ffmpeg.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
+
+      - name: Lint + boundary + build + unit (always)
+        run: |
+          pnpm lint
+          pnpm boundary
+          pnpm build
+          pnpm test:unit
+
+      - name: Setup binaries + fixture (integration)
+        run: |
+          brew install cmake
+          pnpm setup:binaries
+          pnpm make:fixture
+
+      - name: Integration tests (real ffmpeg/whisper)
+        run: pnpm test:int
+
+      - name: E2E (Electron)
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: artifacts/
