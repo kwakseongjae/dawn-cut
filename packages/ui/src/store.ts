@@ -413,10 +413,15 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   saveProject: async (path) => {
-    const { timeline, transcript, mediaPath } = get();
+    const { timeline, transcript, mediaPath, subtitlePos, subtitleStyle } = get();
     const dawn = window.dawn;
     if (!timeline || !transcript || !mediaPath || !dawn) return;
-    await dawn.saveProject(path, serializeProject(makeProject(mediaPath, transcript, timeline)));
+    await dawn.saveProject(
+      path,
+      serializeProject(
+        makeProject(mediaPath, transcript, timeline, { subtitlePos, subtitleStyle }),
+      ),
+    );
     set({ status: 'saved' });
   },
 
@@ -438,6 +443,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       playing: false,
       clipCount: videoClips(project.timeline).length,
       durationProgramUs: project.timeline.durationProgram,
+      subtitlePos: project.subtitlePos ?? { x: 0.1, y: 0.8, scale: 0.8 },
+      subtitleStyle: project.subtitleStyle ?? {},
     });
   },
 }));

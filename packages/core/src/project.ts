@@ -1,22 +1,39 @@
+import type { SubtitleStyle } from './draw.js';
 import { validateSync } from './sync.js';
 import { validateTimeline } from './timeline.js';
 import { validateTranscript } from './transcript.js';
 import type { TimelineModel, TranscriptModel } from './types.js';
 
-/** A persisted dawn-cut project (.dawn = this JSON). */
+export interface SubtitlePos {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+/** A persisted dawn-cut project (.dawn = this JSON). schemaVersion 1 = pre-subtitleSettings. */
 export interface Project {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   mediaPath: string;
   transcript: TranscriptModel;
   timeline: TimelineModel;
+  subtitlePos?: SubtitlePos;
+  subtitleStyle?: SubtitleStyle;
 }
 
 export function makeProject(
   mediaPath: string,
   transcript: TranscriptModel,
   timeline: TimelineModel,
+  extras?: { subtitlePos?: SubtitlePos; subtitleStyle?: SubtitleStyle },
 ): Project {
-  return { schemaVersion: 1, mediaPath, transcript, timeline };
+  return {
+    schemaVersion: 2,
+    mediaPath,
+    transcript,
+    timeline,
+    ...(extras?.subtitlePos ? { subtitlePos: extras.subtitlePos } : {}),
+    ...(extras?.subtitleStyle ? { subtitleStyle: extras.subtitleStyle } : {}),
+  };
 }
 
 /** Serialize a project to a .dawn JSON string. */
@@ -30,7 +47,7 @@ export function serializeProject(p: Project): string {
  */
 export function deserializeProject(json: string): Project {
   const raw = JSON.parse(json) as Partial<Project>;
-  if (raw.schemaVersion !== 1)
+  if (raw.schemaVersion !== 1 && raw.schemaVersion !== 2)
     throw new Error(`unsupported project schemaVersion: ${raw.schemaVersion}`);
   if (typeof raw.mediaPath !== 'string') throw new Error('project: missing mediaPath');
   if (!raw.transcript || !raw.timeline) throw new Error('project: missing transcript/timeline');

@@ -26,9 +26,35 @@ describe('Project (.dawn) serialization', () => {
     const { transcript, timeline } = scene();
     const bad = serializeProject({
       ...makeProject('/x', transcript, timeline),
-      schemaVersion: 2 as 1,
+      schemaVersion: 99 as unknown as 2,
     });
     expect(() => deserializeProject(bad)).toThrow(/schemaVersion/);
+  });
+
+  it('round-trips subtitle position + style (schemaVersion 2)', () => {
+    const { transcript, timeline } = scene();
+    const p = makeProject('/x/sample.mp4', transcript, timeline, {
+      subtitlePos: { x: 0.05, y: 0.05, scale: 0.6 },
+      subtitleStyle: { color: '#ff0000', bg: 'transparent', fontFamily: 'Georgia, serif' },
+    });
+    expect(p.schemaVersion).toBe(2);
+    const restored = deserializeProject(serializeProject(p));
+    expect(restored.subtitlePos).toEqual({ x: 0.05, y: 0.05, scale: 0.6 });
+    expect(restored.subtitleStyle?.color).toBe('#ff0000');
+    expect(restored.subtitleStyle?.fontFamily).toBe('Georgia, serif');
+  });
+
+  it('accepts a legacy schemaVersion 1 project (subtitle settings absent)', () => {
+    const { transcript, timeline } = scene();
+    const legacy = JSON.stringify({
+      schemaVersion: 1,
+      mediaPath: '/x/sample.mp4',
+      transcript,
+      timeline,
+    });
+    const restored = deserializeProject(legacy);
+    expect(restored.schemaVersion).toBe(1);
+    expect(restored.subtitlePos).toBeUndefined();
   });
 
   it('rejects a corrupt project (broken invariant)', () => {
