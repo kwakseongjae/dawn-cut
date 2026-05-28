@@ -20,19 +20,48 @@ export interface DrawCtx {
   strokeText(text: string, x: number, y: number, maxWidth?: number): void;
 }
 
-/** Bottom-bar subtitle card (translucent bar + outlined white text). */
-export function drawSubtitle(ctx: DrawCtx, w: number, h: number, text: string): void {
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  ctx.roundRect(8, Math.round(h * 0.27), w - 16, Math.round(h * 0.64), 16);
-  ctx.fill();
-  ctx.font = `bold ${Math.round(h * 0.35)}px system-ui, sans-serif`;
+/** Subtitle styling — defaults reproduce the original translucent-bar look. */
+export interface SubtitleStyle {
+  color?: string; // text fill (default '#fff')
+  bg?: string; // background bar (default 'rgba(0,0,0,0.55)'; '' or 'transparent' = none)
+  stroke?: string; // text outline (default 'rgba(0,0,0,0.85)'; '' = none)
+  strokeWidth?: number; // px at canvas resolution (default 6)
+  fontFamily?: string; // default 'system-ui, sans-serif'
+  fontWeight?: string; // default 'bold'
+  fontScale?: number; // fraction of canvas height for font size (default 0.35)
+}
+
+/** Bottom-bar subtitle card (translucent bar + outlined white text by default; style-able). */
+export function drawSubtitle(
+  ctx: DrawCtx,
+  w: number,
+  h: number,
+  text: string,
+  style: SubtitleStyle = {},
+): void {
+  const bg = style.bg ?? 'rgba(0,0,0,0.55)';
+  const color = style.color ?? '#fff';
+  const stroke = style.stroke ?? 'rgba(0,0,0,0.85)';
+  const strokeWidth = style.strokeWidth ?? 6;
+  const family = style.fontFamily ?? 'system-ui, sans-serif';
+  const weight = style.fontWeight ?? 'bold';
+  const fontScale = style.fontScale ?? 0.35;
+
+  if (bg && bg !== 'transparent') {
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(8, Math.round(h * 0.27), w - 16, Math.round(h * 0.64), 16);
+    ctx.fill();
+  }
+  ctx.font = `${weight} ${Math.round(h * fontScale)}px ${family}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-  ctx.strokeText(text, w / 2, h * 0.6, w - 60);
-  ctx.fillStyle = '#fff';
+  if (stroke && strokeWidth > 0) {
+    ctx.lineWidth = strokeWidth;
+    ctx.strokeStyle = stroke;
+    ctx.strokeText(text, w / 2, h * 0.6, w - 60);
+  }
+  ctx.fillStyle = color;
   ctx.fillText(text, w / 2, h * 0.6, w - 60);
 }
 

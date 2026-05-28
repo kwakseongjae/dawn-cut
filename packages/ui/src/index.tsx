@@ -10,7 +10,7 @@ import {
   transcriptToCues,
   videoClips,
 } from '@dawn-cut/core';
-import type { Edl } from '@dawn-cut/core';
+import type { Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
   type DragEvent,
   type MouseEvent,
@@ -835,8 +835,8 @@ function Preview() {
 }
 
 // ── Transcript (hero) ────────────────────────────────────────────────
-const rasterizeSubtitle = (text: string) =>
-  rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text));
+const rasterizeSubtitle = (text: string, style: SubtitleStyle = {}) =>
+  rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text, style));
 
 const ANCHORS: { id: string; label: string; x: number; y: number }[] = [
   { id: 'tl', label: '↖', x: 0.02, y: 0.02 },
@@ -869,6 +869,8 @@ function Transcript() {
     overlays,
     subtitlePos,
     setSubtitlePos,
+    subtitleStyle,
+    setSubtitleStyle,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -876,10 +878,10 @@ function Transcript() {
     [timeline, transcript, playheadUs],
   );
   const burnt = overlays.some((o) => o.kind === 'subtitle');
-  const doBurn = async (pos: { x: number; y: number; scale: number }) => {
+  const doBurn = async (pos: { x: number; y: number; scale: number }, style: SubtitleStyle) => {
     if (!transcript || !timeline) return;
     for (const c of transcriptToCues(transcript, timeline)) {
-      const res = await window.dawn?.writeAsset(rasterizeSubtitle(c.text));
+      const res = await window.dawn?.writeAsset(rasterizeSubtitle(c.text, style));
       if (res)
         addOverlayWith({
           kind: 'subtitle',
@@ -901,7 +903,7 @@ function Transcript() {
       clearOverlaysByKind('subtitle');
       return;
     }
-    await doBurn(subtitlePos);
+    await doBurn(subtitlePos, subtitleStyle);
   };
   const applyAnchor = async (ax: number, ay: number) => {
     const x = anchorXForScale(ax, subtitlePos.scale);
@@ -909,7 +911,15 @@ function Transcript() {
     setSubtitlePos({ x, y: ay });
     if (burnt) {
       clearOverlaysByKind('subtitle');
-      await doBurn(next);
+      await doBurn(next, subtitleStyle);
+    }
+  };
+  const applyStyle = async (patch: SubtitleStyle) => {
+    const next = { ...subtitleStyle, ...patch };
+    setSubtitleStyle(patch);
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(subtitlePos, next);
     }
   };
   return (
@@ -961,7 +971,7 @@ function Transcript() {
                 setSubtitlePos({ x });
                 if (burnt) {
                   clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, x });
+                  await doBurn({ ...subtitlePos, x }, subtitleStyle);
                 }
               }}
             />
@@ -979,7 +989,7 @@ function Transcript() {
                 setSubtitlePos({ y });
                 if (burnt) {
                   clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, y });
+                  await doBurn({ ...subtitlePos, y }, subtitleStyle);
                 }
               }}
             />
@@ -997,10 +1007,60 @@ function Transcript() {
                 setSubtitlePos({ scale });
                 if (burnt) {
                   clearOverlaysByKind('subtitle');
-                  await doBurn({ ...subtitlePos, scale });
+                  await doBurn({ ...subtitlePos, scale }, subtitleStyle);
                 }
               }}
             />
+          </label>
+        </div>
+        <div className="sub-pos-sliders">
+          <label className="ov-field">
+            color
+            <input
+              type="color"
+              value={subtitleStyle.color ?? '#ffffff'}
+              data-testid="sub-color"
+              onChange={(e) => applyStyle({ color: e.target.value })}
+            />
+          </label>
+          <label className="ov-field">
+            outline
+            <input
+              type="color"
+              value={(subtitleStyle.stroke as string) || '#000000'}
+              data-testid="sub-stroke"
+              onChange={(e) => applyStyle({ stroke: e.target.value })}
+            />
+          </label>
+          <label className="ov-field">
+            bg
+            <select
+              className="select"
+              value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
+              data-testid="sub-bg"
+              onChange={(e) => applyStyle({ bg: e.target.value })}
+              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
+            >
+              <option value="rgba(0,0,0,0.55)">dark 55%</option>
+              <option value="rgba(0,0,0,0.85)">dark 85%</option>
+              <option value="rgba(255,255,255,0.7)">light</option>
+              <option value="transparent">none</option>
+            </select>
+          </label>
+          <label className="ov-field">
+            font
+            <select
+              className="select"
+              value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
+              data-testid="sub-font"
+              onChange={(e) => applyStyle({ fontFamily: e.target.value })}
+              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
+            >
+              <option value="system-ui, sans-serif">system</option>
+              <option value="Georgia, serif">serif</option>
+              <option value="'Courier New', monospace">mono</option>
+              <option value="Impact, sans-serif">impact</option>
+            </select>
           </label>
         </div>
       </div>

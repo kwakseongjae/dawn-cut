@@ -11,7 +11,7 @@ import {
   transcriptToCues,
   videoClips,
 } from '@dawn-cut/core';
-import type { OverlayClip, TimelineModel, TranscriptModel } from '@dawn-cut/core';
+import type { OverlayClip, SubtitleStyle, TimelineModel, TranscriptModel } from '@dawn-cut/core';
 import { create } from 'zustand';
 
 const MEDIA_ID = 'media';
@@ -38,6 +38,7 @@ interface EditorState {
   frameH: number;
   selectedOverlayId: string | null;
   subtitlePos: { x: number; y: number; scale: number };
+  subtitleStyle: SubtitleStyle;
 
   importPath: (path: string) => Promise<void>;
   toggleWord: (id: string) => void;
@@ -63,6 +64,7 @@ interface EditorState {
   generateVoiceover: (voice: string, text: string) => Promise<void>;
   removeOverlay: (id: string) => void;
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
+  setSubtitleStyle: (patch: SubtitleStyle) => void;
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -197,8 +199,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   frameH: 0,
   selectedOverlayId: null,
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
+  subtitleStyle: {},
 
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
+  setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>
