@@ -16,3 +16,4 @@ export * from './overlay.js';
 export * from './placement.js';
 export * from './draw.js';
 export * from './easing.js';
+export * from './whisper.js';
