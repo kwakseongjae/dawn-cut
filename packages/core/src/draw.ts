@@ -100,16 +100,27 @@ export function drawSubtitle(
     ctx.roundRect(8, Math.round(h * 0.27), w - 16, Math.round(h * 0.64), 16);
     ctx.fill();
   }
-  ctx.font = `${weight} ${Math.round(h * fontScale)}px ${family}`;
+  const fontSize = Math.round(h * fontScale);
+  ctx.font = `${weight} ${fontSize}px ${family}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  if (stroke && strokeWidth > 0) {
-    ctx.lineWidth = strokeWidth;
-    ctx.strokeStyle = stroke;
-    ctx.strokeText(text, w / 2, h * 0.6, w - 60);
+  // 멀티라인: '\n'으로 분리해 세로 중앙(h*0.6) 기준으로 줄들을 쌓는다.
+  // 단일 라인(개행 없음)은 기존과 동일하게 h*0.6에 1줄 → 역호환.
+  const lines = text.split('\n');
+  const lineH = Math.round(fontSize * 1.25);
+  const cy = h * 0.6;
+  const startY = cy - ((lines.length - 1) * lineH) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    const ly = startY + i * lineH;
+    if (stroke && strokeWidth > 0) {
+      ctx.lineWidth = strokeWidth;
+      ctx.strokeStyle = stroke;
+      ctx.strokeText(line, w / 2, ly, w - 60);
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(line, w / 2, ly, w - 60);
   }
-  ctx.fillStyle = color;
-  ctx.fillText(text, w / 2, h * 0.6, w - 60);
 }
 
 /** Centered color-emoji glyph on transparent background. */
