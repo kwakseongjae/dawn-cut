@@ -3,19 +3,33 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
+  type DrawCtx,
   type OverlayClip,
+  SUBTITLE_PRESETS,
   buildTranscriptModel,
   createInitialTimeline,
   detectFillers,
+  drawSubtitle,
   extractChapters,
   formatChapters,
   formatSrt,
   timelineToEdl,
   transcriptToCues,
+  wrapCaption,
 } from '@dawn-cut/core';
 import { extractAudio, probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
 import { transcribe } from '@dawn-cut/sidecar-stt';
+import { createCanvas } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
+
+/** 자막 cue를 PNG로 래스터화(렌더러와 동일한 core drawSubtitle 사용, 헤드리스). */
+function rasterizeCaption(text: string, style: Parameters<typeof drawSubtitle>[4]): Buffer {
+  const w = 1000;
+  const h = 150;
+  const c = createCanvas(w, h);
+  drawSubtitle(c.getContext('2d') as unknown as DrawCtx, w, h, text, style);
+  return c.toBuffer('image/png');
+}
 
 // 외부 실제 에셋(output/sources/*, scripts/output-demo-assets.sh)으로 파이프라인을
 // 돌려 사람이 확인할 결과물을 output/ 에 아카이빙한다. verify 에는 포함되지 않는다.
@@ -119,5 +133,79 @@ describe.skipIf(!haveAssets || !existsSync(WHISPER))('output demo (real external
     console.log(`\n[OVERLAY] ${CLIP} (${probe.width}x${probe.height}) + photo + gif → ${mp4}\n`);
     expect(existsSync(mp4)).toBe(true);
     expect(existsSync(png)).toBe(true);
+  });
+
+  it('한국어 자막 번인 mp4 + GIF → output/korean/ (움직이는 결과물)', async () => {
+    const probe = await probeMedia(KO);
+    const wav = out('tmp', 'ko2.wav');
+    await extractAudio(KO, wav);
+    const tr = await transcribe(wav, { mediaId: 'korean', lang: 'ko' });
+    const transcript = buildTranscriptModel(tr.words, 'korean', tr.language);
+    const timeline = createInitialTimeline('korean', probe.durationUs, probe.fps || 30);
+
+    // cue마다 어절 줄바꿈 후 PNG로 굽고, 해당 시간창에만 보이는 오버레이로 합성.
+    const style = SUBTITLE_PRESETS.korean;
+    const pos = { x: 0.1, y: 0.76, scale: 0.8 };
+    const overlays: OverlayClip[] = transcriptToCues(transcript, timeline).map((cue, i) => {
+      const png = out('tmp', `cap-${i}.png`);
+      writeFileSync(
+        png,
+        rasterizeCaption(wrapCaption(cue.text, { maxCharsPerLine: 16, maxLines: 2 }), style),
+      );
+      return {
+        id: `cap${i}`,
+        kind: 'image',
+        src: png,
+        x: pos.x,
+        y: pos.y,
+        scale: pos.scale,
+        opacity: 1,
+        startUs: cue.startUs,
+        endUs: cue.endUs,
+        z: 100,
+      };
+    });
+    const edl = timelineToEdl(timeline, KO);
+    const subbed = out('korean', 'subtitled.mp4');
+    await renderEdl(edl, subbed, { overlays, frameW: probe.width, frameH: probe.height });
+
+    // 공유용 GIF: 앞 8초, 480px, 12fps (palettegen → 작고 선명).
+    const gif = out('korean', 'subtitled-preview.gif');
+    const pal = out('tmp', 'pal.png');
+    const vf = 'fps=12,scale=480:-2:flags=lanczos';
+    await exec('ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-t',
+      '8',
+      '-i',
+      subbed,
+      '-vf',
+      `${vf},palettegen`,
+      pal,
+    ]);
+    await exec('ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-t',
+      '8',
+      '-i',
+      subbed,
+      '-i',
+      pal,
+      '-lavfi',
+      `${vf}[x];[x][1:v]paletteuse`,
+      '-loop',
+      '0',
+      gif,
+    ]);
+
+    // biome-ignore lint/suspicious/noConsole: demo output
+    console.log(`\n[KO-SUB] ${overlays.length} cues burned → ${subbed} (+ ${gif})\n`);
+    expect(overlays.length).toBeGreaterThan(1);
+    expect(existsSync(subbed)).toBe(true);
+    expect(existsSync(gif)).toBe(true);
   });
 });
