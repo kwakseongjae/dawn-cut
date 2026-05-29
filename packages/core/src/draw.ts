@@ -18,6 +18,7 @@ export interface DrawCtx {
   fill(): void;
   fillText(text: string, x: number, y: number, maxWidth?: number): void;
   strokeText(text: string, x: number, y: number, maxWidth?: number): void;
+  measureText(text: string): { width: number };
 }
 
 /** Named presets for common social-video caption looks. */
@@ -94,22 +95,38 @@ export function drawSubtitle(
   const weight = style.fontWeight ?? 'bold';
   const fontScale = style.fontScale ?? 0.35;
 
-  if (bg && bg !== 'transparent') {
-    ctx.fillStyle = bg;
-    ctx.beginPath();
-    ctx.roundRect(8, Math.round(h * 0.27), w - 16, Math.round(h * 0.64), 16);
-    ctx.fill();
-  }
+  // 폰트를 먼저 지정해야 measureText가 정확하다.
   const fontSize = Math.round(h * fontScale);
   ctx.font = `${weight} ${fontSize}px ${family}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // 멀티라인: '\n'으로 분리해 세로 중앙(h*0.6) 기준으로 줄들을 쌓는다.
-  // 단일 라인(개행 없음)은 기존과 동일하게 h*0.6에 1줄 → 역호환.
   const lines = text.split('\n');
-  const lineH = Math.round(fontSize * 1.25);
+  const lineH = Math.round(fontSize * 1.3);
   const cy = h * 0.6;
   const startY = cy - ((lines.length - 1) * lineH) / 2;
+
+  // 배경 박스는 고정 풀폭 바가 아니라 '텍스트에 맞춰(hug)' 그린다 — 가장 긴 줄
+  // 너비 + 좌우 패딩만큼만. 짧은 자막에서 박스가 휑하게 커지던 문제를 해결.
+  if (bg && bg !== 'transparent') {
+    let maxLineW = 0;
+    for (const line of lines) {
+      const m = ctx.measureText(line).width;
+      if (m > maxLineW) maxLineW = m;
+    }
+    const padX = Math.round(fontSize * 0.5);
+    const padY = Math.round(fontSize * 0.34);
+    const boxW = Math.min(w - 8, Math.round(maxLineW) + padX * 2);
+    const boxH = lines.length * lineH + padY * 2;
+    const boxX = Math.round((w - boxW) / 2);
+    const boxY = Math.round(cy - (lines.length * lineH) / 2 - padY);
+    const radius = Math.round(Math.min(boxH / 2, fontSize * 0.45));
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, radius);
+    ctx.fill();
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
     const ly = startY + i * lineH;
