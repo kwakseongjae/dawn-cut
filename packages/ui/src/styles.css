@@ -298,6 +298,76 @@ body {
 .word.dead:hover {
   background: transparent;
 }
+/* 말버릇(음/어…) 후보 — 노란 밑줄로 검토 표시 */
+.word.filler {
+  background: rgba(255, 213, 79, 0.14);
+  box-shadow: inset 0 -2px 0 rgba(255, 213, 79, 0.85);
+}
+/* 한글 검수 도구 (말버릇 제거 + 내 사전) */
+.review-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.glossary {
+  font-size: 12px;
+}
+.glossary > summary {
+  cursor: pointer;
+  color: var(--muted);
+  list-style: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.glossary > summary:hover {
+  background: var(--elev);
+}
+.glossary-body {
+  padding: 6px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.glossary-hint {
+  color: var(--faint);
+  font-size: 11px;
+  padding: 2px 2px 6px;
+}
+.glossary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+.glossary-row .x {
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 11px;
+}
+.glossary-row .x:hover {
+  color: var(--danger);
+}
+.glossary-add {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.glossary-add .input {
+  flex: 1;
+  min-width: 0;
+}
+.glossary-add .arrow {
+  color: var(--faint);
+}
 .empty-transcript {
   color: var(--faint);
   padding: 28px 4px;

@@ -1,6 +1,7 @@
 import {
   SUBTITLE_PRESETS,
   clampRange,
+  detectFillers,
   drawBadge,
   drawEmoji,
   drawSubtitle,
@@ -11,6 +12,7 @@ import {
   transcriptToCues,
   videoClips,
   wordToProgram,
+  wrapCaption,
 } from '@dawn-cut/core';
 import type { Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
@@ -68,7 +70,7 @@ function Toolbar() {
             if (p) await s.importPath(p);
           }}
         >
-          Import
+          가져오기
         </button>
         <button
           type="button"
@@ -79,7 +81,7 @@ function Toolbar() {
             if (p) await s.openProject(p);
           }}
         >
-          Open
+          열기
         </button>
         <button
           type="button"
@@ -91,7 +93,7 @@ function Toolbar() {
             if (p) await s.saveProject(p);
           }}
         >
-          Save
+          저장
         </button>
       </div>
       <div className="sep" />
@@ -103,7 +105,7 @@ function Toolbar() {
           disabled={!s.canUndo}
           onClick={() => s.undo()}
         >
-          ↶ Undo
+          ↶ 되돌리기
         </button>
         <button
           type="button"
@@ -112,7 +114,7 @@ function Toolbar() {
           disabled={!s.canRedo}
           onClick={() => s.redo()}
         >
-          ↷ Redo
+          ↷ 다시하기
         </button>
       </div>
       <div className="spacer" />
@@ -124,7 +126,7 @@ function Toolbar() {
           disabled={!s.timeline}
           onClick={() => s.removeSilencesAction()}
         >
-          ✂ Remove silences
+          ✂ 무음 제거
         </button>
         <button
           type="button"
@@ -133,7 +135,7 @@ function Toolbar() {
           disabled={s.selected.length === 0}
           onClick={() => s.deleteSelection()}
         >
-          Delete ({s.selected.length})
+          삭제 ({s.selected.length})
         </button>
         <div className="sep" />
         <div className="menu-wrap">
@@ -143,7 +145,7 @@ function Toolbar() {
             disabled={!s.timeline}
             onClick={() => setMenu((v) => !v)}
           >
-            Export ▾
+            내보내기 ▾
           </button>
           {menu && (
             <div className="menu">
@@ -152,20 +154,20 @@ function Toolbar() {
                 data-testid="export-button"
                 onClick={() => exportAs(s.exportTo)}
               >
-                <span>Video — MP4</span>
-                <span className="k badge live">ready</span>
+                <span>영상 — MP4 (자막 트랙 포함)</span>
+                <span className="k badge live">바로</span>
               </button>
               <button
                 type="button"
                 data-testid="export-gif"
                 onClick={() => exportAs((p) => s.exportVideo(p, 'gif'))}
               >
-                <span>Animated GIF</span>
-                <span className="k badge live">ready</span>
+                <span>움짤 GIF</span>
+                <span className="k badge live">바로</span>
               </button>
               <button type="button" data-testid="export-srt" onClick={() => exportAs(s.exportSrt)}>
-                <span>Subtitles — .srt</span>
-                <span className="k badge live">ready</span>
+                <span>자막 — .srt</span>
+                <span className="k badge live">바로</span>
               </button>
             </div>
           )}
@@ -199,10 +201,10 @@ function PingDot() {
 
 // ── Left rail + dock panels ──────────────────────────────────────────
 const RAIL: { id: PanelId; ico: string; label: string; short: string }[] = [
-  { id: 'media', ico: '🎬', label: 'Media', short: 'Media' },
-  { id: 'text', ico: '🗣', label: 'Text · TTS', short: 'TTS' },
-  { id: 'sticker', ico: '✨', label: 'Sticker · GIF', short: 'GIF' },
-  { id: 'effect', ico: '🎚', label: 'Effects', short: 'FX' },
+  { id: 'media', ico: '🎬', label: '미디어', short: '미디어' },
+  { id: 'text', ico: '🗣', label: '음성 · TTS', short: '음성' },
+  { id: 'sticker', ico: '✨', label: '스티커 · GIF', short: '스티커' },
+  // 'effect'(효과)는 전부 미연동 preview stub이라 레일에서 숨김(정직 표기). EffectPanel은 코드에 보존.
 ];
 
 function Rail() {
@@ -885,7 +887,9 @@ function CueEditor({
   const reRasterize = async (text: string, style: SubtitleStyle) => {
     setBusy(true);
     try {
-      const res = await window.dawn?.writeAsset(rasterizeSubtitle(text, style));
+      const res = await window.dawn?.writeAsset(
+        rasterizeSubtitle(wrapCaption(text, { maxCharsPerLine: 16, maxLines: 2 }), style),
+      );
       if (res) onUpdate(overlay.id, { text, cueStyle: style, src: res.path });
     } finally {
       setBusy(false);
@@ -926,7 +930,7 @@ function CueEditor({
 const rasterizeSubtitle = (text: string, style: SubtitleStyle = {}) =>
   rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text, style));
 
-function SubtitlePreview({ style }: { style: SubtitleStyle }) {
+function SubtitlePreview({ style, text }: { style: SubtitleStyle; text?: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -940,8 +944,9 @@ function SubtitlePreview({ style }: { style: SubtitleStyle }) {
     grad.addColorStop(1, '#16213a');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, c.width, c.height);
-    drawSubtitle(ctx, c.width, c.height, 'preview caption', style);
-  }, [style]);
+    // 전사가 있으면 현재 재생 위치의 자막(어절 줄바꿈됨)을 라이브로 보여준다.
+    drawSubtitle(ctx, c.width, c.height, text?.trim() ? text : '자막 미리보기', style);
+  }, [style, text]);
   return (
     <canvas
       ref={ref}
@@ -976,6 +981,46 @@ function anchorXForScale(anchorX: number, scale: number): number {
   return (1 - scale) / 2;
 }
 
+// 내 사전(고유명사 교정쌍) 추가 입력.
+function GlossaryAdd({ onAdd }: { onAdd: (from: string, to: string) => void }) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const submit = () => {
+    if (!from.trim()) return;
+    onAdd(from, to);
+    setFrom('');
+    setTo('');
+  };
+  return (
+    <div className="glossary-add">
+      <input
+        className="input"
+        data-testid="glossary-from"
+        placeholder="잘못 인식 (예: 던컷)"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+      />
+      <span className="arrow">→</span>
+      <input
+        className="input"
+        data-testid="glossary-to"
+        placeholder="교정 (예: dawn-cut)"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+      />
+      <button type="button" className="btn ghost" data-testid="glossary-add" onClick={submit}>
+        추가
+      </button>
+    </div>
+  );
+}
+
 function Transcript() {
   const {
     transcript,
@@ -992,17 +1037,35 @@ function Transcript() {
     subtitleStyle,
     setSubtitleStyle,
     replaceSubtitleStyle,
+    removeFillers,
+    glossary,
+    addGlossaryPair,
+    removeGlossaryPair,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
     () => (timeline && transcript ? programToWord(timeline, transcript, playheadUs) : null),
     [timeline, transcript, playheadUs],
   );
+  // 말버릇(음/어…) 어절 — 살아있는 것만 하이라이트/제거 대상.
+  const fillerIds = useMemo(
+    () => new Set(transcript ? detectFillers(transcript).filter((id) => !dead.has(id)) : []),
+    [transcript, dead],
+  );
+  // 현재 재생 위치의 자막(어절 줄바꿈) — 프리뷰에 라이브 표시.
+  const currentCaption = useMemo(() => {
+    if (!transcript || !timeline) return '';
+    const cues = transcriptToCues(transcript, timeline);
+    const cur = cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0];
+    return cur ? wrapCaption(cur.text, { maxCharsPerLine: 16, maxLines: 2 }) : '';
+  }, [transcript, timeline, playheadUs]);
   const burnt = overlays.some((o) => o.kind === 'subtitle');
   const doBurn = async (pos: { x: number; y: number; scale: number }, style: SubtitleStyle) => {
     if (!transcript || !timeline) return;
     for (const c of transcriptToCues(transcript, timeline)) {
-      const res = await window.dawn?.writeAsset(rasterizeSubtitle(c.text, style));
+      // 어절 단위 자동 줄바꿈(2줄) 후 래스터화. 원문(c.text)은 per-cue 편집용으로 보존.
+      const wrapped = wrapCaption(c.text, { maxCharsPerLine: 16, maxLines: 2 });
+      const res = await window.dawn?.writeAsset(rasterizeSubtitle(wrapped, style));
       if (res)
         addOverlayWith({
           kind: 'subtitle',
@@ -1072,7 +1135,7 @@ function Transcript() {
   return (
     <div className="transcript">
       <div className="panel-head">
-        <h2>Transcript</h2>
+        <h2>자막 · 대본</h2>
         <button
           type="button"
           className="btn ghost"
@@ -1081,7 +1144,7 @@ function Transcript() {
           onClick={burnSubtitles}
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
-          {burnt ? '✓ subtitles burned' : 'Burn subtitles'}
+          {burnt ? '✓ 자막 입힘' : '자막 입히기'}
         </button>
         <button
           type="button"
@@ -1091,11 +1154,11 @@ function Transcript() {
           title="Reset subtitle position + style to defaults"
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
-          ⟲ reset
+          ⟲ 초기화
         </button>
       </div>
       <div className="sub-pos" data-testid="subtitle-pos">
-        <SubtitlePreview style={subtitleStyle} />
+        <SubtitlePreview style={subtitleStyle} text={currentCaption} />
         <div className="sub-pos-grid">
           {ANCHORS.map((a) => {
             const sel =
@@ -1236,12 +1299,51 @@ function Transcript() {
           </label>
         </div>
       </div>
+      <div className="review-tools" data-testid="review-tools">
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="remove-fillers"
+          disabled={!transcript || fillerIds.size === 0}
+          onClick={() => removeFillers()}
+          title="음/어/흠 같은 말버릇 어절을 한 번에 컷합니다"
+        >
+          🧹 말버릇 {fillerIds.size}개 제거
+        </button>
+        <details className="glossary">
+          <summary>📒 내 사전 ({glossary.length})</summary>
+          <div className="glossary-body">
+            {glossary.length === 0 && (
+              <div className="glossary-hint">
+                자주 틀리는 고유명사를 등록하면 전사 후 자동 교정됩니다.
+              </div>
+            )}
+            {glossary.map((p, i) => (
+              <div className="glossary-row" key={`${p.from}-${i}`} data-testid="glossary-row">
+                <span>
+                  {p.from} → {p.to || '(삭제)'}
+                </span>
+                <button
+                  type="button"
+                  className="x"
+                  data-testid="glossary-remove"
+                  onClick={() => removeGlossaryPair(i)}
+                  aria-label="사전 항목 삭제"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <GlossaryAdd onAdd={addGlossaryPair} />
+          </div>
+        </details>
+      </div>
       <div className="transcript-body" data-testid="transcript-panel">
         {!transcript && (
           <div className="empty-transcript">
-            Transcript appears after import.
+            가져오면 자막이 여기 나타납니다.
             <br />
-            Edit your video by editing the text.
+            텍스트를 지우면 영상이 잘립니다.
           </div>
         )}
         {transcript?.segments.map((seg) => (
@@ -1255,6 +1357,7 @@ function Transcript() {
                 isDead ? 'dead' : '',
                 selected.includes(id) ? 'sel' : '',
                 id === activeId ? 'active' : '',
+                fillerIds.has(id) ? 'filler' : '',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -1447,6 +1550,13 @@ export function AppShell() {
         if (!st.timeline) return;
         e.preventDefault();
         st.setPlaying(!st.playing);
+        return;
+      }
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        // 선택한 단어를 즉시 컷(텍스트 기반 편집). 입력창에선 위 가드로 제외됨.
+        if (st.selected.length === 0) return;
+        e.preventDefault();
+        st.deleteSelection();
         return;
       }
       if (e.key === 'ArrowRight') {

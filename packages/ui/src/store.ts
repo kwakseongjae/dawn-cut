@@ -1,8 +1,10 @@
 import {
+  applyGlossary,
   buildTranscriptModel,
   createInitialTimeline,
   deleteWordRange,
   deserializeProject,
+  detectFillers,
   formatSrt,
   makeProject,
   removeSilences,
@@ -11,7 +13,13 @@ import {
   transcriptToCues,
   videoClips,
 } from '@dawn-cut/core';
-import type { OverlayClip, SubtitleStyle, TimelineModel, TranscriptModel } from '@dawn-cut/core';
+import type {
+  GlossaryPair,
+  OverlayClip,
+  SubtitleStyle,
+  TimelineModel,
+  TranscriptModel,
+} from '@dawn-cut/core';
 import { create } from 'zustand';
 
 const MEDIA_ID = 'media';
@@ -66,6 +74,12 @@ interface EditorState {
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
   replaceSubtitleStyle: (style: SubtitleStyle) => void;
+  // ── 한글 검수 자동화 (어절 위) ──
+  glossary: GlossaryPair[]; // 고유명사 '내 사전' (localStorage 영속)
+  addGlossaryPair: (from: string, to: string) => void;
+  removeGlossaryPair: (index: number) => void;
+  applyGlossaryNow: () => void; // 현재 전사에 사전 치환 적용
+  removeFillers: () => void; // 말버릇(음/어…) 어절을 타임라인에서 컷
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -134,6 +148,25 @@ export interface TtsClip {
 }
 const uid = () => Math.random().toString(36).slice(2, 9);
 const baseName = (p: string) => p.split('/').pop() ?? p;
+
+// '내 사전'은 미디어를 넘어 유지되도록 localStorage에 영속.
+const GLOSSARY_KEY = 'dawn.glossary';
+function loadGlossary(): GlossaryPair[] {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(GLOSSARY_KEY) : null;
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function saveGlossary(g: GlossaryPair[]): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(GLOSSARY_KEY, JSON.stringify(g));
+  } catch {
+    // ignore (private mode / unavailable)
+  }
+}
 
 /** Map UI overlays that have a real file (image/gif) to core OverlayClips,
  *  clamping the time range to the (possibly edited) program duration. */
@@ -206,6 +239,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedOverlayId: null,
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
+  glossary: loadGlossary(),
 
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
   setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
@@ -278,7 +312,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     const { wavPath } = await dawn.extractAudio(path);
     set({ status: 'transcribing' });
     const tr = await dawn.transcribe(wavPath, MEDIA_ID);
-    const transcript = buildTranscriptModel(tr.words, MEDIA_ID, tr.language);
+    // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
+    const subWords = applyGlossary(tr.words, get().glossary);
+    const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
     const timeline = createInitialTimeline(MEDIA_ID, probe.durationUs, probe.fps || 30);
     set({
       mediaPath: path,
@@ -379,16 +415,29 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   exportTo: async (path) => {
-    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips } = get();
+    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: 'exporting' });
     const edl = timelineToEdl(timeline, mediaPath);
+    // 자막이 번인되지 않았으면 끌 수 있는 소프트 자막 트랙(mov_text)을 자동 mux.
+    // 번인(subtitle 오버레이)된 경우엔 중복을 피해 생략한다.
+    let subtitlesPath: string | undefined;
+    const burnt = overlays.some((o) => o.kind === 'subtitle');
+    if (transcript && !burnt) {
+      const cues = transcriptToCues(transcript, timeline);
+      if (cues.length) {
+        const srtPath = `${path.replace(/\.[^/.]+$/, '')}.srt`;
+        await dawn.writeSrt(srtPath, formatSrt(cues));
+        subtitlesPath = srtPath;
+      }
+    }
     await dawn.render(edl, path, {
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
       voicePath: ttsClips.find((c) => c.wavPath)?.wavPath,
+      ...(subtitlesPath ? { subtitlesPath } : {}),
     });
     set({ status: 'exported' });
   },
@@ -452,6 +501,50 @@ export const useEditor = create<EditorState>((set, get) => ({
       durationProgramUs: project.timeline.durationProgram,
       subtitlePos: project.subtitlePos ?? { x: 0.1, y: 0.8, scale: 0.8 },
       subtitleStyle: project.subtitleStyle ?? {},
+    });
+  },
+
+  addGlossaryPair: (from, to) => {
+    const f = from.trim();
+    if (!f) return;
+    const glossary = [...get().glossary.filter((p) => p.from !== f), { from: f, to: to.trim() }];
+    saveGlossary(glossary);
+    set({ glossary });
+    get().applyGlossaryNow();
+  },
+  removeGlossaryPair: (index) => {
+    const glossary = get().glossary.filter((_, i) => i !== index);
+    saveGlossary(glossary);
+    set({ glossary });
+  },
+  applyGlossaryNow: () => {
+    const { transcript, glossary } = get();
+    if (!transcript || glossary.length === 0) return;
+    const words = transcript.order.map((id) => transcript.words[id]!);
+    const next = buildTranscriptModel(
+      applyGlossary(words, glossary),
+      transcript.mediaId,
+      transcript.language,
+    );
+    set({ transcript: next });
+  },
+  removeFillers: () => {
+    const { transcript, timeline } = get();
+    if (!transcript || !timeline) return;
+    const dead = deadSet(timeline, transcript);
+    const ids = detectFillers(transcript).filter((id) => !dead.has(id));
+    if (ids.length === 0) return;
+    let tl = timeline;
+    for (const id of ids) tl = deleteWordRange(tl, transcript, id, id).after;
+    set({
+      timeline: tl,
+      selected: [],
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      status: 'ready',
+      ...derive(tl),
     });
   },
 }));

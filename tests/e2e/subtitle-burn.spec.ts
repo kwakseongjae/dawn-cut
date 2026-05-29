@@ -64,12 +64,13 @@ test('subtitle burn-in changes the bottom-center pixels of the exported video', 
 
     // burn subtitles, then export
     await win.getByTestId('burn-subtitles').click();
-    await expect(win.getByTestId('burn-subtitles')).toHaveText(/burned/, { timeout: 30_000 });
+    await expect(win.getByTestId('burn-subtitles')).toHaveText(/입힘/, { timeout: 30_000 });
     await win.evaluate((p) => (window as unknown as Auto).__editor.exportTo(p), SUBBED);
     await expect(win.getByTestId('status')).toHaveText('exported', { timeout: 60_000 });
 
     // the bottom subtitle band must differ once subtitles are burned in
-    const crop = '460:34:90:322'; // sample.mp4 640x360; over the subtitle bar
+    // sample.mp4 640x360; bottom-center over the (auto-wrapped, 2-line) subtitle text.
+    const crop = '300:70:170:288';
     const plain = await regionBrightness(PLAIN, '0.5', crop);
     const subbed = await regionBrightness(SUBBED, '0.5', crop);
     expect(Math.abs(subbed - plain)).toBeGreaterThan(30);
