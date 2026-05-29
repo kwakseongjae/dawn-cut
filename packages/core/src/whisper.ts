@@ -163,16 +163,26 @@ export function whisperNaturalToWords(
   }
 
   const words: Word[] = [];
-  let prevStart = 0;
+  let prevStart = -1;
+  let prevEnd = -1;
   for (let i = 0; i < accs.length; i++) {
     const a = accs[i]!;
     const text = a.text.trim();
     if (text === '') continue; // T-INV-4
+    // sourceStart 엄격 증가: whisper가 인접 어절에 같은 offset을 주면(예: turbo
+    // 영어 'Dawn'/'Cut' 동일 3500ms) 충돌 → programToWord가 앞 어절을 반환해
+    // SYNC-INV-1 roundtrip이 깨진다. 1µs씩 밀어 각 어절 start를 유일하게 만든다.
     let start = a.from * scale;
-    if (start < prevStart) start = prevStart; // T-INV-2: sourceStart 비감소 보장
+    if (start <= prevStart) start = prevStart + 1;
     let end = a.to * scale;
     if (end <= start) end = start + minDur; // T-INV-3: sourceEnd > sourceStart
+    // 직전 어절과 구간이 겹치면 그 end를 현재 start로 클립(non-overlapping).
+    // start>prevStart가 보장돼 직전 어절도 양(+) 길이를 유지한다(SYNC-INV-1).
+    if (words.length > 0 && prevEnd > start) {
+      words[words.length - 1]!.sourceEnd = start;
+    }
     prevStart = start;
+    prevEnd = end;
     const conf = a.ps.length ? a.ps.reduce((s, v) => s + v, 0) / a.ps.length : 0;
     words.push({
       id: makeId(words.length),

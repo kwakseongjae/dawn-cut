@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { validateSync } from './sync.js';
+import { createInitialTimeline } from './timeline.js';
 import { buildTranscriptModel, validateTranscript } from './transcript.js';
 import { type WhisperNaturalJson, type WhisperToken, whisperNaturalToWords } from './whisper.js';
 
@@ -161,6 +163,27 @@ describe('whisperNaturalToWords — 적대검증 break 회귀가드', () => {
       expect(w.confidence).toBeGreaterThanOrEqual(0);
       expect(w.confidence).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('SYNC-INV-1 회귀: 같은 offset 어절(turbo Dawn/Cut)도 유일 start + roundtrip', () => {
+    // 실측: large-v3-turbo가 ' Dawn'/'Cut'에 동일 from=3500ms를 줘 SYNC-INV-1이 깨졌다.
+    const j = seg(
+      [' Dawn', 3500, 3500, 0.9],
+      ['Cut', 3500, 3700, 0.9],
+      [' makes', 3510, 3900, 0.9], // from이 직전보다 작음(비단조) — 클램프 대상
+    );
+    const ws = whisperNaturalToWords(j, { mediaId: 'm' });
+    expect(ws.map((w) => w.text)).toEqual(['DawnCut', 'makes']);
+    // start가 엄격 증가(유일) + 구간 비겹침
+    for (let i = 1; i < ws.length; i++) {
+      expect(ws[i]!.sourceStart).toBeGreaterThan(ws[i - 1]!.sourceStart);
+      expect(ws[i]!.sourceStart).toBeGreaterThanOrEqual(ws[i - 1]!.sourceEnd);
+    }
+    // 전체 소스를 덮는 단일 클립 타임라인에서 SYNC-INV 전부 통과(roundtrip OK)
+    const transcript = buildTranscriptModel(ws, 'm', 'ko');
+    const timeline = createInitialTimeline('m', 10_000_000, 30);
+    expect(validateSync(timeline, transcript)).toEqual([]);
+    expect(validateTranscript(transcript)).toEqual([]);
   });
 
   it('전략 C over-split 회귀 방지: 명사/조사가 1어절로 유지(언어규칙 미적용)', () => {
