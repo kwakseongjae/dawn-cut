@@ -27,3 +27,6 @@ playwright-report/
 .DS_Store
 *.log
 release/
+
+# real-media test outputs (human inspection, not committed)
+output/
