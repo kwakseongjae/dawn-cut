@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { scene } from './_testkit.js';
+import { makeWord, scene } from './_testkit.js';
 import { deleteWordRange } from './commands.js';
 import { formatSrt, transcriptToCues, validateCues } from './subtitles.js';
+import { createInitialTimeline } from './timeline.js';
+import { buildTranscriptModel } from './transcript.js';
 
 describe('subtitles (SUB-INV)', () => {
   it('builds cues for every live word, in program order, valid', () => {
@@ -38,5 +40,28 @@ describe('subtitles (SUB-INV)', () => {
     const { timeline } = scene();
     const bad = [{ index: 1, startUs: 100, endUs: 100, text: 'x' }];
     expect(validateCues(bad, timeline).some((e) => e.startsWith('SUB-INV-2'))).toBe(true);
+  });
+
+  it('문장 끝(.?!)에서 cue를 끊어 완결된 자막을 만든다 (다음 문장을 물지 않음)', () => {
+    // 한 문장(끝에 마침표) + 다음 문장 시작 어절. 8어절 컷이라면 '소개합니다. 이'로 묶이지만,
+    // 문장경계 flush로 '…소개합니다.' 와 '이…' 가 분리돼야 한다.
+    const words = [
+      '오픈소스',
+      '영상',
+      '편집기',
+      '던컷을',
+      '소개합니다.',
+      '이',
+      '영상은',
+      '로컬',
+    ].map((t, k) => makeWord(t, k * 100_000, k * 100_000 + 90_000));
+    const transcript = buildTranscriptModel(words, 'm1', 'ko');
+    const timeline = createInitialTimeline('m1', 1_000_000, 30);
+    const cues = transcriptToCues(transcript, timeline, { maxGapUs: 1_000_000, maxWordsPerCue: 8 });
+    expect(cues.length).toBeGreaterThanOrEqual(2);
+    // 첫 cue는 마침표로 끝나고, '이'는 다음 cue 시작.
+    expect(cues[0]!.text.endsWith('소개합니다.')).toBe(true);
+    expect(cues[1]!.text.startsWith('이')).toBe(true);
+    expect(validateCues(cues, timeline)).toEqual([]);
   });
 });

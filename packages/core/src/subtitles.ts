@@ -49,10 +49,14 @@ export function transcriptToCues(
     group = [];
   };
 
+  // 문장 끝(.?!…) 어절에서 cue를 끊어 자막이 완결된 문장(또는 그 일부)으로 보이게 한다.
+  // 그렇지 않으면 8어절 컷이 "…소개합니다. 이"처럼 다음 문장 첫 어절을 물고 끊긴다.
+  const endsSentence = /[.?!。…]$/u;
   for (const tok of toks) {
     const prev = group[group.length - 1];
     if (prev && (tok.start - prev.end > maxGapUs || group.length >= maxWords)) flush();
     group.push(tok);
+    if (endsSentence.test(tok.text)) flush();
   }
   flush();
   return cues;
