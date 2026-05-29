@@ -20,8 +20,10 @@ const bridge = {
     ipcRenderer.invoke('media:extractAudio', path),
   transcribe: (wavPath: string, mediaId: string): Promise<TranscribeResult> =>
     ipcRenderer.invoke('stt:transcribe', wavPath, mediaId),
-  detectSilences: (path: string): Promise<SilenceInterval[]> =>
-    ipcRenderer.invoke('analyze:silence', path),
+  detectSilences: (
+    path: string,
+    opts?: { noiseDb?: number; minSilenceUs?: number },
+  ): Promise<SilenceInterval[]> => ipcRenderer.invoke('analyze:silence', path, opts),
   render: (
     edl: Edl,
     outPath: string,
@@ -39,6 +41,7 @@ const bridge = {
   openProject: (path: string): Promise<string> => ipcRenderer.invoke('project:open', path),
   openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile'),
+  revealItem: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
 };
 
 contextBridge.exposeInMainWorld('dawn', bridge);

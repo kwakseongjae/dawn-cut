@@ -59,6 +59,13 @@ function Toolbar() {
         <PingDot />
         <span data-testid="app-title">dawn-cut</span>
       </div>
+      <span
+        className="privacy-badge"
+        data-testid="privacy-badge"
+        title="모든 처리(자막 생성·인코딩)가 이 기기 안에서만 일어납니다. 영상은 업로드되지 않습니다."
+      >
+        🔒 로컬 전용
+      </span>
       <div className="sep" />
       <div className="group">
         <button
@@ -128,6 +135,7 @@ function Toolbar() {
         >
           ✂ 무음 제거
         </button>
+        <SilenceMenu />
         <button
           type="button"
           className="btn"
@@ -1455,7 +1463,8 @@ function Timeline() {
 }
 
 function StatusBar() {
-  const { status, clipCount, durationProgramUs } = useEditor();
+  const { status, clipCount, durationProgramUs, lastExport, revealExport, dismissExport } =
+    useEditor();
   return (
     <div className="statusbar">
       <span className="pill">
@@ -1469,7 +1478,148 @@ function StatusBar() {
         program <b data-testid="duration">{durationProgramUs}</b>µs · {fmt(durationProgramUs)}
       </span>
       <span className="spacer" />
-      <code>MIT · whisper.cpp · FFmpeg · local-only</code>
+      {lastExport ? (
+        <span className="export-done" data-testid="export-done">
+          ✅ 내보냄 · 원본 {fmt(lastExport.originalUs)} →{' '}
+          {lastExport.format === 'srt' ? '자막(.srt)' : fmt(lastExport.finalUs)}
+          <button
+            type="button"
+            className="link"
+            data-testid="reveal-export"
+            onClick={() => revealExport()}
+          >
+            폴더에서 보기
+          </button>
+          <button type="button" className="x" onClick={() => dismissExport()} aria-label="닫기">
+            ✕
+          </button>
+        </span>
+      ) : (
+        <code>MIT · whisper.cpp · FFmpeg · local-only</code>
+      )}
+    </div>
+  );
+}
+
+// 작업 중(probe/추출/전사/무음/내보내기) 표시되는 풀스크린 오버레이.
+// ETA는 부정확해 신뢰를 깎으므로 표기하지 않고, 경과시간 + 단계만 보여준다.
+const BUSY_LABEL: Record<string, string> = {
+  probing: '미디어 분석 중',
+  extracting: '오디오 추출 중',
+  transcribing: '한국어 자막 생성 중',
+  'detecting silence': '무음 구간 스캔 중',
+  'synthesizing voice': '음성 합성 중',
+  exporting: '내보내는 중',
+  'exporting gif': 'GIF 내보내는 중',
+  'exporting srt': '자막 파일 저장 중',
+};
+function ProgressOverlay() {
+  const status = useEditor((s) => s.status);
+  const label = BUSY_LABEL[status];
+  const busy = Boolean(label);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(0);
+  useEffect(() => {
+    if (!busy) return;
+    startRef.current = performance.now();
+    setElapsed(0);
+    const t = setInterval(() => setElapsed((performance.now() - startRef.current) / 1000), 100);
+    return () => clearInterval(t);
+  }, [busy]);
+  if (!label) return null;
+  const importStep =
+    status === 'transcribing' ? 1 : status === 'extracting' || status === 'probing' ? 0 : -1;
+  return (
+    <div className="progress-overlay" data-testid="progress-overlay">
+      <div className="progress-card">
+        <div className="spinner" />
+        <div className="progress-label">{label}</div>
+        {importStep >= 0 && (
+          <div className="progress-steps">
+            <span className={importStep >= 0 ? 'on' : ''}>오디오 추출</span>
+            <span className="arrow">→</span>
+            <span className={importStep >= 1 ? 'on' : ''}>한국어 자막 생성</span>
+          </div>
+        )}
+        <div className="progress-elapsed">{elapsed.toFixed(1)}초 경과</div>
+        <div className="progress-hint">🔒 영상이 이 Mac을 떠나지 않습니다</div>
+      </div>
+    </div>
+  );
+}
+
+// 무음 감지 민감도 팝오버 — 슬라이더로 임계값 조절 + 절약 미터 미리보기.
+function SilenceMenu() {
+  const {
+    silenceParams,
+    silencePreview,
+    setSilenceParams,
+    refreshSilencePreview,
+    removeSilencesAction,
+    timeline,
+  } = useEditor();
+  const [open, setOpen] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refresh once when opened
+  useEffect(() => {
+    if (open) refreshSilencePreview();
+  }, [open]);
+  return (
+    <div className="menu-wrap">
+      <button
+        type="button"
+        className="btn ghost"
+        data-testid="silence-menu"
+        disabled={!timeline}
+        title="무음 감지 민감도"
+        onClick={() => setOpen((v) => !v)}
+      >
+        ⚙
+      </button>
+      {open && (
+        <div className="menu silence-pop">
+          <label className="ov-field">
+            민감도 {silenceParams.noiseDb}dB
+            <input
+              type="range"
+              min={-45}
+              max={-20}
+              value={silenceParams.noiseDb}
+              data-testid="silence-db"
+              onChange={(e) => setSilenceParams({ noiseDb: Number(e.target.value) })}
+              onMouseUp={() => refreshSilencePreview()}
+            />
+          </label>
+          <label className="ov-field">
+            최소 무음 {silenceParams.minSilenceMs}ms
+            <input
+              type="range"
+              min={200}
+              max={1500}
+              step={50}
+              value={silenceParams.minSilenceMs}
+              data-testid="silence-ms"
+              onChange={(e) => setSilenceParams({ minSilenceMs: Number(e.target.value) })}
+              onMouseUp={() => refreshSilencePreview()}
+            />
+          </label>
+          <div className="silence-preview" data-testid="silence-preview">
+            {silencePreview
+              ? `감지 ${silencePreview.count}곳 · −${fmt(silencePreview.savedUs)}`
+              : '감지 중…'}
+          </div>
+          <button
+            type="button"
+            className="btn primary"
+            data-testid="silence-apply"
+            onClick={async () => {
+              setOpen(false);
+              await removeSilencesAction();
+            }}
+          >
+            이 설정으로 무음 제거
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1595,6 +1745,7 @@ export function AppShell() {
       </div>
       <Timeline />
       <StatusBar />
+      <ProgressOverlay />
       {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
     </div>
   );

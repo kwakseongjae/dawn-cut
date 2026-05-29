@@ -44,6 +44,10 @@ test('vertical slice: import → transcript → delete words → remove silences
     await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
     await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
 
+    // cycle-2: privacy badge always present; silence-sensitivity menu present with media.
+    await expect(win.getByTestId('privacy-badge')).toBeVisible();
+    await expect(win.getByTestId('silence-menu')).toBeVisible();
+
     const words = win.getByTestId('word');
     expect(await words.count()).toBeGreaterThan(3);
     await expect(win.getByTestId('clip-count')).toHaveText('1');
@@ -74,6 +78,9 @@ test('vertical slice: import → transcript → delete words → remove silences
     // 4) export → file exists, length == UI duration ±1 frame
     await win.evaluate((p) => (window as unknown as Auto).__editor.exportTo(p), OUT);
     await expect(win.getByTestId('status')).toHaveText('exported', { timeout: 60_000 });
+    // cycle-2: completion card surfaces in the status bar with a "reveal" action.
+    await expect(win.getByTestId('export-done')).toBeVisible();
+    await expect(win.getByTestId('reveal-export')).toBeVisible();
     await win.screenshot({ path: resolve(ROOT, 'artifacts/g8-final.png') });
 
     expect(existsSync(OUT)).toBe(true);

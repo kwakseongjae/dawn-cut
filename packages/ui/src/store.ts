@@ -80,6 +80,15 @@ interface EditorState {
   removeGlossaryPair: (index: number) => void;
   applyGlossaryNow: () => void; // 현재 전사에 사전 치환 적용
   removeFillers: () => void; // 말버릇(음/어…) 어절을 타임라인에서 컷
+  // ── 대기 UX / 완료 / 무음 제어 (사이클2) ──
+  sourceDurationUs: number; // 원본 미디어 길이(완료 카드의 '원본')
+  lastExport: { path: string; format: string; originalUs: number; finalUs: number } | null;
+  silenceParams: { noiseDb: number; minSilenceMs: number };
+  silencePreview: { count: number; savedUs: number } | null;
+  setSilenceParams: (patch: Partial<{ noiseDb: number; minSilenceMs: number }>) => void;
+  refreshSilencePreview: () => Promise<void>;
+  revealExport: () => void;
+  dismissExport: () => void;
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -240,6 +249,29 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
   glossary: loadGlossary(),
+  sourceDurationUs: 0,
+  lastExport: null,
+  silenceParams: { noiseDb: -30, minSilenceMs: 500 },
+  silencePreview: null,
+
+  setSilenceParams: (patch) =>
+    set({ silenceParams: { ...get().silenceParams, ...patch }, silencePreview: null }),
+  refreshSilencePreview: async () => {
+    const { mediaPath, silenceParams } = get();
+    const dawn = window.dawn;
+    if (!mediaPath || !dawn) return;
+    const silences = await dawn.detectSilences(mediaPath, {
+      noiseDb: silenceParams.noiseDb,
+      minSilenceUs: silenceParams.minSilenceMs * 1000,
+    });
+    const savedUs = silences.reduce((a, s) => a + Math.max(0, s.end - s.start), 0);
+    set({ silencePreview: { count: silences.length, savedUs } });
+  },
+  revealExport: () => {
+    const { lastExport } = get();
+    if (lastExport) window.dawn?.revealItem(lastExport.path);
+  },
+  dismissExport: () => set({ lastExport: null }),
 
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
   setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
@@ -332,6 +364,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedOverlayId: null,
       frameW: probe.width,
       frameH: probe.height,
+      sourceDurationUs: probe.durationUs,
+      lastExport: null,
+      silencePreview: null,
       ...derive(timeline),
     });
   },
@@ -363,11 +398,14 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   removeSilencesAction: async () => {
-    const { timeline, mediaPath } = get();
+    const { timeline, mediaPath, silenceParams } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: 'detecting silence' });
-    const silences = await dawn.detectSilences(mediaPath);
+    const silences = await dawn.detectSilences(mediaPath, {
+      noiseDb: silenceParams.noiseDb,
+      minSilenceUs: silenceParams.minSilenceMs * 1000,
+    });
     const { after } = removeSilences(timeline, MEDIA_ID, silences, 0);
     set({
       timeline: after,
@@ -432,14 +470,22 @@ export const useEditor = create<EditorState>((set, get) => ({
         subtitlesPath = srtPath;
       }
     }
-    await dawn.render(edl, path, {
+    const res = await dawn.render(edl, path, {
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
       voicePath: ttsClips.find((c) => c.wavPath)?.wavPath,
       ...(subtitlesPath ? { subtitlesPath } : {}),
     });
-    set({ status: 'exported' });
+    set({
+      status: 'exported',
+      lastExport: {
+        path,
+        format: 'mp4',
+        originalUs: get().sourceDurationUs,
+        finalUs: res.actualDurationUs,
+      },
+    });
   },
 
   exportVideo: async (path, format) => {
@@ -448,14 +494,22 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: format === 'gif' ? 'exporting gif' : 'exporting' });
     const edl = timelineToEdl(timeline, mediaPath);
-    await dawn.render(edl, path, {
+    const res = await dawn.render(edl, path, {
       format,
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
       voicePath: format === 'gif' ? undefined : ttsClips.find((c) => c.wavPath)?.wavPath,
     });
-    set({ status: format === 'gif' ? 'gif exported' : 'exported' });
+    set({
+      status: format === 'gif' ? 'gif exported' : 'exported',
+      lastExport: {
+        path,
+        format,
+        originalUs: get().sourceDurationUs,
+        finalUs: res.actualDurationUs,
+      },
+    });
   },
 
   exportSrt: async (path) => {
@@ -465,7 +519,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ status: 'exporting srt' });
     const cues = transcriptToCues(transcript, timeline);
     await dawn.writeSrt(path, formatSrt(cues));
-    set({ status: 'srt exported' });
+    set({
+      status: 'srt exported',
+      lastExport: {
+        path,
+        format: 'srt',
+        originalUs: get().sourceDurationUs,
+        finalUs: timeline.durationProgram,
+      },
+    });
   },
 
   saveProject: async (path) => {
@@ -501,6 +563,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       durationProgramUs: project.timeline.durationProgram,
       subtitlePos: project.subtitlePos ?? { x: 0.1, y: 0.8, scale: 0.8 },
       subtitleStyle: project.subtitleStyle ?? {},
+      sourceDurationUs: project.timeline.durationProgram,
+      lastExport: null,
+      silencePreview: null,
     });
   },
 

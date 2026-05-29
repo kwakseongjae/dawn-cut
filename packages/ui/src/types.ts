@@ -22,7 +22,10 @@ export interface DawnBridge {
   probe: (path: string) => Promise<ProbeResult>;
   extractAudio: (path: string) => Promise<{ wavPath: string }>;
   transcribe: (wavPath: string, mediaId: string) => Promise<TranscribeResult>;
-  detectSilences: (path: string) => Promise<SilenceInterval[]>;
+  detectSilences: (
+    path: string,
+    opts?: { noiseDb?: number; minSilenceUs?: number },
+  ) => Promise<SilenceInterval[]>;
   render: (
     edl: Edl,
     outPath: string,
@@ -43,6 +46,7 @@ export interface DawnBridge {
   openProject: (path: string) => Promise<string>;
   openFile: () => Promise<string | null>;
   saveFile: () => Promise<string | null>;
+  revealItem: (path: string) => Promise<void>;
 }
 
 declare global {

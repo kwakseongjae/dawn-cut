@@ -14,7 +14,7 @@ import {
 } from '@dawn-cut/sidecar-ffmpeg';
 import { transcribe } from '@dawn-cut/sidecar-stt';
 import { synthesizeTts } from '@dawn-cut/sidecar-tts';
-import { BrowserWindow, app, dialog, ipcMain } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -34,8 +34,13 @@ ipcMain.handle('stt:transcribe', (_e, wavPath: string, mediaId: string) =>
   transcribe(wavPath, { mediaId }),
 );
 
-ipcMain.handle('analyze:silence', (_e, path: string) =>
-  detectSilences(path, { noiseDb: -30, minSilenceUs: 500_000 }),
+ipcMain.handle(
+  'analyze:silence',
+  (_e, path: string, opts?: { noiseDb?: number; minSilenceUs?: number }) =>
+    detectSilences(path, {
+      noiseDb: opts?.noiseDb ?? -30,
+      minSilenceUs: opts?.minSilenceUs ?? 500_000,
+    }),
 );
 
 ipcMain.handle(
@@ -71,6 +76,11 @@ ipcMain.handle('project:save', async (_e, path: string, content: string) => {
 });
 
 ipcMain.handle('project:open', (_e, path: string) => readFile(path, 'utf8'));
+
+// 내보낸 파일을 Finder/탐색기에서 보여준다(완료 카드 '폴더에서 보기').
+ipcMain.handle('shell:reveal', (_e, path: string) => {
+  shell.showItemInFolder(path);
+});
 
 ipcMain.handle('dialog:openFile', async () => {
   const r = await dialog.showOpenDialog({
