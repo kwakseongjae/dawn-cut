@@ -42,7 +42,7 @@ describe.skipIf(!hasFixture)('G2-KO STT — 한국어 어절 재조립 (real bin
     );
     writeFileSync(
       resolve(ROOT, 'artifacts/g2-korean-accuracy.txt'),
-      `model=${process.env.DAWN_WHISPER_MODEL_PATH ?? 'ggml-base.bin'}\n` +
+      `model=${process.env.DAWN_WHISPER_MODEL_PATH ?? 'ggml-large-v3-turbo.bin (sidecar default)'}\n` +
         `eojeol-recall=${recall.toFixed(3)} found=${found.length}/${EXPECT_EOJEOLS.length}\n` +
         `matched: ${found.join(', ')}\n` +
         `transcript: ${joined}\n`,

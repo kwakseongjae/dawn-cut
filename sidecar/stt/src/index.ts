@@ -9,8 +9,10 @@ import { type WhisperNaturalJson, type Word, whisperNaturalToWords } from '@dawn
 const exec = promisify(execFile);
 
 const WHISPER_BIN = process.env.DAWN_WHISPER_BIN ?? 'vendor/whisper.cpp/build/bin/whisper-cli';
+// 기본 = large-v3-turbo (Cycle-0 실측: base는 '무음→몸' 오인, turbo는 교정).
+// 가벼운 셋업/저사양은 DAWN_WHISPER_MODEL_PATH로 ggml-base.bin 오버라이드.
 const WHISPER_MODEL =
-  process.env.DAWN_WHISPER_MODEL_PATH ?? 'vendor/whisper.cpp/models/ggml-base.bin';
+  process.env.DAWN_WHISPER_MODEL_PATH ?? 'vendor/whisper.cpp/models/ggml-large-v3-turbo.bin';
 
 export interface TranscribeResult {
   language: string;

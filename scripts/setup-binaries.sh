@@ -14,7 +14,9 @@ command -v ffmpeg >/dev/null 2>&1 || { echo "❌ ffmpeg not found. Run: brew ins
 ffmpeg -version | head -1 | tee artifacts/env-ffmpeg.txt
 
 WHISPER_DIR="vendor/whisper.cpp"
-MODEL="${DAWN_WHISPER_MODEL:-base}"
+# large-v3-turbo: 한국어 어휘정확도가 검수자동화에 필요(base는 '무음→몸' 오인).
+# Cycle-0 게이트 실측 결과 기본 채택(~1.6GB). 가벼운 셋업은 DAWN_WHISPER_MODEL=base.
+MODEL="${DAWN_WHISPER_MODEL:-large-v3-turbo}"
 
 # 1) clone (shallow) if missing
 if [ ! -d "$WHISPER_DIR/.git" ]; then
