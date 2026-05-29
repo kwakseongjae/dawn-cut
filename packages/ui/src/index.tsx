@@ -5,6 +5,8 @@ import {
   drawBadge,
   drawEmoji,
   drawSubtitle,
+  extractChapters,
+  formatChapters,
   moveOverlay,
   programToWord,
   resizeOverlay,
@@ -14,7 +16,7 @@ import {
   wordToProgram,
   wrapCaption,
 } from '@dawn-cut/core';
-import type { Edl, SubtitleStyle } from '@dawn-cut/core';
+import type { Chapter, Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
   type DragEvent,
   type MouseEvent,
@@ -1067,6 +1069,13 @@ function Transcript() {
     const cur = cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0];
     return cur ? wrapCaption(cur.text, { maxCharsPerLine: 16, maxLines: 2 }) : '';
   }, [transcript, timeline, playheadUs]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const genChapters = () => {
+    if (transcript && timeline) setChapters(extractChapters(transcript, timeline));
+  };
+  const copyChapters = () => {
+    if (chapters.length) navigator.clipboard?.writeText(formatChapters(chapters));
+  };
   const burnt = overlays.some((o) => o.kind === 'subtitle');
   const doBurn = async (pos: { x: number; y: number; scale: number }, style: SubtitleStyle) => {
     if (!transcript || !timeline) return;
@@ -1343,6 +1352,38 @@ function Transcript() {
               </div>
             ))}
             <GlossaryAdd onAdd={addGlossaryPair} />
+          </div>
+        </details>
+        <details className="chapters">
+          <summary>📑 챕터 / 타임스탬프</summary>
+          <div className="chapters-body">
+            <div className="chapters-actions">
+              <button
+                type="button"
+                className="btn ghost"
+                data-testid="gen-chapters"
+                disabled={!transcript}
+                onClick={genChapters}
+                title="무음·문장 경계로 챕터를 추출합니다"
+              >
+                추출
+              </button>
+              {chapters.length > 0 && (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  data-testid="copy-chapters"
+                  onClick={copyChapters}
+                >
+                  📋 복사
+                </button>
+              )}
+            </div>
+            {chapters.length > 0 && (
+              <pre className="chapters-out" data-testid="chapters-out">
+                {formatChapters(chapters)}
+              </pre>
+            )}
           </div>
         </details>
       </div>

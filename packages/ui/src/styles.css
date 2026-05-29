@@ -489,6 +489,44 @@ body {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
+
+/* ── 챕터/타임스탬프 ── */
+.chapters {
+  font-size: 12px;
+}
+.chapters > summary {
+  cursor: pointer;
+  color: var(--muted);
+  list-style: none;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.chapters > summary:hover {
+  background: var(--elev);
+}
+.chapters-body {
+  padding: 6px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chapters-actions {
+  display: flex;
+  gap: 6px;
+}
+.chapters-out {
+  margin: 0;
+  padding: 8px;
+  max-height: 160px;
+  overflow: auto;
+  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+}
 .empty-transcript {
   color: var(--faint);
   padding: 28px 4px;

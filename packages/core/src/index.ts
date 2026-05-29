@@ -20,3 +20,4 @@ export * from './whisper.js';
 export * from './caption.js';
 export * from './fillers.js';
 export * from './glossary.js';
+export * from './chapters.js';
