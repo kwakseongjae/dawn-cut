@@ -22,3 +22,4 @@ export * from './fillers.js';
 export * from './glossary.js';
 export * from './chapters.js';
 export * from './edit-command.js';
+export * from './keywords.js';

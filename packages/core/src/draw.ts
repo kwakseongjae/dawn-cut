@@ -77,15 +77,23 @@ export interface SubtitleStyle {
   fontFamily?: string; // default 'system-ui, sans-serif'
   fontWeight?: string; // default 'bold'
   fontScale?: number; // fraction of canvas height for font size (default 0.35)
+  emphasisColor?: string; // keyword highlight fill (default '#ffd54f'); used only when `emphasis` words are given
 }
 
-/** Bottom-bar subtitle card (translucent bar + outlined white text by default; style-able). */
+const STRIP_PUNCT_RE = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu;
+
+/**
+ * Bottom-bar subtitle card (translucent bar + outlined white text by default; style-able).
+ * `emphasis` = surface forms of eojeol to highlight in `style.emphasisColor` (키워드 강조 자막).
+ * When empty/undefined the original single-run centered render is used (backward compatible).
+ */
 export function drawSubtitle(
   ctx: DrawCtx,
   w: number,
   h: number,
   text: string,
   style: SubtitleStyle = {},
+  emphasis?: ReadonlySet<string>,
 ): void {
   const bg = style.bg ?? 'rgba(0,0,0,0.55)';
   const color = style.color ?? '#fff';
@@ -127,16 +135,43 @@ export function drawSubtitle(
     ctx.fill();
   }
 
+  const emColor = style.emphasisColor ?? '#ffd54f';
+  const hasEmphasis = emphasis !== undefined && emphasis.size > 0;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
     const ly = startY + i * lineH;
-    if (stroke && strokeWidth > 0) {
-      ctx.lineWidth = strokeWidth;
-      ctx.strokeStyle = stroke;
-      ctx.strokeText(line, w / 2, ly, w - 60);
+    if (!hasEmphasis) {
+      // 기존 경로: 줄 전체를 중앙 정렬 단일 렌더(역호환 — 픽셀 테스트 보존).
+      if (stroke && strokeWidth > 0) {
+        ctx.lineWidth = strokeWidth;
+        ctx.strokeStyle = stroke;
+        ctx.strokeText(line, w / 2, ly, w - 60);
+      }
+      ctx.fillStyle = color;
+      ctx.fillText(line, w / 2, ly, w - 60);
+      continue;
     }
-    ctx.fillStyle = color;
-    ctx.fillText(line, w / 2, ly, w - 60);
+    // 키워드 강조: 어절별로 색을 달리 칠한다(좌측 누적 배치로 줄을 중앙 정렬).
+    const wordsInLine = line.split(' ');
+    const spaceW = ctx.measureText(' ').width;
+    const widths = wordsInLine.map((wd) => ctx.measureText(wd).width);
+    const totalW = widths.reduce((a, b) => a + b, 0) + spaceW * Math.max(0, wordsInLine.length - 1);
+    let x = w / 2 - totalW / 2;
+    ctx.textAlign = 'left';
+    for (let j = 0; j < wordsInLine.length; j++) {
+      const wd = wordsInLine[j] ?? '';
+      const isKey = emphasis.has(wd.replace(STRIP_PUNCT_RE, ''));
+      if (stroke && strokeWidth > 0) {
+        ctx.lineWidth = strokeWidth;
+        ctx.strokeStyle = stroke;
+        ctx.strokeText(wd, x, ly);
+      }
+      ctx.fillStyle = isKey ? emColor : color;
+      ctx.fillText(wd, x, ly);
+      x += (widths[j] ?? 0) + spaceW;
+    }
+    ctx.textAlign = 'center';
   }
 }
 

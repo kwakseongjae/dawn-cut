@@ -9,10 +9,11 @@
 import { z } from 'zod';
 import { cutSourceRange, deleteWordRange, removeSilences } from './commands.js';
 import { detectFillers } from './fillers.js';
+import { type GlossaryPair, applyGlossary } from './glossary.js';
 import { wordToProgram } from './sync.js';
 import { validateSync } from './sync.js';
 import { validateTimeline } from './timeline.js';
-import { validateTranscript } from './transcript.js';
+import { buildTranscriptModel, validateTranscript } from './transcript.js';
 import type { TimelineModel, TranscriptModel } from './types.js';
 
 /** AI 에이전트와 사람 GUI가 공유하는 편집 상태. (overlays/subtitleStyle/glossary는 후속 확장) */
@@ -59,6 +60,11 @@ const CommandSchemas = {
     sourceStart: z.number().int().nonnegative(),
     sourceEnd: z.number().int().positive(),
   }),
+  /** 고유명사 '내 사전' 치환을 전사에 적용(transcript 변환). */
+  applyGlossary: z.object({
+    type: z.literal('applyGlossary'),
+    pairs: z.array(z.object({ from: z.string(), to: z.string() })),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -66,6 +72,7 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.removeSilences,
   CommandSchemas.removeFillers,
   CommandSchemas.cutSourceRange,
+  CommandSchemas.applyGlossary,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -137,6 +144,16 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       // cutSourceRange는 (CommandResult가 아니라) 새 TimelineModel을 직접 반환한다.
       const timeline = cutSourceRange(state.timeline, cmd.mediaId, cmd.sourceStart, cmd.sourceEnd);
       return { ...state, timeline };
+    }
+    case 'applyGlossary': {
+      // transcript 변환(단어 텍스트 치환) — 타임스탬프/id 보존이라 sync 불변식 유지.
+      const words = state.transcript.order.map((id) => state.transcript.words[id]!);
+      const transcript = buildTranscriptModel(
+        applyGlossary(words, cmd.pairs as GlossaryPair[]),
+        state.transcript.mediaId,
+        state.transcript.language,
+      );
+      return { ...state, transcript };
     }
   }
 }

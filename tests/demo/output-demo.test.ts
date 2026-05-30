@@ -13,6 +13,7 @@ import {
   extractChapters,
   formatChapters,
   formatSrt,
+  pickKeywords,
   timelineToEdl,
   transcriptToCues,
   wrapCaption,
@@ -22,12 +23,17 @@ import { transcribe } from '@dawn-cut/sidecar-stt';
 import { createCanvas } from '@napi-rs/canvas';
 import { describe, expect, it } from 'vitest';
 
-/** 자막 cue를 PNG로 래스터화(렌더러와 동일한 core drawSubtitle 사용, 헤드리스). */
-function rasterizeCaption(text: string, style: Parameters<typeof drawSubtitle>[4]): Buffer {
+/** 자막 cue를 PNG로 래스터화(렌더러와 동일한 core drawSubtitle 사용, 헤드리스).
+ *  emphasis = 키워드 강조 어절 집합(있으면 그 단어만 style.emphasisColor로). */
+function rasterizeCaption(
+  text: string,
+  style: Parameters<typeof drawSubtitle>[4],
+  emphasis?: Set<string>,
+): Buffer {
   const w = 1000;
   const h = 150;
   const c = createCanvas(w, h);
-  drawSubtitle(c.getContext('2d') as unknown as DrawCtx, w, h, text, style);
+  drawSubtitle(c.getContext('2d') as unknown as DrawCtx, w, h, text, style, emphasis);
   return c.toBuffer('image/png');
 }
 
@@ -144,13 +150,19 @@ describe.skipIf(!haveAssets || !existsSync(WHISPER))('output demo (real external
     const timeline = createInitialTimeline('korean', probe.durationUs, probe.fps || 30);
 
     // cue마다 어절 줄바꿈 후 PNG로 굽고, 해당 시간창에만 보이는 오버레이로 합성.
-    const style = SUBTITLE_PRESETS.korean;
+    // 키워드 강조(ROI top1): cue마다 핵심 어절을 골라 노란색으로 칠한다.
+    const style = { ...SUBTITLE_PRESETS.korean, emphasisColor: '#ffe14d' };
     const pos = { x: 0.1, y: 0.76, scale: 0.8 };
     const overlays: OverlayClip[] = transcriptToCues(transcript, timeline).map((cue, i) => {
       const png = out('tmp', `cap-${i}.png`);
+      const keywords = new Set(pickKeywords(cue.text, { max: 2 }));
       writeFileSync(
         png,
-        rasterizeCaption(wrapCaption(cue.text, { maxCharsPerLine: 16, maxLines: 2 }), style),
+        rasterizeCaption(
+          wrapCaption(cue.text, { maxCharsPerLine: 16, maxLines: 2 }),
+          style,
+          keywords,
+        ),
       );
       return {
         id: `cap${i}`,

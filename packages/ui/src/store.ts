@@ -3,11 +3,9 @@ import {
   applyGlossary,
   buildTranscriptModel,
   createInitialTimeline,
-  deleteWordRange,
   deserializeProject,
   formatSrt,
   makeProject,
-  removeSilences,
   serializeProject,
   timelineToEdl,
   transcriptToCues,
@@ -385,36 +383,43 @@ export const useEditor = create<EditorState>((set, get) => ({
       .sort((a, b) => a - b);
     const fromId = transcript.order[idxs[0]!]!;
     const toId = transcript.order[idxs[idxs.length - 1]!]!;
-    const { after } = deleteWordRange(timeline, transcript, fromId, toId);
+    const { after } = applyCommand(
+      { timeline, transcript },
+      { type: 'deleteWordRange', fromWordId: fromId, toWordId: toId },
+    );
     set({
-      timeline: after,
+      timeline: after.timeline,
       selected: [],
       past: [...get().past, timeline],
       future: [],
       canUndo: true,
       canRedo: false,
-      ...derive(after),
+      ...derive(after.timeline),
     });
   },
 
   removeSilencesAction: async () => {
-    const { timeline, mediaPath, silenceParams } = get();
+    const { timeline, transcript, mediaPath, silenceParams } = get();
     const dawn = window.dawn;
-    if (!timeline || !mediaPath || !dawn) return;
+    if (!timeline || !transcript || !mediaPath || !dawn) return;
     set({ status: 'detecting silence' });
     const silences = await dawn.detectSilences(mediaPath, {
       noiseDb: silenceParams.noiseDb,
       minSilenceUs: silenceParams.minSilenceMs * 1000,
     });
-    const { after } = removeSilences(timeline, MEDIA_ID, silences, 0);
+    // 감지=sidecar IO, 적용=command bus.
+    const { after } = applyCommand(
+      { timeline, transcript },
+      { type: 'removeSilences', silences, padUs: 0 },
+    );
     set({
-      timeline: after,
+      timeline: after.timeline,
       status: 'ready',
       past: [...get().past, timeline],
       future: [],
       canUndo: true,
       canRedo: false,
-      ...derive(after),
+      ...derive(after.timeline),
     });
   },
 
@@ -583,15 +588,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ glossary });
   },
   applyGlossaryNow: () => {
-    const { transcript, glossary } = get();
-    if (!transcript || glossary.length === 0) return;
-    const words = transcript.order.map((id) => transcript.words[id]!);
-    const next = buildTranscriptModel(
-      applyGlossary(words, glossary),
-      transcript.mediaId,
-      transcript.language,
+    // command bus 경유(사람 GUI = 에이전트 동일 bus).
+    const { transcript, timeline, glossary } = get();
+    if (!transcript || !timeline || glossary.length === 0) return;
+    const { after } = applyCommand(
+      { timeline, transcript },
+      { type: 'applyGlossary', pairs: glossary },
     );
-    set({ transcript: next });
+    set({ transcript: after.transcript });
   },
   removeFillers: () => {
     // 사람 GUI도 AI 에이전트와 동일한 command bus(applyCommand)를 구동한다 — P1 키스톤.

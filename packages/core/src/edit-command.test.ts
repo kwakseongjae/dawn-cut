@@ -86,6 +86,21 @@ describe('applyCommand — command bus dispatcher', () => {
     expect(out.removedProgramUs).toBeGreaterThan(990_000);
     expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
   });
+
+  it('applyGlossary: 전사 단어 치환(타임라인 불변, sync 유지)', () => {
+    const state = scene([
+      ['던컷', 0, 1],
+      ['좋아요', 1, 2],
+    ]);
+    const out = applyCommand(state, {
+      type: 'applyGlossary',
+      pairs: [{ from: '던컷', to: 'dawn-cut' }],
+    });
+    const texts = out.after.transcript.order.map((id) => out.after.transcript.words[id]!.text);
+    expect(texts).toContain('dawn-cut');
+    expect(out.removedProgramUs).toBe(0); // 타임라인 변화 없음
+    expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
+  });
 });
 
 describe('EditCommand Zod 가드 (경계 런타임 검증)', () => {
@@ -119,6 +134,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
   it('verb별 inputSchema(JSON-Schema)를 노출', () => {
     const m = commandManifest();
     expect(m.map((x) => x.name).sort()).toEqual([
+      'applyGlossary',
       'cutSourceRange',
       'deleteWordRange',
       'removeFillers',
