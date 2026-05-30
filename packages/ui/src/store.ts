@@ -1,10 +1,10 @@
 import {
+  applyCommand,
   applyGlossary,
   buildTranscriptModel,
   createInitialTimeline,
   deleteWordRange,
   deserializeProject,
-  detectFillers,
   formatSrt,
   makeProject,
   removeSilences,
@@ -594,22 +594,23 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ transcript: next });
   },
   removeFillers: () => {
+    // 사람 GUI도 AI 에이전트와 동일한 command bus(applyCommand)를 구동한다 — P1 키스톤.
     const { transcript, timeline } = get();
     if (!transcript || !timeline) return;
-    const dead = deadSet(timeline, transcript);
-    const ids = detectFillers(transcript).filter((id) => !dead.has(id));
-    if (ids.length === 0) return;
-    let tl = timeline;
-    for (const id of ids) tl = deleteWordRange(tl, transcript, id, id).after;
+    const { after, removedProgramUs } = applyCommand(
+      { timeline, transcript },
+      { type: 'removeFillers' },
+    );
+    if (removedProgramUs === 0) return; // 살아있는 말버릇 없음 → 변화 없음
     set({
-      timeline: tl,
+      timeline: after.timeline,
       selected: [],
       past: [...get().past, timeline],
       future: [],
       canUndo: true,
       canRedo: false,
       status: 'ready',
-      ...derive(tl),
+      ...derive(after.timeline),
     });
   },
 }));

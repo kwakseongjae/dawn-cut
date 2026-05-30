@@ -21,3 +21,4 @@ export * from './caption.js';
 export * from './fillers.js';
 export * from './glossary.js';
 export * from './chapters.js';
+export * from './edit-command.js';

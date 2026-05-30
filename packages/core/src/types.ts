@@ -102,9 +102,8 @@ export interface OverlayClip {
 }
 
 // ── §4 EditCommand ──────────────────────────────────────────────────
-export type EditCommand =
-  | { type: 'deleteWordRange'; fromWordId: string; toWordId: string }
-  | { type: 'removeSilences'; minSilenceUs: number; padUs: number };
+// EditCommand(직렬화 명령 유니언)와 디스패처는 edit-command.ts로 이전됨
+// (Zod 단일 진실원천 → 타입·런타임가드·JSON스키마 파생). CommandResult는 유지.
 
 export interface CommandResult {
   before: TimelineModel;
