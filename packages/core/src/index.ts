@@ -23,3 +23,6 @@ export * from './glossary.js';
 export * from './chapters.js';
 export * from './edit-command.js';
 export * from './keywords.js';
+export * from './dryrun.js';
+export * from './audit.js';
+export * from './effects.js';
