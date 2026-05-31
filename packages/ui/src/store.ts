@@ -72,6 +72,8 @@ interface EditorState {
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
   replaceSubtitleStyle: (style: SubtitleStyle) => void;
+  keywordEmphasis: boolean; // 키워드 강조 자막 on/off (색은 subtitleStyle.emphasisColor)
+  setKeywordEmphasis: (on: boolean) => void;
   // ── 한글 검수 자동화 (어절 위) ──
   glossary: GlossaryPair[]; // 고유명사 '내 사전' (localStorage 영속)
   addGlossaryPair: (from: string, to: string) => void;
@@ -246,6 +248,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedOverlayId: null,
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
+  keywordEmphasis: false,
   glossary: loadGlossary(),
   sourceDurationUs: 0,
   lastExport: null,
@@ -274,6 +277,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
   setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
   replaceSubtitleStyle: (style) => set({ subtitleStyle: style }),
+  setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>

@@ -8,6 +8,7 @@ import {
   extractChapters,
   formatChapters,
   moveOverlay,
+  pickKeywords,
   programToWord,
   resizeOverlay,
   timelineToEdl,
@@ -894,11 +895,16 @@ function CueEditor({
   onUpdate: (id: string, patch: { text?: string; cueStyle?: SubtitleStyle; src?: string }) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const keywordEmphasis = useEditor((s) => s.keywordEmphasis);
   const reRasterize = async (text: string, style: SubtitleStyle) => {
     setBusy(true);
     try {
       const res = await window.dawn?.writeAsset(
-        rasterizeSubtitle(wrapCaption(text, { maxCharsPerLine: 16, maxLines: 2 }), style),
+        rasterizeSubtitle(
+          wrapCaption(text, { maxCharsPerLine: 16, maxLines: 2 }),
+          style,
+          emphasisFor(text, keywordEmphasis),
+        ),
       );
       if (res) onUpdate(overlay.id, { text, cueStyle: style, src: res.path });
     } finally {
@@ -937,10 +943,23 @@ function CueEditor({
 }
 
 // ── Transcript (hero) ────────────────────────────────────────────────
-const rasterizeSubtitle = (text: string, style: SubtitleStyle = {}) =>
-  rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text, style));
+const rasterizeSubtitle = (
+  text: string,
+  style: SubtitleStyle = {},
+  emphasis?: ReadonlySet<string>,
+) => rasterizeWith(1000, 150, (ctx, w, h) => drawSubtitle(ctx, w, h, text, style, emphasis));
 
-function SubtitlePreview({ style, text }: { style: SubtitleStyle; text?: string }) {
+// 키워드 강조 집합. drawSubtitle은 어절의 구두점을 떼고 비교하므로(STRIP_PUNCT_RE),
+// pickKeywords의 표면형도 동일하게 코어로 정규화해 넣어야 매칭된다.
+const EMPH_STRIP = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu;
+const emphasisFor = (cueText: string, on: boolean): ReadonlySet<string> | undefined =>
+  on ? new Set(pickKeywords(cueText).map((w) => w.replace(EMPH_STRIP, ''))) : undefined;
+
+function SubtitlePreview({
+  style,
+  text,
+  emphasis,
+}: { style: SubtitleStyle; text?: string; emphasis?: ReadonlySet<string> }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -955,8 +974,8 @@ function SubtitlePreview({ style, text }: { style: SubtitleStyle; text?: string 
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, c.width, c.height);
     // 전사가 있으면 현재 재생 위치의 자막(어절 줄바꿈됨)을 라이브로 보여준다.
-    drawSubtitle(ctx, c.width, c.height, text?.trim() ? text : '자막 미리보기', style);
-  }, [style, text]);
+    drawSubtitle(ctx, c.width, c.height, text?.trim() ? text : '자막 미리보기', style, emphasis);
+  }, [style, text, emphasis]);
   return (
     <canvas
       ref={ref}
@@ -1047,6 +1066,8 @@ function Transcript() {
     subtitleStyle,
     setSubtitleStyle,
     replaceSubtitleStyle,
+    keywordEmphasis,
+    setKeywordEmphasis,
     removeFillers,
     glossary,
     addGlossaryPair,
@@ -1062,13 +1083,21 @@ function Transcript() {
     () => new Set(transcript ? detectFillers(transcript).filter((id) => !dead.has(id)) : []),
     [transcript, dead],
   );
-  // 현재 재생 위치의 자막(어절 줄바꿈) — 프리뷰에 라이브 표시.
-  const currentCaption = useMemo(() => {
-    if (!transcript || !timeline) return '';
+  // 현재 재생 위치의 cue(원문) — 프리뷰 자막/키워드강조의 단일 출처.
+  const currentCue = useMemo(() => {
+    if (!transcript || !timeline) return null;
     const cues = transcriptToCues(transcript, timeline);
-    const cur = cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0];
-    return cur ? wrapCaption(cur.text, { maxCharsPerLine: 16, maxLines: 2 }) : '';
+    return cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0] ?? null;
   }, [transcript, timeline, playheadUs]);
+  const currentCaption = useMemo(
+    () => (currentCue ? wrapCaption(currentCue.text, { maxCharsPerLine: 16, maxLines: 2 }) : ''),
+    [currentCue],
+  );
+  // emphasis Set은 메모이즈(안정 참조)해야 SubtitlePreview useEffect 무한재그림 방지.
+  const currentEmphasis = useMemo(
+    () => emphasisFor(currentCue?.text ?? '', keywordEmphasis),
+    [currentCue, keywordEmphasis],
+  );
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const genChapters = () => {
     if (transcript && timeline) setChapters(extractChapters(transcript, timeline));
@@ -1077,12 +1106,19 @@ function Transcript() {
     if (chapters.length) navigator.clipboard?.writeText(formatChapters(chapters));
   };
   const burnt = overlays.some((o) => o.kind === 'subtitle');
-  const doBurn = async (pos: { x: number; y: number; scale: number }, style: SubtitleStyle) => {
+  const doBurn = async (
+    pos: { x: number; y: number; scale: number },
+    style: SubtitleStyle,
+    emphOn: boolean = keywordEmphasis,
+  ) => {
     if (!transcript || !timeline) return;
     for (const c of transcriptToCues(transcript, timeline)) {
       // 어절 단위 자동 줄바꿈(2줄) 후 래스터화. 원문(c.text)은 per-cue 편집용으로 보존.
+      // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
       const wrapped = wrapCaption(c.text, { maxCharsPerLine: 16, maxLines: 2 });
-      const res = await window.dawn?.writeAsset(rasterizeSubtitle(wrapped, style));
+      const res = await window.dawn?.writeAsset(
+        rasterizeSubtitle(wrapped, style, emphasisFor(c.text, emphOn)),
+      );
       if (res)
         addOverlayWith({
           kind: 'subtitle',
@@ -1132,6 +1168,13 @@ function Transcript() {
     setSubtitleStyle(patch);
     scheduleReburn(subtitlePos, next);
   };
+  const applyEmphasis = async (on: boolean) => {
+    setKeywordEmphasis(on);
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(subtitlePos, subtitleStyle, on); // 새 토글값으로 재버닝(상태 비동기 회피)
+    }
+  };
   const applyPreset = async (presetId: string) => {
     const next = SUBTITLE_PRESETS[presetId] ?? {};
     replaceSubtitleStyle(next);
@@ -1175,7 +1218,7 @@ function Transcript() {
         </button>
       </div>
       <div className="sub-pos" data-testid="subtitle-pos">
-        <SubtitlePreview style={subtitleStyle} text={currentCaption} />
+        <SubtitlePreview style={subtitleStyle} text={currentCaption} emphasis={currentEmphasis} />
         <div className="sub-pos-grid">
           {ANCHORS.map((a) => {
             const sel =
@@ -1313,6 +1356,25 @@ function Transcript() {
                 CJK (Korean)
               </option>
             </select>
+          </label>
+          <label className="ov-field">
+            강조
+            <input
+              type="checkbox"
+              data-testid="sub-emphasis"
+              checked={keywordEmphasis}
+              onChange={(e) => applyEmphasis(e.target.checked)}
+            />
+          </label>
+          <label className="ov-field">
+            강조색
+            <input
+              type="color"
+              data-testid="sub-emphasis-color"
+              value={subtitleStyle.emphasisColor ?? '#ffd54f'}
+              disabled={!keywordEmphasis}
+              onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
+            />
           </label>
         </div>
       </div>
