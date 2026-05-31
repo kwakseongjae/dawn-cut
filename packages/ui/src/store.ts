@@ -275,8 +275,31 @@ export const useEditor = create<EditorState>((set, get) => ({
   dismissExport: () => set({ lastExport: null }),
 
   setSubtitlePos: (patch) => set({ subtitlePos: { ...get().subtitlePos, ...patch } }),
-  setSubtitleStyle: (patch) => set({ subtitleStyle: { ...get().subtitleStyle, ...patch } }),
-  replaceSubtitleStyle: (style) => set({ subtitleStyle: style }),
+  setSubtitleStyle: (patch) => {
+    // command bus 경유(미디어 미로드 시 직접 set fallback — 프리뷰 단계 스타일 조정 허용).
+    const { timeline, transcript, subtitleStyle } = get();
+    if (!timeline || !transcript) {
+      set({ subtitleStyle: { ...subtitleStyle, ...patch } });
+      return;
+    }
+    const { after } = applyCommand(
+      { timeline, transcript, subtitleStyle },
+      { type: 'setSubtitleStyle', patch },
+    );
+    set({ subtitleStyle: after.subtitleStyle ?? {} });
+  },
+  replaceSubtitleStyle: (style) => {
+    const { timeline, transcript } = get();
+    if (!timeline || !transcript) {
+      set({ subtitleStyle: style });
+      return;
+    }
+    const { after } = applyCommand(
+      { timeline, transcript, subtitleStyle: style },
+      { type: 'replaceSubtitleStyle', style },
+    );
+    set({ subtitleStyle: after.subtitleStyle ?? {} });
+  },
   setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),

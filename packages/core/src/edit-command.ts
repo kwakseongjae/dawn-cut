@@ -8,6 +8,7 @@
 // Zod는 순수 TS라 packages/core 이식성 경계(dependency-cruiser)를 통과한다.
 import { z } from 'zod';
 import { cutSourceRange, deleteWordRange, removeSilences } from './commands.js';
+import type { SubtitleStyle } from './draw.js';
 import { detectFillers } from './fillers.js';
 import { type GlossaryPair, applyGlossary } from './glossary.js';
 import { wordToProgram } from './sync.js';
@@ -16,10 +17,11 @@ import { validateTimeline } from './timeline.js';
 import { buildTranscriptModel, validateTranscript } from './transcript.js';
 import type { TimelineModel, TranscriptModel } from './types.js';
 
-/** AI 에이전트와 사람 GUI가 공유하는 편집 상태. (overlays/subtitleStyle/glossary는 후속 확장) */
+/** AI 에이전트와 사람 GUI가 공유하는 편집 상태. (overlays는 후속 확장) */
 export interface EditorState {
   timeline: TimelineModel;
   transcript: TranscriptModel;
+  subtitleStyle?: SubtitleStyle;
 }
 
 /** 적용 결과 — before/after 전체 상태 + 프로그램 길이 변화(undo·dry-run diff 기반). */
@@ -33,6 +35,16 @@ export interface CommandOutcome {
 const SilenceZ = z.object({
   start: z.number().int().nonnegative(),
   end: z.number().int().nonnegative(),
+});
+const SubtitleStyleZ = z.object({
+  color: z.string().optional(),
+  bg: z.string().optional(),
+  stroke: z.string().optional(),
+  strokeWidth: z.number().optional(),
+  fontFamily: z.string().optional(),
+  fontWeight: z.string().optional(),
+  fontScale: z.number().optional(),
+  emphasisColor: z.string().optional(),
 });
 
 const CommandSchemas = {
@@ -65,6 +77,13 @@ const CommandSchemas = {
     type: z.literal('applyGlossary'),
     pairs: z.array(z.object({ from: z.string(), to: z.string() })),
   }),
+  /** 자막 스타일 부분 병합(비파괴 — 타임라인/전사 불변). */
+  setSubtitleStyle: z.object({ type: z.literal('setSubtitleStyle'), patch: SubtitleStyleZ }),
+  /** 자막 스타일 전체 교체(프리셋 적용 등). */
+  replaceSubtitleStyle: z.object({
+    type: z.literal('replaceSubtitleStyle'),
+    style: SubtitleStyleZ,
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -73,6 +92,8 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.removeFillers,
   CommandSchemas.cutSourceRange,
   CommandSchemas.applyGlossary,
+  CommandSchemas.setSubtitleStyle,
+  CommandSchemas.replaceSubtitleStyle,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -155,6 +176,10 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       );
       return { ...state, transcript };
     }
+    case 'setSubtitleStyle':
+      return { ...state, subtitleStyle: { ...(state.subtitleStyle ?? {}), ...cmd.patch } };
+    case 'replaceSubtitleStyle':
+      return { ...state, subtitleStyle: cmd.style };
   }
 }
 

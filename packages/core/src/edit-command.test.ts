@@ -101,6 +101,19 @@ describe('applyCommand — command bus dispatcher', () => {
     expect(out.removedProgramUs).toBe(0); // 타임라인 변화 없음
     expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
   });
+
+  it('setSubtitleStyle: 부분 병합(비파괴, 타임라인 불변)', () => {
+    const state = { ...scene([['x', 0, 1]]), subtitleStyle: { color: '#fff' } };
+    const out = applyCommand(state, { type: 'setSubtitleStyle', patch: { bg: 'transparent' } });
+    expect(out.after.subtitleStyle).toEqual({ color: '#fff', bg: 'transparent' });
+    expect(out.removedProgramUs).toBe(0);
+  });
+
+  it('replaceSubtitleStyle: 전체 교체', () => {
+    const state = { ...scene([['x', 0, 1]]), subtitleStyle: { color: '#fff' } };
+    const out = applyCommand(state, { type: 'replaceSubtitleStyle', style: { fontScale: 0.5 } });
+    expect(out.after.subtitleStyle).toEqual({ fontScale: 0.5 });
+  });
 });
 
 describe('EditCommand Zod 가드 (경계 런타임 검증)', () => {
@@ -139,6 +152,8 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'deleteWordRange',
       'removeFillers',
       'removeSilences',
+      'replaceSubtitleStyle',
+      'setSubtitleStyle',
     ]);
     for (const entry of m) {
       expect(entry.inputSchema).toBeTruthy();
