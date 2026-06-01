@@ -692,7 +692,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     // 마운트 시 1회: 로컬 LLM 가용성 조회. 실패해도 조용히 룰 플래너로 동작.
     try {
       const status = await window.dawn?.llmAvailable();
-      set({ llmReady: status?.available ?? false, llmReason: status?.reason ?? null });
+      const ready = status?.available ?? false;
+      set({ llmReady: ready, llmReason: status?.reason ?? null });
+      // 가용하면 상주 서버를 백그라운드로 미리 데운다(첫 요청 콜드 ~9s → 웜 ~0.1–0.5s).
+      if (ready) void window.dawn?.llmWarmup?.();
     } catch {
       set({ llmReady: false, llmReason: null });
     }

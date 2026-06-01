@@ -59,6 +59,20 @@ export function plannerManifest(): Array<{ name: string; inputSchema: unknown }>
   return commandManifest().filter((t) => allow.has(t.name));
 }
 
+// few-shot 예시(요청 → 기대 출력). 관찰된 1.5B 오답을 직접 겨냥한다:
+//  - 채도/생생함 → punch (이전엔 cool로 빗나감)
+//  - 말버릇/추임새 → removeFillers (이전엔 자막/무음으로 오인)
+//  - 자막 스타일 객체 구조 예시(색/크기/굵기)
+//  - 편집 의도가 아니면 [] (과잉 생성 억제)
+// 모든 예시는 plannerGrammar() 안전 부분집합 verb만 사용한다(프롬프트=문법 일치).
+const FEW_SHOT = [
+  '요청: "쨍하고 생생하게 해줘" → [{"type":"applyColorgrade","preset":"punch"}]',
+  '요청: "어 음 같은 말버릇 빼줘" → [{"type":"removeFillers"}]',
+  '요청: "영화처럼 분위기 있게" → [{"type":"applyColorgrade","preset":"cinematic"}]',
+  '요청: "자막 노란색으로 크고 굵게" → [{"type":"replaceSubtitleStyle","style":{"color":"yellow","fontScale":1.5,"fontWeight":"bold"}}]',
+  '요청: "오늘 점심 뭐 먹지" → []',
+].join('\n');
+
 export function buildPlanPrompt(
   nl: string,
   summary: StateSummary,
@@ -88,6 +102,11 @@ export function buildPlanPrompt(
     '',
     '사용 가능한 도구(verb별 입력 JSON-Schema):',
     tools,
+    '',
+    // few-shot: 소형 모델이 자주 틀리는 매핑(쨍→punch, 말버릇→removeFillers, 자막 스타일 구조,
+    // 무의미 입력→[])을 예시로 고정해 정확도를 끌어올린다. 출력은 항상 JSON 배열만.
+    '예시:',
+    FEW_SHOT,
     '',
     '현재 상태 요약:',
     JSON.stringify(summary),

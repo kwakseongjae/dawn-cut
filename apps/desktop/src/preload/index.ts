@@ -43,6 +43,8 @@ const bridge = {
   saveFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile'),
   revealItem: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
   llmAvailable: (): Promise<LlmStatus> => ipcRenderer.invoke('llm:available'),
+  llmWarmup: (): Promise<{ ready: boolean; ms: number; reason?: string }> =>
+    ipcRenderer.invoke('llm:warmup'),
   llmPlan: (prompt: string): Promise<{ text: string; ms: number }> =>
     ipcRenderer.invoke('llm:plan', prompt),
 };

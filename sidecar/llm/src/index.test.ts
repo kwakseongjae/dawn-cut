@@ -8,12 +8,15 @@ afterEach(() => {
 
 describe('isLlmAvailable — 가용성 점검(절대 throw 금지)', () => {
   it('존재하지 않는 경로면 available:false + 비어있지 않은 reason', () => {
+    // server/cli 바이너리가 실제로 빌드돼 있을 수 있으니 둘 다 없는 경로로 stub.
+    vi.stubEnv('DAWN_LLAMA_SERVER_BIN', '/nope/does-not-exist/llama-server');
     vi.stubEnv('DAWN_LLAMA_BIN', '/nope/does-not-exist/llama-cli');
     vi.stubEnv('DAWN_LLM_MODEL_PATH', '/nope/does-not-exist/model.gguf');
     const status = isLlmAvailable();
     expect(status.available).toBe(false);
     expect(status.reason).toBeTruthy();
     expect(status.reason?.length).toBeGreaterThan(0);
+    // server/cli 둘 다 없으면 binPath는 cli 경로로 떨어진다.
     expect(status.binPath).toBe('/nope/does-not-exist/llama-cli');
     expect(status.modelPath).toBe('/nope/does-not-exist/model.gguf');
   });

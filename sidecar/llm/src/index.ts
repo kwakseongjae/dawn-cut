@@ -5,22 +5,27 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 import { type PlanProvider, plannerGrammar } from '@dawn-cut/core';
+import {
+  DEFAULT_CTX,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_TIMEOUT_MS,
+  type LlmCompleteOpts,
+  MIN_MODEL_BYTES,
+  cleanLlmOutput,
+  externalServerUrl,
+  llamaBin,
+  llamaServerBin,
+  llmMode,
+  llmModel,
+  wrapChatMl,
+} from './chat.js';
+import { ensureServer, isServerRunning, serverComplete, shutdownServer } from './server.js';
 
 const exec = promisify(execFile);
 
-// env 명명은 STT 사이드카(DAWN_WHISPER_BIN/DAWN_WHISPER_MODEL_PATH)를 미러한다.
-// 호출 시점에 읽어 런타임 오버라이드(IPC/테스트 stub)를 반영한다.
-const llamaBin = (): string => process.env.DAWN_LLAMA_BIN ?? 'vendor/llama.cpp/build/bin/llama-cli';
-const llmModel = (): string =>
-  process.env.DAWN_LLM_MODEL_PATH ?? 'vendor/llama.cpp/models/qwen2.5-1.5b-instruct-q4_k_m.gguf';
-
-// 모델 존재 판정의 하한(부분 다운로드/심볼릭 placeholder 방어). 실모델은 ~1.0GB.
-const MIN_MODEL_BYTES = 100 * 1024 * 1024;
-
-// 콜드 스타트 실측 ~9s(로드 7.7s + 평가 1.6s)라 기본 타임아웃은 넉넉히.
-const DEFAULT_TIMEOUT_MS = 120_000;
-const DEFAULT_MAX_TOKENS = 256;
-const DEFAULT_TEMPERATURE = 0.2;
+export type { LlmCompleteOpts };
+export { cleanLlmOutput, isServerRunning };
 
 export interface LlmStatus {
   available: boolean;
@@ -32,15 +37,26 @@ export interface LlmStatus {
 /**
  * 로컬 LLM 사용 가능 여부를 동기로 점검(STT의 가용성 체크 미러).
  *
- * bin은 파일 존재만, model은 존재 + 크기>100MB(부분 다운로드 방어)로 확인한다.
+ * 모델은 존재 + 크기>100MB(부분 다운로드 방어), 바이너리는 상주 서버 또는 one-shot CLI 중
+ * 하나라도 있으면 OK. 외부 서버(DAWN_LLAMA_SERVER_URL)가 설정돼 있으면 바이너리 없이도 가용.
  * 호출측이 룰 플래너로 폴백할 수 있게 절대 throw하지 않고 reason에 한국어 사유를 담는다.
  */
 export function isLlmAvailable(): LlmStatus {
-  const binPath = llamaBin();
+  const serverBin = llamaServerBin();
+  const cliBin = llamaBin();
   const modelPath = llmModel();
 
-  if (!existsSync(binPath)) {
-    return { available: false, binPath, modelPath, reason: `llama-cli 없음: ${binPath}` };
+  // 외부 서버를 쓰면 로컬 바이너리/모델 점검을 건너뛴다(원격이 책임).
+  if (externalServerUrl()) {
+    return { available: true, binPath: externalServerUrl() ?? '', modelPath };
+  }
+  // 모드-인지: cli 모드는 cli 바이너리 필수. server 모드는 server 필수(없으면 CLI 폴백 가능하니 cli도 허용).
+  const cli = llmMode() === 'cli';
+  const hasBin = cli ? existsSync(cliBin) : existsSync(serverBin) || existsSync(cliBin);
+  const binPath = cli ? cliBin : existsSync(serverBin) ? serverBin : cliBin;
+
+  if (!hasBin) {
+    return { available: false, binPath, modelPath, reason: `llama 바이너리 없음: ${binPath}` };
   }
   if (!existsSync(modelPath)) {
     return { available: false, binPath, modelPath, reason: `모델 없음: ${modelPath}` };
@@ -57,31 +73,13 @@ export function isLlmAvailable(): LlmStatus {
   return { available: true, binPath, modelPath };
 }
 
-export interface LlmCompleteOpts {
-  maxTokens?: number;
-  timeoutMs?: number;
-  grammar?: string;
-  temperature?: number;
-}
-
 /**
- * Qwen2.5는 instruct(챗) 모델 → raw 프롬프트면 빈 배열 [] 만 나온다.
- * 반드시 ChatML로 감싸야 플래너 verb가 제대로 추론된다(메인 루프 실측 검증).
+ * llama-cli one-shot 호출(콜드 ~9s). 상주 서버를 못 쓰는 환경의 폴백 경로.
+ * 프롬프트는 ChatML로 감싸 -f 파일로, grammar(기본 plannerGrammar)는 --grammar-file 로 전달.
  */
-function wrapChatMl(prompt: string): string {
-  return `<|im_start|>user\n${prompt}<|im_end|>\n<|im_start|>assistant\n`;
-}
-
-/**
- * llama-cli를 one-shot subprocess로 호출해 raw 완성 텍스트를 얻는다.
- *
- * 프롬프트는 ChatML로 감싸 `-f` 파일로, grammar(기본 plannerGrammar)는 `--grammar-file`로
- * 전달해 디코딩 단계에서 출력을 플래너 안전 부분집합으로 제약한다. 인자는 메인 루프가
- * llama.cpp b4589 + Qwen2.5-1.5B로 실측 검증한 조합을 그대로 사용한다.
- */
-export async function llmComplete(
+async function cliComplete(
   prompt: string,
-  opts: LlmCompleteOpts = {},
+  opts: LlmCompleteOpts,
 ): Promise<{ text: string; ms: number }> {
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -106,7 +104,7 @@ export async function llmComplete(
     '-n',
     String(maxTokens),
     '-c',
-    '4096',
+    String(DEFAULT_CTX),
     '--temp',
     String(temperature),
     '-ngl',
@@ -118,13 +116,11 @@ export async function llmComplete(
 
   const startedAt = performance.now();
   try {
-    // stdout만 캡처(완성 텍스트). 타이밍/배너는 stderr로 분리돼 나온다.
     const { stdout } = await exec(llamaBin(), args, {
       timeout: timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
     });
-    const ms = performance.now() - startedAt;
-    return { text: cleanLlmOutput(stdout), ms };
+    return { text: cleanLlmOutput(stdout), ms: performance.now() - startedAt };
   } catch (err) {
     const e = err as NodeJS.ErrnoException & { killed?: boolean; signal?: string };
     if (e.killed || e.signal === 'SIGTERM') {
@@ -132,7 +128,6 @@ export async function llmComplete(
     }
     throw new Error(`llama-cli 비정상 종료: ${e.message}`);
   } finally {
-    // 임시파일 정리(실패 무시).
     try {
       rmSync(dir, { recursive: true, force: true });
     } catch {
@@ -142,23 +137,52 @@ export async function llmComplete(
 }
 
 /**
- * llama-cli stdout 정리(순수). trim 후 끝의 종료 마커('[end of text]', '</s>')와
- * 앞뒤 공백을 제거한다. 코드펜스는 core parsePlan이 JSON 배열을 추출하므로 손대지 않는다.
+ * 로컬 LLM 추론. 기본은 상주 서버(웜 ~0.1–0.5s); 서버 기동 실패 시 one-shot CLI로 폴백.
+ * DAWN_LLM_MODE=cli 면 처음부터 CLI만 쓴다(결정성/디버깅). 모두 실패하면 throw(호출측 룰 폴백).
  */
-export function cleanLlmOutput(raw: string): string {
-  let text = raw.trim();
-  // 끝 종료 마커는 반복 제거(둘 다/연달아 붙는 경우 방어).
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const marker of ['[end of text]', '</s>']) {
-      if (text.endsWith(marker)) {
-        text = text.slice(0, -marker.length).trimEnd();
-        changed = true;
-      }
-    }
+export async function llmComplete(
+  prompt: string,
+  opts: LlmCompleteOpts = {},
+): Promise<{ text: string; ms: number }> {
+  if (llmMode() === 'cli') return cliComplete(prompt, opts);
+
+  const total = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const startedAt = performance.now();
+  try {
+    return await serverComplete(prompt, { ...opts, timeoutMs: total });
+  } catch (e) {
+    // 외부 서버 모드는 CLI 폴백 금지 — 원래 오류를 보존해야 디버깅 가능(로컬 바이너리도 없을 수 있음).
+    if (externalServerUrl()) throw e;
+    // 상주 서버 실패 → one-shot CLI 폴백. 단 남은 예산만 줘서 총 대기를 timeoutMs로 제한(이중 타임아웃 방지).
+    const remaining = Math.max(2_000, total - (performance.now() - startedAt));
+    // 폴백 사유를 남겨 '왜 느린지' 진단 가능하게(noConsole 규칙 비활성).
+    console.warn(`[llm] 상주 서버 경로 실패 → CLI 폴백: ${e instanceof Error ? e.message : e}`);
+    return cliComplete(prompt, { ...opts, timeoutMs: remaining });
   }
-  return text.trim();
+}
+
+/**
+ * 상주 서버를 미리 기동해 모델을 로드해 둔다(앱 마운트 시 호출 → 첫 사용자 요청이 즉시 빠름).
+ * 실패해도 throw하지 않는다(가용성/사유만 보고; 실제 추론 때 CLI 폴백).
+ */
+export async function warmupLlm(): Promise<{ ready: boolean; ms: number; reason?: string }> {
+  if (llmMode() === 'cli') return { ready: false, ms: 0, reason: 'CLI 모드(서버 미사용)' };
+  const t = performance.now();
+  try {
+    await ensureServer();
+    return { ready: true, ms: performance.now() - t };
+  } catch (e) {
+    return {
+      ready: false,
+      ms: performance.now() - t,
+      reason: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+/** 상주 서버 종료(Electron app 'will-quit'에서 호출). */
+export function shutdownLlm(): void {
+  shutdownServer();
 }
 
 /**

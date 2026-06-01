@@ -56,6 +56,7 @@ export interface DawnBridge {
   revealItem: (path: string) => Promise<void>;
   // P3 LLM: 로컬 플래너(llama.cpp). 부재/비활성 시 store가 룰 플래너로 폴백한다.
   llmAvailable: () => Promise<LlmStatus>;
+  llmWarmup: () => Promise<{ ready: boolean; ms: number; reason?: string }>;
   llmPlan: (prompt: string) => Promise<{ text: string; ms: number }>;
 }
 

@@ -15,6 +15,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LLAMA_DIR="$ROOT/vendor/llama.cpp"
 MODELS_DIR="$LLAMA_DIR/models"
 BIN="$LLAMA_DIR/build/bin/llama-cli"
+SERVER_BIN="$LLAMA_DIR/build/bin/llama-server"
 
 LLAMA_REPO="${DAWN_LLAMA_REPO:-https://github.com/ggml-org/llama.cpp}"
 LLAMA_REF="${DAWN_LLAMA_REF:-b4589}"  # 핀: 재현 가능한 빌드. 필요시 오버라이드.
@@ -23,9 +24,9 @@ MODEL_PATH="${DAWN_LLM_MODEL_PATH:-$MODELS_DIR/qwen2.5-1.5b-instruct-q4_k_m.gguf
 
 log() { printf '\033[36m[setup-llm]\033[0m %s\n' "$*"; }
 
-# ── 1) llama.cpp 빌드 ──
-if [ -x "$BIN" ]; then
-  log "llama-cli 이미 빌드됨: $BIN (건너뜀)"
+# ── 1) llama.cpp 빌드 (llama-cli = one-shot 폴백, llama-server = 상주 기본 경로) ──
+if [ -x "$BIN" ] && [ -x "$SERVER_BIN" ]; then
+  log "llama-cli + llama-server 이미 빌드됨 (건너뜀)"
 else
   if [ ! -d "$LLAMA_DIR/.git" ]; then
     log "llama.cpp 클론 ($LLAMA_REF)…"
@@ -36,10 +37,12 @@ else
   fi
   log "cmake configure (Metal/Accelerate 자동)…"
   cmake -S "$LLAMA_DIR" -B "$LLAMA_DIR/build" -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF
-  log "build (llama-cli)…"
-  cmake --build "$LLAMA_DIR/build" --config Release -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" --target llama-cli
+  log "build (llama-cli + llama-server)…"
+  cmake --build "$LLAMA_DIR/build" --config Release -j "$(sysctl -n hw.ncpu 2>/dev/null || echo 4)" \
+    --target llama-cli --target llama-server
   [ -x "$BIN" ] || { echo "빌드 실패: $BIN 없음"; exit 1; }
-  log "빌드 완료: $BIN"
+  [ -x "$SERVER_BIN" ] || { echo "빌드 실패: $SERVER_BIN 없음"; exit 1; }
+  log "빌드 완료: $BIN, $SERVER_BIN"
 fi
 
 # ── 2) 모델 다운로드 ──
@@ -53,5 +56,6 @@ else
   log "다운로드 완료: $(du -h "$MODEL_PATH" | cut -f1)"
 fi
 
-log "준비 완료. 검증:"
-log "  $BIN -m $MODEL_PATH -p '안녕' -n 16 -no-cnv 2>/dev/null"
+log "준비 완료. dawn-cut이 상주 server(기본)로 자동 사용. 수동 검증:"
+log "  $SERVER_BIN -m $MODEL_PATH -ngl 99 -c 4096 --port 8127 --no-webui  # 그 후 POST /completion"
+log "  (one-shot 폴백: $BIN -m $MODEL_PATH -p '안녕' -n 16 -no-cnv)"

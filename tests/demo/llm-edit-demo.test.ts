@@ -16,9 +16,9 @@ import {
   timelineToEdl,
 } from '@dawn-cut/core';
 import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
-import { isLlmAvailable, llmPlanProvider } from '@dawn-cut/sidecar-llm';
+import { isLlmAvailable, llmPlanProvider, shutdownLlm } from '@dawn-cut/sidecar-llm';
 import { createCanvas } from '@napi-rs/canvas';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 // P3-LLM 데모: 진짜 로컬 LLM(llama.cpp + Qwen2.5-1.5B)이 자유형 한국어를 plan으로 바꾸는 걸
 // 사람이 볼 수 있게 output/llm/ 에 아카이빙한다. 룰 플래너가 못 하는 자유형/복합 요청이 핵심.
@@ -49,6 +49,9 @@ const minimalState = (mediaId: string, durationUs: number, fps: number): EditorS
   transcript: buildTranscriptModel([], mediaId, 'ko'),
 });
 
+// 데모가 띄운 상주 llama-server를 정리(orphan 방지 — 프로덕션은 Electron will-quit가 담당).
+afterAll(() => shutdownLlm());
+
 describe.skipIf(!haveAssets || !llm.available)('LLM editing demo (로컬 LLM, 실제 추론)', () => {
   it('자유형 한국어 → 로컬 LLM plan을 output/llm/plan.md 에 아카이빙', async () => {
     const probe = await probeMedia(CLIP);
@@ -76,8 +79,9 @@ describe.skipIf(!haveAssets || !llm.available)('LLM editing demo (로컬 LLM, �
       lines.push(
         `### "${nl}"`,
         `- plan: ${desc}`,
-        `- dryRun: ok=${report.ok}, 길이 ${fmt(report.beforeDurationUs)}→${fmt(report.afterDurationUs)}` +
-          (errors.length ? `, errors=${errors.length}` : ''),
+        `- dryRun: ok=${report.ok}, 길이 ${fmt(report.beforeDurationUs)}→${fmt(report.afterDurationUs)}${
+          errors.length ? `, errors=${errors.length}` : ''
+        }`,
         '',
       );
       // biome-ignore lint/suspicious/noConsole: demo output

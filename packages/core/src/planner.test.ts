@@ -73,6 +73,15 @@ describe('buildPlanPrompt — 프롬프트 조립', () => {
     // 상태 요약(JSON)이 포함된다.
     expect(prompt).toContain('"wordCount"');
   });
+
+  it('few-shot 예시를 포함한다(소형 모델 오답 교정: 쨍→punch, 말버릇→removeFillers)', () => {
+    const state = scene([['하나', 0, 1]]);
+    const prompt = buildPlanPrompt('아무거나', summarizeState(state), commandManifest());
+    expect(prompt).toContain('예시:');
+    expect(prompt).toContain('"preset":"punch"'); // 쨍/생생 → punch 예시
+    expect(prompt).toContain('"type":"removeFillers"'); // 말버릇 → removeFillers 예시
+    expect(prompt).toMatch(/오늘 점심 뭐 먹지.*\[\]/); // 무의미 입력 → 빈 배열 예시
+  });
 });
 
 describe('parsePlan — 텍스트에서 배열 추출 + 검증', () => {

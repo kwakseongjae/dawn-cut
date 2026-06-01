@@ -12,7 +12,7 @@ import {
   renderEdl,
   writeSrt,
 } from '@dawn-cut/sidecar-ffmpeg';
-import { isLlmAvailable, llmComplete } from '@dawn-cut/sidecar-llm';
+import { isLlmAvailable, llmComplete, shutdownLlm, warmupLlm } from '@dawn-cut/sidecar-llm';
 import { transcribe } from '@dawn-cut/sidecar-stt';
 import { synthesizeTts } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
@@ -65,7 +65,19 @@ ipcMain.handle('llm:available', () => {
   return isLlmAvailable();
 });
 
-ipcMain.handle('llm:plan', (_e, prompt: string) => llmComplete(prompt));
+// 상주 서버를 미리 기동(앱 마운트 시 호출 → 첫 요청이 콜드 ~9s 대신 웜 ~0.1–0.5s).
+ipcMain.handle('llm:warmup', () => {
+  if (process.env.DAWN_DISABLE_LLM)
+    return { ready: false, ms: 0, reason: '비활성화(DAWN_DISABLE_LLM)' };
+  return warmupLlm();
+});
+
+ipcMain.handle('llm:plan', (_e, prompt: string) => {
+  // kill-switch 심층방어: 렌더러는 llmReady일 때만 호출하지만, IPC 직접 호출/테스트가
+  // 우회해 상주 서버를 spawn하지 못하게 여기서도 막는다.
+  if (process.env.DAWN_DISABLE_LLM) throw new Error('LLM 비활성화(DAWN_DISABLE_LLM)');
+  return llmComplete(prompt);
+});
 
 ipcMain.handle('tts:synthesize', async (_e, text: string, voice: string) => {
   const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
@@ -143,3 +155,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+// 상주 llama-server를 앱 종료 시 정리(orphan 방지).
+app.on('will-quit', () => shutdownLlm());
