@@ -26,3 +26,6 @@ export * from './keywords.js';
 export * from './dryrun.js';
 export * from './audit.js';
 export * from './effects.js';
+export * from './planner.js';
+export * from './rule-planner.js';
+export * from './grammar.js';

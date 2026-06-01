@@ -1029,6 +1029,19 @@ function anchorXForScale(anchorX: number, scale: number): number {
   return (1 - scale) / 2;
 }
 
+// EditCommand verb → 사람친화 라벨(자연어 제안 카드용).
+const CMD_LABEL: Record<string, string> = {
+  removeFillers: '말버릇 제거',
+  deleteWordRange: '단어 컷',
+  removeSilences: '무음 제거',
+  cutSourceRange: '구간 컷',
+  applyGlossary: '사전 치환',
+  setSubtitleStyle: '자막 스타일',
+  replaceSubtitleStyle: '자막 프리셋',
+  applyColorgrade: '색보정',
+  applyZoom: '펀치인 줌',
+};
+
 // 내 사전(고유명사 교정쌍) 추가 입력.
 function GlossaryAdd({ onAdd }: { onAdd: (from: string, to: string) => void }) {
   const [from, setFrom] = useState('');
@@ -1091,6 +1104,13 @@ function Transcript() {
     glossary,
     addGlossaryPair,
     removeGlossaryPair,
+    planAndPreview,
+    approvePlan,
+    rejectPlan,
+    pendingPlan,
+    planReport,
+    nlBusy,
+    nlError,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -1242,6 +1262,69 @@ function Transcript() {
           ⟲ 초기화
         </button>
       </div>
+      {transcript && (
+        <div className="nl-bar" data-testid="nl-bar">
+          <span className="nl-ico">🤖</span>
+          <input
+            className="input"
+            data-testid="nl-input"
+            placeholder={'예: "말버릇 빼줘" · "시네마틱하게" · "따뜻한 색감"'}
+            disabled={nlBusy}
+            onKeyDown={(e) => {
+              const v = e.currentTarget.value.trim();
+              if (e.key === 'Enter' && v) {
+                planAndPreview(v);
+                e.currentTarget.value = '';
+              }
+            }}
+          />
+          <span className="nl-hint">{nlBusy ? '생각 중…' : 'Enter'}</span>
+        </div>
+      )}
+      {pendingPlan && (
+        <div className="plan-card" data-testid="plan-card">
+          <div className="plan-head">제안: “{pendingPlan.input}”</div>
+          {pendingPlan.commands.length > 0 ? (
+            <ul className="plan-cmds">
+              {pendingPlan.commands.map((c, i) => (
+                <li key={`${c.type}-${i}`}>
+                  {CMD_LABEL[c.type] ?? c.type}
+                  {c.type === 'applyColorgrade' ? ` · ${c.preset}` : ''}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="plan-empty">{nlError ?? '제안할 편집이 없습니다.'}</div>
+          )}
+          {planReport && pendingPlan.commands.length > 0 && (
+            <div className="plan-diff" data-testid="plan-diff">
+              {planReport.removedProgramUs > 0
+                ? `예상: −${fmt(planReport.removedProgramUs)}  (${fmt(planReport.beforeDurationUs)} → ${fmt(planReport.afterDurationUs)})`
+                : '예상: 길이 변화 없음 (룩/자막만 변경 — 미리보기는 근사)'}
+              {!planReport.ok && <span className="plan-bad"> · 적용 불가: {planReport.error}</span>}
+            </div>
+          )}
+          <div className="plan-actions">
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="plan-approve"
+              disabled={!planReport?.ok || pendingPlan.commands.length === 0}
+              onClick={() => approvePlan()}
+            >
+              승인
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              data-testid="plan-reject"
+              onClick={() => rejectPlan()}
+            >
+              취소
+            </button>
+          </div>
+        </div>
+      )}
       <div className="sub-pos" data-testid="subtitle-pos">
         <SubtitlePreview style={subtitleStyle} text={currentCaption} emphasis={currentEmphasis} />
         <div className="sub-pos-grid">
@@ -1776,6 +1859,9 @@ export function AppShell() {
         useEditor.getState().addImageOverlay(p);
         return Promise.resolve();
       },
+      planAndPreview: (input: string) => useEditor.getState().planAndPreview(input),
+      approvePlan: () => useEditor.getState().approvePlan(),
+      rejectPlan: () => useEditor.getState().rejectPlan(),
     };
   }, []);
   const [showHelp, setShowHelp] = useState(false);

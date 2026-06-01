@@ -243,6 +243,8 @@ body {
   flex-direction: column;
   background: var(--panel);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 .panel-head {
   display: flex;
@@ -263,6 +265,7 @@ body {
 }
 .transcript-body {
   flex: 1;
+  min-height: 0; /* flexbox: 콘텐츠보다 작아질 수 있어야 패널 안에서 스크롤(넘침 방지) */
   overflow-y: auto;
   padding: 16px 18px;
   line-height: 2.05;
@@ -526,6 +529,64 @@ body {
   line-height: 1.5;
   color: var(--text);
   white-space: pre-wrap;
+}
+
+/* ── 자연어 명령(NL) 바 + 제안 카드 ── */
+.nl-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.nl-bar .nl-ico {
+  font-size: 14px;
+}
+.nl-bar .input {
+  flex: 1;
+  min-width: 0;
+}
+.nl-bar .nl-hint {
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.plan-card {
+  margin: 8px 4px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.plan-cmds {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text);
+}
+.plan-empty {
+  font-size: 12px;
+  color: var(--muted);
+}
+.plan-diff {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.plan-bad {
+  color: var(--danger);
+}
+.plan-actions {
+  display: flex;
+  gap: 6px;
 }
 .empty-transcript {
   color: var(--faint);

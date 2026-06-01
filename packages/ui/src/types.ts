@@ -61,6 +61,9 @@ declare global {
       openProject: (path: string) => Promise<void>;
       exportGif: (path: string) => Promise<void>;
       addImageOverlay: (path: string) => Promise<void>;
+      planAndPreview: (input: string) => void;
+      approvePlan: () => void;
+      rejectPlan: () => void;
     };
   }
 }

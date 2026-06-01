@@ -5,8 +5,10 @@ import {
   buildTranscriptModel,
   createInitialTimeline,
   deserializeProject,
+  dryRunCommands,
   formatSrt,
   makeProject,
+  ruleBasedPlan,
   serializeProject,
   timelineToEdl,
   transcriptToCues,
@@ -14,6 +16,8 @@ import {
 } from '@dawn-cut/core';
 import type {
   AuditEntry,
+  DryRunReport,
+  EditCommand,
   GlossaryPair,
   OverlayClip,
   SubtitleStyle,
@@ -85,6 +89,14 @@ interface EditorState {
   applyGlossaryNow: () => void; // 현재 전사에 사전 치환 적용
   removeFillers: () => void; // 말버릇(음/어…) 어절을 타임라인에서 컷
   auditLog: AuditEntry[]; // 적용된 편집 명령의 결정적 해시체인 기록(replay/검증 토대)
+  // ── 자연어 명령 (NL → plan → dryRun 미리보기 → 승인 → commit) ──
+  nlBusy: boolean;
+  pendingPlan: { input: string; commands: EditCommand[] } | null; // 승인 대기(승인 전 상태 불변)
+  planReport: DryRunReport | null; // pendingPlan의 dryRun diff
+  nlError: string | null;
+  planAndPreview: (input: string) => void; // NL → 룰 플래너 → dryRun (상태 변경 없음)
+  approvePlan: () => void; // 유일한 상태변경 지점: 각 cmd applyCommand + appendAudit
+  rejectPlan: () => void;
   // ── 대기 UX / 완료 / 무음 제어 (사이클2) ──
   sourceDurationUs: number; // 원본 미디어 길이(완료 카드의 '원본')
   lastExport: { path: string; format: string; originalUs: number; finalUs: number } | null;
@@ -272,6 +284,10 @@ export const useEditor = create<EditorState>((set, get) => ({
   lastExport: null,
   silenceParams: { noiseDb: -30, minSilenceMs: 500 },
   silencePreview: null,
+  nlBusy: false,
+  pendingPlan: null,
+  planReport: null,
+  nlError: null,
 
   setSilenceParams: (patch) =>
     set({ silenceParams: { ...get().silenceParams, ...patch }, silencePreview: null }),
@@ -661,6 +677,68 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...derive(after.timeline),
     });
   },
+
+  planAndPreview: (input) => {
+    // 자연어 → 룰 플래너 → dryRun 미리보기. 상태는 절대 변경하지 않는다(승인 전).
+    const { timeline, transcript, subtitleStyle } = get();
+    if (!timeline || !transcript) return;
+    set({ nlBusy: true, nlError: null, pendingPlan: null, planReport: null });
+    try {
+      const state = { timeline, transcript, subtitleStyle };
+      const commands = ruleBasedPlan(input, state);
+      const { report } = dryRunCommands(state, commands);
+      set({
+        nlBusy: false,
+        pendingPlan: { input, commands },
+        planReport: report,
+        nlError:
+          commands.length === 0
+            ? '이해하지 못한 명령입니다. (예: "말버릇 빼줘", "시네마틱하게")'
+            : null,
+      });
+    } catch (e) {
+      set({ nlBusy: false, nlError: e instanceof Error ? e.message : String(e) });
+    }
+  },
+  approvePlan: () => {
+    // 승인 = 유일한 상태변경 지점. 각 명령을 command bus로 적용 + 감사 로그 기록.
+    const { pendingPlan, planReport, timeline, transcript, subtitleStyle } = get();
+    if (!pendingPlan || !planReport?.ok || pendingPlan.commands.length === 0) return;
+    if (!timeline || !transcript) return;
+    let st: { timeline: TimelineModel; transcript: TranscriptModel; subtitleStyle: SubtitleStyle } =
+      {
+        timeline,
+        transcript,
+        subtitleStyle,
+      };
+    let audit = get().auditLog;
+    for (const cmd of pendingPlan.commands) {
+      const { after, removedProgramUs } = applyCommand(st, cmd);
+      st = {
+        timeline: after.timeline,
+        transcript: after.transcript,
+        subtitleStyle: after.subtitleStyle ?? {},
+      };
+      audit = appendAudit(audit, cmd, removedProgramUs);
+    }
+    set({
+      timeline: st.timeline,
+      transcript: st.transcript,
+      subtitleStyle: st.subtitleStyle,
+      auditLog: audit,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      selected: [],
+      pendingPlan: null,
+      planReport: null,
+      nlError: null,
+      status: 'ready',
+      ...derive(st.timeline),
+    });
+  },
+  rejectPlan: () => set({ pendingPlan: null, planReport: null, nlError: null }),
 }));
 
 export { deadSet };
