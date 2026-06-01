@@ -32,6 +32,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@dawn-cut/core": "workspace:*",
+    "@dawn-cut/mcp": "workspace:*",
     "@dawn-cut/sidecar-ffmpeg": "workspace:*",
     "@dawn-cut/sidecar-llm": "workspace:*",
     "@dawn-cut/sidecar-stt": "workspace:*",

@@ -1,0 +1,19 @@
+{
+  "name": "@dawn-cut/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Model Context Protocol server exposing dawn-cut's command bus as tools (headless, operates on .dawn project files). External AI edits through the same applyCommand + invariants + audit + dry-run gate as the GUI.",
+  "main": "./src/index.ts",
+  "bin": { "dawn-cut-mcp": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./session": "./src/session.ts"
+  },
+  "scripts": { "build": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": {
+    "@dawn-cut/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.12"
+  }
+}

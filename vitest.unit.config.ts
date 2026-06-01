@@ -5,7 +5,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     name: 'unit',
-    include: ['packages/**/*.test.ts', 'sidecar/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+    include: [
+      'packages/**/*.test.ts',
+      'sidecar/**/*.test.ts',
+      'apps/**/*.test.ts',
+      'tests/unit/**/*.test.ts',
+    ],
     exclude: ['**/node_modules/**', 'tests/integration/**', 'tests/e2e/**'],
     environment: 'node',
     coverage: {
