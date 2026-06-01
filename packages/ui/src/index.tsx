@@ -1162,13 +1162,16 @@ function Transcript() {
     style: SubtitleStyle,
     emphOn: boolean = keywordEmphasis,
   ) => {
-    if (!transcript || !timeline) return;
+    // fresh state를 읽는다 — 스타일 팩처럼 직전에 transcript/timeline을 바꾼(말버릇 컷) 핸들러가
+    // 호출해도 stale 클로저로 옛 어절을 번인하지 않게.
+    const { transcript: tr, timeline: tl } = useEditor.getState();
+    if (!tr || !tl) return;
     // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
     // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
     const anim = style.animation ?? 'none';
     const cueOpts =
       anim === 'none' ? {} : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
-    for (const c of transcriptToCues(transcript, timeline, cueOpts)) {
+    for (const c of transcriptToCues(tr, tl, cueOpts)) {
       // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
       const cueKeys = emphasisFor(c.text, emphOn);
       // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
@@ -1241,6 +1244,15 @@ function Transcript() {
       await doBurn(subtitlePos, next);
     }
   };
+  // 스타일 팩 '진짜 1클릭': command bus로 팩 적용(색+자막스타일/애니+말버릇) 후, 적용된 자막
+  // 스타일/애니로 자막을 즉시 (재)번인한다 — 팩을 고르면 화면에 reveal/karaoke가 바로 뜨도록.
+  const applyPackAndBurn = async (id: string) => {
+    applyStylePack(id);
+    const st = useEditor.getState(); // 팩 적용 후 fresh(자막스타일·말버릇 컷 반영).
+    if (!st.transcript) return; // 전사 전이면 색/말버릇만 적용(자막은 추후 '자막 입히기').
+    clearOverlaysByKind('subtitle');
+    await doBurn(subtitlePos, st.subtitleStyle);
+  };
   const resetSubtitleSettings = async () => {
     const defaultPos = { x: 0.1, y: 0.8, scale: 0.8 };
     setSubtitlePos(defaultPos);
@@ -1307,8 +1319,8 @@ function Transcript() {
             onChange={(e) => {
               const id = e.target.value;
               if (id) {
-                applyStylePack(id);
                 e.target.value = '';
+                void applyPackAndBurn(id);
               }
             }}
           >

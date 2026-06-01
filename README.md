@@ -129,9 +129,12 @@ first. Because the core already exposes a reviewable intermediate representation
 (timeline + EDL) and validates every step, an agent's edits are reproducible and
 auto-checkable rather than opaque.
 
-This is **roadmap, not reality today.** The natural-language layer (command bus,
-Zod-derived tool schemas, local LLM planner, MCP server) is still 0% built. See
-below.
+Much of this is **now built.** The command bus (Zod-derived `EditCommand`s + invariant
+validation + a hash-chained audit log), a local llama.cpp planner (natural language →
+plan → dry-run → approve), one-click style packs (templates expressed *as plans*), and a
+headless **MCP server** (external AI drives the same command bus over `.dawn` projects)
+all work today. Still open: a live-app↔MCP bridge, an MCP render/export tool, adaptive
+auto-enhance, and 9:16 auto-reframing. See the roadmap below and `docs/REVIEW.md`.
 
 ---
 
