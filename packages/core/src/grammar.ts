@@ -83,7 +83,7 @@ const GLOSSARY_RULES = String.raw`applyGlossary ::= "{" ws "\"type\"" ws ":" ws 
 pairArray ::= "[" ws ( pair ( ws "," ws pair )* )? ws "]"
 pair ::= "{" ws "\"from\"" ws ":" ws string ws "," ws "\"to\"" ws ":" ws string ws "}"`;
 
-const COLOR_PRESET_RULE = String.raw`colorPreset ::= "\"warm\"" | "\"cool\"" | "\"punch\"" | "\"cinematic\"" | "\"flat\""`;
+const COLOR_PRESET_RULE = String.raw`colorPreset ::= "\"warm\"" | "\"cool\"" | "\"punch\"" | "\"cinematic\"" | "\"flat\"" | "\"vivid\""`;
 
 // ── 전체 문법(9 verb) ──
 const FULL_GBNF = `${String.raw`root ::= "[" ws ( cmd ( ws "," ws cmd )* )? ws "]"

@@ -30,7 +30,7 @@ export interface ZoomEffect {
 /** 색보정 프리셋 적용. intensity 로 효과 강도를 0(원본)~1(프리셋 풀강도) 가중. */
 export interface ColorEffect {
   kind: 'color';
-  preset: 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat';
+  preset: 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat' | 'vivid';
   /** 0~1. 생략 시 1. 0이면 사실상 패스스루(null 필터). */
   intensity?: number;
 }
@@ -116,6 +116,9 @@ export const COLOR_PRESETS: Record<ColorEffect['preset'], string> = {
   punch: 'eq=contrast=1.30:saturation=1.40:brightness=0.02',
   cinematic: "eq=contrast=1.30:saturation=0.70,curves=all='0/0.06 0.5/0.5 1/0.92'",
   flat: 'eq=contrast=0.82:saturation=0.78:gamma=1.05',
+  // vivid: '1탭 화사 보정' — 채도 강하게 + 약한 대비/리프트 + 살짝 웜틸트(음식/인물/풍경 두루 '확 산다').
+  vivid:
+    "eq=contrast=1.15:saturation=1.60:brightness=0.03,curves=r='0/0 0.5/0.54 1/1':b='0/0 0.5/0.46 1/1'",
 };
 
 /**
@@ -159,6 +162,14 @@ export function colorFilter(e: ColorEffect): string {
       return warmCoolCurve('warm', k);
     case 'cool':
       return warmCoolCurve('cool', k);
+    case 'vivid': {
+      // 강한 채도/약한 대비/리프트 + 가벼운 웜 커브. punch보다 채도↑·대비↓로 '화사하게 산다'.
+      const eq = eqWeighted({ contrast: 1.15, saturation: 1.6, brightness: 0.03 }, k);
+      const r = num(0.5 + (0.54 - 0.5) * k, 4);
+      const b = num(0.5 + (0.46 - 0.5) * k, 4);
+      const curve = `curves=r='0/0 0.5/${r} 1/1':b='0/0 0.5/${b} 1/1'`;
+      return `${eq},${curve}`;
+    }
   }
 }
 

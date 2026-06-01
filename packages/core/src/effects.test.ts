@@ -103,9 +103,9 @@ describe('zoomFilter', () => {
 });
 
 describe('COLOR_PRESETS', () => {
-  it('defines all five presets with eq or curves tokens', () => {
+  it('defines all presets with eq or curves tokens', () => {
     const keys = Object.keys(COLOR_PRESETS).sort();
-    expect(keys).toEqual(['cinematic', 'cool', 'flat', 'punch', 'warm']);
+    expect(keys).toEqual(['cinematic', 'cool', 'flat', 'punch', 'vivid', 'warm']);
     for (const v of Object.values(COLOR_PRESETS)) {
       expect(v.includes('eq=') || v.includes('curves=')).toBe(true);
     }

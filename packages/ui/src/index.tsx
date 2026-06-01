@@ -497,6 +497,7 @@ function StickerPanel() {
 
 const COLOR_PRESET_OPTS: { id: ColorPreset; label: string }[] = [
   { id: 'none', label: '없음' },
+  { id: 'vivid', label: '화사하게 (vivid · 1탭)' },
   { id: 'warm', label: '따뜻하게 (warm)' },
   { id: 'cool', label: '차갑게 (cool)' },
   { id: 'punch', label: '선명하게 (punch)' },
@@ -506,6 +507,7 @@ const COLOR_PRESET_OPTS: { id: ColorPreset; label: string }[] = [
 // 프리뷰용 CSS 근사(익스포트는 ffmpeg eq/curves로 정확히 적용). 1:1 아님, 분위기 미리보기.
 const CSS_COLOR_APPROX: Record<ColorPreset, string> = {
   none: 'none',
+  vivid: 'saturate(1.6) contrast(1.15) brightness(1.03) sepia(0.08)',
   warm: 'saturate(1.05) sepia(0.16)',
   cool: 'saturate(1.02) hue-rotate(-12deg) brightness(1.0)',
   punch: 'contrast(1.3) saturate(1.4) brightness(1.02)',

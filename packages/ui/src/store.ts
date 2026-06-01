@@ -234,7 +234,7 @@ function derive(timeline: TimelineModel) {
   return { clipCount: videoClips(timeline).length, durationProgramUs: timeline.durationProgram };
 }
 
-export type ColorPreset = 'none' | 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat';
+export type ColorPreset = 'none' | 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat' | 'vivid';
 /** 색보정 프리셋(전역 룩)을 전 클립에 적용한 타임라인(익스포트용). command bus 경유, 길이 불변. */
 function gradeTimeline(
   timeline: TimelineModel,

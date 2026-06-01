@@ -36,7 +36,7 @@ interface Clip {
   id: string;
   file: string;
   mode: 'color' | 'caption';
-  grade: 'cinematic' | 'warm' | 'punch' | 'cool';
+  grade: 'cinematic' | 'warm' | 'punch' | 'cool' | 'vivid';
   secs: number;
   label: string; // 장르 라벨(after 측에 표기)
 }
@@ -65,7 +65,7 @@ const CLIPS: Clip[] = [
     secs: 8,
     label: '뷰티·웜',
   },
-  { id: 'food', file: 'ko-food.mp4', mode: 'color', grade: 'warm', secs: 8, label: '먹방·웜' },
+  { id: 'food', file: 'ko-food.mp4', mode: 'color', grade: 'vivid', secs: 8, label: '먹방·비비드' },
   { id: 'pet', file: 'gallery/g_pet.mp4', mode: 'color', grade: 'warm', secs: 8, label: '반려·웜' },
   {
     id: 'cook',

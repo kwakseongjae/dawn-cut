@@ -90,7 +90,7 @@ const CommandSchemas = {
   applyColorgrade: z.object({
     type: z.literal('applyColorgrade'),
     clipId: z.string().optional(),
-    preset: z.enum(['warm', 'cool', 'punch', 'cinematic', 'flat']),
+    preset: z.enum(['warm', 'cool', 'punch', 'cinematic', 'flat', 'vivid']),
     intensity: z.number().min(0).max(1).optional(),
   }),
   /** 펀치인 줌을 클립에 적용(clipId 생략 시 전 비디오클립). 길이 불변=비파괴. */
