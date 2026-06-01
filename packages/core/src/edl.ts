@@ -11,6 +11,7 @@ export function timelineToEdl(timeline: TimelineModel, mediaPath: string): Edl {
     sourceStart: c.sourceStart,
     sourceEnd: c.sourceEnd,
     programStart: c.timelineStart,
+    ...(c.effects && c.effects.length > 0 ? { effects: c.effects } : {}),
   }));
   const totalDuration = segments.reduce((acc, s) => acc + (s.sourceEnd - s.sourceStart), 0);
   return { fps: timeline.fps, segments, totalDuration };

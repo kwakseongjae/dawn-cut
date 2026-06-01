@@ -9,11 +9,12 @@
 import { z } from 'zod';
 import { cutSourceRange, deleteWordRange, removeSilences } from './commands.js';
 import type { SubtitleStyle } from './draw.js';
+import type { ClipEffect } from './effects.js';
 import { detectFillers } from './fillers.js';
 import { type GlossaryPair, applyGlossary } from './glossary.js';
 import { wordToProgram } from './sync.js';
 import { validateSync } from './sync.js';
-import { validateTimeline } from './timeline.js';
+import { validateTimeline, videoClips } from './timeline.js';
 import { buildTranscriptModel, validateTranscript } from './transcript.js';
 import type { TimelineModel, TranscriptModel } from './types.js';
 
@@ -84,6 +85,22 @@ const CommandSchemas = {
     type: z.literal('replaceSubtitleStyle'),
     style: SubtitleStyleZ,
   }),
+  /** 색보정 프리셋을 클립에 적용(clipId 생략 시 전 비디오클립). 길이 불변=비파괴. */
+  applyColorgrade: z.object({
+    type: z.literal('applyColorgrade'),
+    clipId: z.string().optional(),
+    preset: z.enum(['warm', 'cool', 'punch', 'cinematic', 'flat']),
+    intensity: z.number().min(0).max(1).optional(),
+  }),
+  /** 펀치인 줌을 클립에 적용(clipId 생략 시 전 비디오클립). 길이 불변=비파괴. */
+  applyZoom: z.object({
+    type: z.literal('applyZoom'),
+    clipId: z.string().optional(),
+    from: z.number().positive(),
+    to: z.number().positive(),
+    startUs: z.number().int().nonnegative(),
+    endUs: z.number().int().positive(),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -94,6 +111,8 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.applyGlossary,
   CommandSchemas.setSubtitleStyle,
   CommandSchemas.replaceSubtitleStyle,
+  CommandSchemas.applyColorgrade,
+  CommandSchemas.applyZoom,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -124,6 +143,22 @@ function validateState(state: EditorState): string[] {
     ...validateTranscript(state.transcript),
     ...validateSync(state.timeline, state.transcript),
   ];
+}
+
+/** 이펙트를 대상 클립(들)에 append한 새 timeline. clipId 생략 시 전 비디오클립. 불변 갱신. */
+function addEffectToClips(
+  timeline: TimelineModel,
+  clipId: string | undefined,
+  effect: ClipEffect,
+): TimelineModel {
+  const targetIds = clipId ? [clipId] : videoClips(timeline).map((c) => c.id);
+  const clips = { ...timeline.clips };
+  for (const id of targetIds) {
+    const c = clips[id];
+    if (!c) continue;
+    clips[id] = { ...c, effects: [...(c.effects ?? []), effect] };
+  }
+  return { ...timeline, clips };
 }
 
 // ── reducer들 (순수) — timeline 변환은 기존 commands.ts CommandResult를 흡수 ──
@@ -180,6 +215,24 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       return { ...state, subtitleStyle: { ...(state.subtitleStyle ?? {}), ...cmd.patch } };
     case 'replaceSubtitleStyle':
       return { ...state, subtitleStyle: cmd.style };
+    case 'applyColorgrade': {
+      const effect: ClipEffect = {
+        kind: 'color',
+        preset: cmd.preset,
+        ...(cmd.intensity != null ? { intensity: cmd.intensity } : {}),
+      };
+      return { ...state, timeline: addEffectToClips(state.timeline, cmd.clipId, effect) };
+    }
+    case 'applyZoom': {
+      const effect: ClipEffect = {
+        kind: 'zoom',
+        from: cmd.from,
+        to: cmd.to,
+        startUs: cmd.startUs,
+        endUs: cmd.endUs,
+      };
+      return { ...state, timeline: addEffectToClips(state.timeline, cmd.clipId, effect) };
+    }
   }
 }
 

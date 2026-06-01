@@ -2,6 +2,7 @@
  * Data contracts — see docs/poc/04-DATA-CONTRACTS.md (single source of truth).
  * Time is integer microseconds (µs). Intervals are half-open [start, end).
  */
+import type { ClipEffect } from './effects.js';
 
 // ── §1 TranscriptModel ──────────────────────────────────────────────
 export interface Word {
@@ -35,6 +36,8 @@ export interface Clip {
   sourceStart: number; // µs (source coords)
   sourceEnd: number; // µs (source coords)
   timelineStart: number; // µs (program coords)
+  // 렌더 이펙트(펀치인 줌·색보정). 길이를 바꾸지 않는 픽셀 메타라 TL/SYNC/EDL 불변식 무영향.
+  effects?: ClipEffect[];
 }
 
 export interface Track {
@@ -57,6 +60,7 @@ export interface EdlSegment {
   sourceStart: number; // µs
   sourceEnd: number; // µs
   programStart: number; // µs
+  effects?: ClipEffect[]; // 클립 이펙트를 EDL로 전달 → 렌더러가 세그먼트별 필터 적용
 }
 
 export interface Edl {

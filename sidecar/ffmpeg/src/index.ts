@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { buildOverlayFilter } from '@dawn-cut/core';
+import { buildOverlayFilter, effectFilter } from '@dawn-cut/core';
 import type { Edl, OverlayClip } from '@dawn-cut/core';
 
 const exec = promisify(execFile);
@@ -130,7 +130,11 @@ export async function renderEdl(
   edl.segments.forEach((s, i) => {
     const a = sec(s.sourceStart);
     const b = sec(s.sourceEnd);
-    vparts.push(`[0:v]trim=start=${a}:end=${b},setpts=PTS-STARTPTS[v${i}]`);
+    // 클립 이펙트(펀치인 줌·색보정)를 trim→setpts 직후 체인에 삽입(라벨 없는 본문만 core가 생성).
+    // setpts로 세그먼트 t가 0부터라 zoom의 on/t 기준이 세그먼트-로컬이라 안전. 이펙트 없으면 바이트동일.
+    const eff = (s.effects ?? []).map((e) => effectFilter(e, edl.fps)).filter(Boolean);
+    const effChain = eff.length > 0 ? `,${eff.join(',')}` : '';
+    vparts.push(`[0:v]trim=start=${a}:end=${b},setpts=PTS-STARTPTS${effChain}[v${i}]`);
     aparts.push(`[0:a]atrim=start=${a}:end=${b},asetpts=PTS-STARTPTS[a${i}]`);
     vlabels.push(`[v${i}]`);
     alabels.push(`[a${i}]`);

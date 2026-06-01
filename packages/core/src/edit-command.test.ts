@@ -114,6 +114,37 @@ describe('applyCommand — command bus dispatcher', () => {
     const out = applyCommand(state, { type: 'replaceSubtitleStyle', style: { fontScale: 0.5 } });
     expect(out.after.subtitleStyle).toEqual({ fontScale: 0.5 });
   });
+
+  it('applyColorgrade: 전 비디오클립에 색보정 이펙트 추가(길이 불변, 불변식 유지)', () => {
+    const state = scene([
+      ['앞', 0, 1],
+      ['뒤', 1, 2],
+    ]);
+    const out = applyCommand(state, { type: 'applyColorgrade', preset: 'warm' });
+    const clips = Object.values(out.after.timeline.clips);
+    expect(clips.every((c) => c.effects?.some((e) => e.kind === 'color'))).toBe(true);
+    expect(out.removedProgramUs).toBe(0);
+    expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
+  });
+
+  it('applyZoom: 펀치인 줌 이펙트 추가', () => {
+    const state = scene([['a', 0, 2]]);
+    const out = applyCommand(state, {
+      type: 'applyZoom',
+      from: 1,
+      to: 1.1,
+      startUs: 0,
+      endUs: 2_000_000,
+    });
+    const clip = Object.values(out.after.timeline.clips)[0]!;
+    expect(clip.effects?.some((e) => e.kind === 'zoom')).toBe(true);
+    expect(out.removedProgramUs).toBe(0);
+  });
+
+  it('applyColorgrade: 잘못된 preset 거부(Zod)', () => {
+    const state = scene([['a', 0, 1]]);
+    expect(() => applyCommand(state, { type: 'applyColorgrade', preset: 'neon' })).toThrow();
+  });
 });
 
 describe('EditCommand Zod 가드 (경계 런타임 검증)', () => {
@@ -147,7 +178,9 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
   it('verb별 inputSchema(JSON-Schema)를 노출', () => {
     const m = commandManifest();
     expect(m.map((x) => x.name).sort()).toEqual([
+      'applyColorgrade',
       'applyGlossary',
+      'applyZoom',
       'cutSourceRange',
       'deleteWordRange',
       'removeFillers',

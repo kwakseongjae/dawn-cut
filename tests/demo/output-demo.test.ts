@@ -87,10 +87,22 @@ describe.skipIf(!haveAssets || !existsSync(WHISPER))('output demo (real external
     expect(existsSync(out('korean', 'chapters.txt'))).toBe(true);
   });
 
-  it('외부 영상에 사진+gif 오버레이 합성 → output/overlay/ 에 아카이빙', async () => {
+  it('외부 영상에 색보정(cinematic) + 사진/gif 오버레이 합성 → output/overlay/', async () => {
     const probe = await probeMedia(CLIP);
     const timeline = createInitialTimeline('clip', probe.durationUs, probe.fps || 30);
-    const edl = timelineToEdl(timeline, CLIP);
+    // P2-B: 클립에 색보정(cinematic) 이펙트 적용 → 렌더 시 filter_complex로 합성.
+    const clipId = timeline.tracks[0]!.clips[0]!;
+    const graded = {
+      ...timeline,
+      clips: {
+        ...timeline.clips,
+        [clipId]: {
+          ...timeline.clips[clipId]!,
+          effects: [{ kind: 'color', preset: 'cinematic' } as const],
+        },
+      },
+    };
+    const edl = timelineToEdl(graded, CLIP);
     const dur = probe.durationUs;
     const overlays: OverlayClip[] = [
       {
