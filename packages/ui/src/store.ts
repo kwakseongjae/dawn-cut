@@ -13,6 +13,7 @@ import {
   plannerManifest,
   ruleBasedPlan,
   serializeProject,
+  stylePackById,
   summarizeState,
   timelineToEdl,
   transcriptToCues,
@@ -105,6 +106,7 @@ interface EditorState {
   planAndPreview: (input: string) => Promise<void>; // NL → (LLM 가능시 LLM, 실패시 룰) → dryRun
   approvePlan: () => void; // 유일한 상태변경 지점: 각 cmd applyCommand + appendAudit
   rejectPlan: () => void;
+  applyStylePack: (id: string) => void; // 1클릭 스타일 팩: 팩 commands를 command bus+감사로 적용
   // ── 대기 UX / 완료 / 무음 제어 (사이클2) ──
   sourceDurationUs: number; // 원본 미디어 길이(완료 카드의 '원본')
   lastExport: { path: string; format: string; originalUs: number; finalUs: number } | null;
@@ -786,6 +788,43 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
   rejectPlan: () => set({ pendingPlan: null, planReport: null, nlError: null }),
+
+  applyStylePack: (id) => {
+    // 1클릭 스타일 팩 = plan(EditCommand[] 묶음)을 approvePlan과 동일한 command bus 경로로 적용.
+    // 색보정·자막스타일(+애니)·말버릇 컷이 한 번에 들어가고 감사로그에 남는다. 자막 번인은 별도(doBurn).
+    const pack = stylePackById(id);
+    const { timeline, transcript, subtitleStyle } = get();
+    if (!pack || !timeline || !transcript) return;
+    let st: { timeline: TimelineModel; transcript: TranscriptModel; subtitleStyle: SubtitleStyle } =
+      {
+        timeline,
+        transcript,
+        subtitleStyle,
+      };
+    let audit = get().auditLog;
+    for (const cmd of pack.commands) {
+      const { after, removedProgramUs } = applyCommand(st, cmd);
+      st = {
+        timeline: after.timeline,
+        transcript: after.transcript,
+        subtitleStyle: after.subtitleStyle ?? {},
+      };
+      audit = appendAudit(audit, cmd, removedProgramUs);
+    }
+    set({
+      timeline: st.timeline,
+      transcript: st.transcript,
+      subtitleStyle: st.subtitleStyle,
+      auditLog: audit,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      selected: [],
+      status: 'ready',
+      ...derive(st.timeline),
+    });
+  },
 }));
 
 export { deadSet };

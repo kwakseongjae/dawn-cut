@@ -75,6 +75,7 @@ declare global {
       planAndPreview: (input: string) => Promise<void>;
       approvePlan: () => void;
       rejectPlan: () => void;
+      applyStylePack: (id: string) => void;
       detectLlm: () => Promise<void>;
     };
   }

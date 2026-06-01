@@ -1,5 +1,7 @@
 import {
+  STYLE_PACKS,
   SUBTITLE_PRESETS,
+  captionFrames,
   clampRange,
   detectFillers,
   drawBadge,
@@ -1109,6 +1111,7 @@ function Transcript() {
     planAndPreview,
     approvePlan,
     rejectPlan,
+    applyStylePack,
     pendingPlan,
     planReport,
     nlBusy,
@@ -1160,27 +1163,34 @@ function Transcript() {
     emphOn: boolean = keywordEmphasis,
   ) => {
     if (!transcript || !timeline) return;
-    for (const c of transcriptToCues(transcript, timeline)) {
-      // 어절 단위 자동 줄바꿈(2줄) 후 래스터화. 원문(c.text)은 per-cue 편집용으로 보존.
+    // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
+    // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
+    const anim = style.animation ?? 'none';
+    const cueOpts =
+      anim === 'none' ? {} : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
+    for (const c of transcriptToCues(transcript, timeline, cueOpts)) {
       // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
-      const wrapped = wrapCaption(c.text, { maxCharsPerLine: 16, maxLines: 2 });
-      const res = await window.dawn?.writeAsset(
-        rasterizeSubtitle(wrapped, style, emphasisFor(c.text, emphOn)),
-      );
-      if (res)
-        addOverlayWith({
-          kind: 'subtitle',
-          name: c.text.slice(0, 24),
-          text: c.text,
-          src: res.path,
-          x: pos.x,
-          y: pos.y,
-          scale: pos.scale,
-          opacity: 1,
-          startUs: c.startUs,
-          endUs: c.endUs,
-          z: 100,
-        });
+      const cueKeys = emphasisFor(c.text, emphOn);
+      // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
+      for (const fr of captionFrames(c, anim)) {
+        const emph = anim === 'karaoke' && fr.activeWord ? new Set([fr.activeWord]) : cueKeys;
+        const wrapped = wrapCaption(fr.text, { maxCharsPerLine: 16, maxLines: 2 });
+        const res = await window.dawn?.writeAsset(rasterizeSubtitle(wrapped, style, emph));
+        if (res)
+          addOverlayWith({
+            kind: 'subtitle',
+            name: c.text.slice(0, 24),
+            text: fr.text,
+            src: res.path,
+            x: pos.x,
+            y: pos.y,
+            scale: pos.scale,
+            opacity: 1,
+            startUs: fr.startUs,
+            endUs: fr.endUs,
+            z: 100,
+          });
+      }
     }
   };
   // Debounced re-burn — slider drags (every onChange tick) used to fire one
@@ -1284,6 +1294,33 @@ function Transcript() {
           <span className="nl-hint" data-testid="nl-engine">
             {nlBusy ? '생각 중…' : llmReady ? 'AI · Enter' : 'Enter'}
           </span>
+        </div>
+      )}
+      {transcript && (
+        <div className="nl-bar" data-testid="style-pack-bar">
+          <span className="nl-ico">🎨</span>
+          <select
+            className="select"
+            data-testid="style-pack"
+            defaultValue=""
+            style={{ flex: 1, height: 26, fontSize: 12 }}
+            onChange={(e) => {
+              const id = e.target.value;
+              if (id) {
+                applyStylePack(id);
+                e.target.value = '';
+              }
+            }}
+          >
+            <option value="" disabled>
+              스타일 팩 1클릭 — 색·자막·말버릇 한 번에
+            </option>
+            {STYLE_PACKS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label} · {p.genre}
+              </option>
+            ))}
+          </select>
         </div>
       )}
       {pendingPlan && (
@@ -1872,6 +1909,7 @@ export function AppShell() {
       planAndPreview: (input: string) => useEditor.getState().planAndPreview(input),
       approvePlan: () => useEditor.getState().approvePlan(),
       rejectPlan: () => useEditor.getState().rejectPlan(),
+      applyStylePack: (id: string) => useEditor.getState().applyStylePack(id),
       detectLlm: () => useEditor.getState().detectLlm(),
     };
     // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).
