@@ -76,6 +76,8 @@ interface EditorState {
   replaceSubtitleStyle: (style: SubtitleStyle) => void;
   keywordEmphasis: boolean; // 키워드 강조 자막 on/off (색은 subtitleStyle.emphasisColor)
   setKeywordEmphasis: (on: boolean) => void;
+  colorPreset: ColorPreset; // 전역 색보정 프리셋(익스포트 시 전 클립에 적용)
+  setColorPreset: (p: ColorPreset) => void;
   // ── 한글 검수 자동화 (어절 위) ──
   glossary: GlossaryPair[]; // 고유명사 '내 사전' (localStorage 영속)
   addGlossaryPair: (from: string, to: string) => void;
@@ -212,6 +214,17 @@ function derive(timeline: TimelineModel) {
   return { clipCount: videoClips(timeline).length, durationProgramUs: timeline.durationProgram };
 }
 
+export type ColorPreset = 'none' | 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat';
+/** 색보정 프리셋(전역 룩)을 전 클립에 적용한 타임라인(익스포트용). command bus 경유, 길이 불변. */
+function gradeTimeline(
+  timeline: TimelineModel,
+  transcript: TranscriptModel | null,
+  preset: ColorPreset,
+): TimelineModel {
+  if (preset === 'none' || !transcript) return timeline;
+  return applyCommand({ timeline, transcript }, { type: 'applyColorgrade', preset }).after.timeline;
+}
+
 function deadSet(timeline: TimelineModel | null, transcript: TranscriptModel | null): Set<string> {
   // a word is dead if no live clip covers its source interval
   const dead = new Set<string>();
@@ -252,6 +265,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
   keywordEmphasis: false,
+  colorPreset: 'none',
   glossary: loadGlossary(),
   auditLog: [],
   sourceDurationUs: 0,
@@ -305,6 +319,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ subtitleStyle: after.subtitleStyle ?? {} });
   },
   setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
+  setColorPreset: (p) => set({ colorPreset: p }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>
@@ -492,7 +507,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: 'exporting' });
-    const edl = timelineToEdl(timeline, mediaPath);
+    // 색보정 프리셋(전역 룩)을 익스포트 시 전 클립에 적용(command bus 경유, 길이 불변).
+    const edl = timelineToEdl(gradeTimeline(timeline, transcript, get().colorPreset), mediaPath);
     // 자막이 번인되지 않았으면 끌 수 있는 소프트 자막 트랙(mov_text)을 자동 mux.
     // 번인(subtitle 오버레이)된 경우엔 중복을 피해 생략한다.
     let subtitlesPath: string | undefined;
@@ -524,11 +540,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   exportVideo: async (path, format) => {
-    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips } = get();
+    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: format === 'gif' ? 'exporting gif' : 'exporting' });
-    const edl = timelineToEdl(timeline, mediaPath);
+    const edl = timelineToEdl(gradeTimeline(timeline, transcript, get().colorPreset), mediaPath);
     const res = await dawn.render(edl, path, {
       format,
       overlays: toClips(overlays, timeline.durationProgram),

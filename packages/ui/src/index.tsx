@@ -5,6 +5,7 @@ import {
   drawBadge,
   drawEmoji,
   drawSubtitle,
+  dryRunCommands,
   extractChapters,
   formatChapters,
   moveOverlay,
@@ -29,7 +30,7 @@ import {
 } from 'react';
 import './styles.css';
 import { deadSet, useEditor } from './store.js';
-import type { PanelId } from './store.js';
+import type { ColorPreset, PanelId } from './store.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -215,7 +216,7 @@ const RAIL: { id: PanelId; ico: string; label: string; short: string }[] = [
   { id: 'media', ico: '🎬', label: '미디어', short: '미디어' },
   { id: 'text', ico: '🗣', label: '음성 · TTS', short: '음성' },
   { id: 'sticker', ico: '✨', label: '스티커 · GIF', short: '스티커' },
-  // 'effect'(효과)는 전부 미연동 preview stub이라 레일에서 숨김(정직 표기). EffectPanel은 코드에 보존.
+  { id: 'effect', ico: '🎚', label: '효과 · 색보정', short: '효과' },
 ];
 
 function Rail() {
@@ -494,32 +495,48 @@ function StickerPanel() {
   );
 }
 
-const EFFECTS = [
-  ['🔍', 'Auto-zoom', 'Screen-Studio style punch-in'],
-  ['🖱', 'Cursor highlight', 'spotlight + click ripples'],
-  ['🌫', 'Blur region', 'hide sensitive areas'],
-  ['💥', 'Shake', 'beat-synced camera shake'],
-  ['✨', 'Glitch', 'transition flair'],
+const COLOR_PRESET_OPTS: { id: ColorPreset; label: string }[] = [
+  { id: 'none', label: '없음' },
+  { id: 'warm', label: '따뜻하게 (warm)' },
+  { id: 'cool', label: '차갑게 (cool)' },
+  { id: 'punch', label: '선명하게 (punch)' },
+  { id: 'cinematic', label: '시네마틱 (cinematic)' },
+  { id: 'flat', label: '플랫 (flat)' },
 ];
+// 프리뷰용 CSS 근사(익스포트는 ffmpeg eq/curves로 정확히 적용). 1:1 아님, 분위기 미리보기.
+const CSS_COLOR_APPROX: Record<ColorPreset, string> = {
+  none: 'none',
+  warm: 'saturate(1.05) sepia(0.16)',
+  cool: 'saturate(1.02) hue-rotate(-12deg) brightness(1.0)',
+  punch: 'contrast(1.3) saturate(1.4) brightness(1.02)',
+  cinematic: 'contrast(1.3) saturate(0.7) brightness(0.98)',
+  flat: 'contrast(0.82) saturate(0.78)',
+};
+
 function EffectPanel() {
+  const { colorPreset, setColorPreset, timeline } = useEditor();
   return (
     <div className="dock-body">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>Effects & Transitions</strong>
-        <span className="badge">preview</span>
-      </div>
-      {EFFECTS.map(([ico, name, desc]) => (
-        <div className="list-row" key={name}>
-          <div className="t">
-            {ico} {name}
-            <small>{desc}</small>
-          </div>
-          <span className="badge">preview</span>
-        </div>
-      ))}
+      <strong style={{ fontSize: 13 }}>색보정 (Color)</strong>
+      <label className="ov-field" style={{ marginTop: 8 }}>
+        프리셋
+        <select
+          className="select"
+          data-testid="color-preset"
+          value={colorPreset}
+          disabled={!timeline}
+          onChange={(e) => setColorPreset(e.target.value as ColorPreset)}
+        >
+          {COLOR_PRESET_OPTS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <p className="muted-note">
-        Effect catalog UI. Rendering pipeline lands with the GPU compositor — listed as{' '}
-        <b>preview</b>.
+        프리뷰는 <b>CSS 근사</b>, 익스포트는 FFmpeg(eq/curves)로 정확히 적용됩니다. 펀치인 줌 등은
+        곧.
       </p>
     </div>
   );
@@ -562,6 +579,7 @@ function Preview() {
     selectOverlay,
     updateOverlay,
     removeOverlay,
+    colorPreset,
   } = useEditor();
   const selectedOverlay = overlays.find((o) => o.id === selectedOverlayId) ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -707,6 +725,7 @@ function Preview() {
               src={`file://${mediaPath}`}
               preload="auto"
               onEnded={() => setPlaying(false)}
+              style={colorPreset !== 'none' ? { filter: CSS_COLOR_APPROX[colorPreset] } : undefined}
             />
             {visibleOverlays.map((o) => (
               <div
@@ -1083,6 +1102,12 @@ function Transcript() {
     () => new Set(transcript ? detectFillers(transcript).filter((id) => !dead.has(id)) : []),
     [transcript, dead],
   );
+  // dryRun(비파괴 미리보기): 말버릇 제거 시 줄어들 프로그램 길이를 사전에 보여준다.
+  const fillerSavedUs = useMemo(() => {
+    if (!transcript || !timeline || fillerIds.size === 0) return 0;
+    const { report } = dryRunCommands({ timeline, transcript }, [{ type: 'removeFillers' }]);
+    return report.ok ? report.removedProgramUs : 0;
+  }, [transcript, timeline, fillerIds]);
   // 현재 재생 위치의 cue(원문) — 프리뷰 자막/키워드강조의 단일 출처.
   const currentCue = useMemo(() => {
     if (!transcript || !timeline) return null;
@@ -1387,7 +1412,7 @@ function Transcript() {
           onClick={() => removeFillers()}
           title="음/어/흠 같은 말버릇 어절을 한 번에 컷합니다"
         >
-          🧹 말버릇 {fillerIds.size}개 제거
+          🧹 말버릇 {fillerIds.size}개 제거{fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
         </button>
         <details className="glossary">
           <summary>📒 내 사전 ({glossary.length})</summary>

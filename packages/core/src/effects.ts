@@ -114,7 +114,7 @@ export const COLOR_PRESETS: Record<ColorEffect['preset'], string> = {
   warm: "curves=r='0/0 0.5/0.58 1/1':g='0/0 0.5/0.5 1/1':b='0/0 0.5/0.42 1/1'",
   cool: "curves=r='0/0 0.5/0.42 1/1':g='0/0 0.5/0.5 1/1':b='0/0 0.5/0.58 1/1'",
   punch: 'eq=contrast=1.30:saturation=1.40:brightness=0.02',
-  cinematic: "eq=contrast=1.20:saturation=0.85,curves=all='0/0.04 0.5/0.5 1/0.96'",
+  cinematic: "eq=contrast=1.30:saturation=0.70,curves=all='0/0.06 0.5/0.5 1/0.92'",
   flat: 'eq=contrast=0.82:saturation=0.78:gamma=1.05',
 };
 
