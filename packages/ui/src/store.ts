@@ -1,4 +1,5 @@
 import {
+  appendAudit,
   applyCommand,
   applyGlossary,
   buildTranscriptModel,
@@ -12,6 +13,7 @@ import {
   videoClips,
 } from '@dawn-cut/core';
 import type {
+  AuditEntry,
   GlossaryPair,
   OverlayClip,
   SubtitleStyle,
@@ -80,6 +82,7 @@ interface EditorState {
   removeGlossaryPair: (index: number) => void;
   applyGlossaryNow: () => void; // 현재 전사에 사전 치환 적용
   removeFillers: () => void; // 말버릇(음/어…) 어절을 타임라인에서 컷
+  auditLog: AuditEntry[]; // 적용된 편집 명령의 결정적 해시체인 기록(replay/검증 토대)
   // ── 대기 UX / 완료 / 무음 제어 (사이클2) ──
   sourceDurationUs: number; // 원본 미디어 길이(완료 카드의 '원본')
   lastExport: { path: string; format: string; originalUs: number; finalUs: number } | null;
@@ -250,6 +253,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitleStyle: {},
   keywordEmphasis: false,
   glossary: loadGlossary(),
+  auditLog: [],
   sourceDurationUs: 0,
   lastExport: null,
   silenceParams: { noiseDb: -30, minSilenceMs: 500 },
@@ -392,6 +396,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       sourceDurationUs: probe.durationUs,
       lastExport: null,
       silencePreview: null,
+      auditLog: [],
       ...derive(timeline),
     });
   },
@@ -410,10 +415,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       .sort((a, b) => a - b);
     const fromId = transcript.order[idxs[0]!]!;
     const toId = transcript.order[idxs[idxs.length - 1]!]!;
-    const { after } = applyCommand(
-      { timeline, transcript },
-      { type: 'deleteWordRange', fromWordId: fromId, toWordId: toId },
-    );
+    const cmd = { type: 'deleteWordRange', fromWordId: fromId, toWordId: toId } as const;
+    const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
     set({
       timeline: after.timeline,
       selected: [],
@@ -421,6 +424,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       future: [],
       canUndo: true,
       canRedo: false,
+      auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
       ...derive(after.timeline),
     });
   },
@@ -435,10 +439,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       minSilenceUs: silenceParams.minSilenceMs * 1000,
     });
     // 감지=sidecar IO, 적용=command bus.
-    const { after } = applyCommand(
-      { timeline, transcript },
-      { type: 'removeSilences', silences, padUs: 0 },
-    );
+    const cmd = { type: 'removeSilences', silences, padUs: 0 } as const;
+    const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
     set({
       timeline: after.timeline,
       status: 'ready',
@@ -446,6 +448,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       future: [],
       canUndo: true,
       canRedo: false,
+      auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
       ...derive(after.timeline),
     });
   },
@@ -598,6 +601,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       sourceDurationUs: project.timeline.durationProgram,
       lastExport: null,
       silencePreview: null,
+      auditLog: [],
     });
   },
 
@@ -618,20 +622,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     // command bus 경유(사람 GUI = 에이전트 동일 bus).
     const { transcript, timeline, glossary } = get();
     if (!transcript || !timeline || glossary.length === 0) return;
-    const { after } = applyCommand(
-      { timeline, transcript },
-      { type: 'applyGlossary', pairs: glossary },
-    );
-    set({ transcript: after.transcript });
+    const cmd = { type: 'applyGlossary', pairs: glossary } as const;
+    const { after } = applyCommand({ timeline, transcript }, cmd);
+    set({ transcript: after.transcript, auditLog: appendAudit(get().auditLog, cmd, 0) });
   },
   removeFillers: () => {
     // 사람 GUI도 AI 에이전트와 동일한 command bus(applyCommand)를 구동한다 — P1 키스톤.
     const { transcript, timeline } = get();
     if (!transcript || !timeline) return;
-    const { after, removedProgramUs } = applyCommand(
-      { timeline, transcript },
-      { type: 'removeFillers' },
-    );
+    const cmd = { type: 'removeFillers' } as const;
+    const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
     if (removedProgramUs === 0) return; // 살아있는 말버릇 없음 → 변화 없음
     set({
       timeline: after.timeline,
@@ -641,6 +641,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       canUndo: true,
       canRedo: false,
       status: 'ready',
+      auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
       ...derive(after.timeline),
     });
   },

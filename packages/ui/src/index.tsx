@@ -1566,8 +1566,15 @@ function Timeline() {
 }
 
 function StatusBar() {
-  const { status, clipCount, durationProgramUs, lastExport, revealExport, dismissExport } =
-    useEditor();
+  const {
+    status,
+    clipCount,
+    durationProgramUs,
+    lastExport,
+    revealExport,
+    dismissExport,
+    auditLog,
+  } = useEditor();
   return (
     <div className="statusbar">
       <span className="pill">
@@ -1579,6 +1586,9 @@ function StatusBar() {
       </span>
       <span>
         program <b data-testid="duration">{durationProgramUs}</b>µs · {fmt(durationProgramUs)}
+      </span>
+      <span title="기록된 편집 명령 수 (결정적 replay/검증 토대)">
+        ✎ <b data-testid="audit-count">{auditLog.length}</b>
       </span>
       <span className="spacer" />
       {lastExport ? (
