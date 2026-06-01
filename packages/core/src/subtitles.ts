@@ -1,12 +1,22 @@
 import { liveWords, wordToProgram } from './sync.js';
 import type { TimelineModel, TranscriptModel } from './types.js';
 
+/** 어절 단위 타이밍(애니메이션 자막용). 프로그램 좌표(µs). */
+export interface CueWord {
+  text: string;
+  startUs: number;
+  endUs: number;
+}
+
 /** A subtitle cue in PROGRAM coordinates (i.e. timed against the edited result). */
 export interface SubtitleCue {
   index: number; // 1-based
   startUs: number;
   endUs: number;
   text: string;
+  /** 이 cue를 이루는 어절들(프로그램 시간). transcriptToCues가 채운다.
+   *  단어별 reveal/karaoke 애니메이션 자막의 입력(captionFrames). */
+  words?: CueWord[];
 }
 
 export interface CueOptions {
@@ -52,6 +62,7 @@ export function transcriptToCues(
       startUs: group[0]!.start,
       endUs: group[group.length - 1]!.end,
       text: group.map((t) => t.text).join(' '),
+      words: group.map((t) => ({ text: t.text, startUs: t.start, endUs: t.end })),
     });
     group = [];
   };
@@ -71,6 +82,54 @@ export function transcriptToCues(
   }
   flush();
   return cues;
+}
+
+/** 자막 애니메이션 모드. none=정적(1프레임), reveal=어절 누적 등장, karaoke=전체 표시+현재 어절 강조. */
+export type CaptionAnimation = 'none' | 'reveal' | 'karaoke';
+
+/** 한 cue를 시간에 따라 그릴 '서브프레임'. 각 프레임은 [startUs,endUs) 동안 보이는 정적 자막. */
+export interface CaptionFrame {
+  /** 이 프레임에 렌더할 텍스트(reveal=누적 어절, karaoke/none=전체). */
+  text: string;
+  /** karaoke: 이 프레임에서 강조할 현재 어절 표면형(emphasis로 전달). reveal/none은 undefined. */
+  activeWord?: string;
+  startUs: number;
+  endUs: number;
+}
+
+/**
+ * cue를 애니메이션 서브프레임 배열로 펼친다(순수·결정적). 렌더러/데모는 각 프레임을
+ * 기존 drawSubtitle로 래스터화해 [startUs,endUs) 오버레이로 합성하면 단어별 reveal/karaoke가 된다.
+ * (새 렌더 엔진 불필요 — cue당 다중 PNG 오버레이로 표현. karaoke는 activeWord를 emphasis로 넘기면
+ *  기존 키워드 강조 경로가 그대로 현재 어절을 칠한다.)
+ *
+ * - mode 'none' 또는 어절<2: 단일 프레임(cue 전체, 기존 정적 자막과 동일).
+ * - 'reveal': 어절 k까지 누적한 텍스트를 어절 k의 시작~다음 어절 시작 구간에 보인다.
+ * - 'karaoke': 전체 텍스트를 보이되 현재 어절을 activeWord로 표시.
+ * 첫 프레임은 cue.startUs, 마지막 프레임은 cue.endUs에 맞춘다. start<end를 항상 보장.
+ */
+export function captionFrames(cue: SubtitleCue, mode: CaptionAnimation = 'none'): CaptionFrame[] {
+  const words = cue.words ?? [];
+  if (mode === 'none' || words.length <= 1) {
+    return [{ text: cue.text, startUs: cue.startUs, endUs: cue.endUs }];
+  }
+  return words.map((w, i) => {
+    const rawStart = i === 0 ? cue.startUs : w.startUs;
+    const rawEnd = i === words.length - 1 ? cue.endUs : (words[i + 1]?.startUs ?? cue.endUs);
+    const startUs = rawStart;
+    const endUs = Math.max(rawStart + 1, rawEnd); // start<end 보장(어절 타임스탬프 동률 방어)
+    if (mode === 'reveal') {
+      return {
+        text: words
+          .slice(0, i + 1)
+          .map((x) => x.text)
+          .join(' '),
+        startUs,
+        endUs,
+      };
+    }
+    return { text: cue.text, activeWord: w.text, startUs, endUs };
+  });
 }
 
 function srtTime(us: number): string {

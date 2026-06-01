@@ -147,10 +147,11 @@ export function colorFilter(e: ColorEffect): string {
     case 'flat':
       return eqWeighted({ contrast: 0.82, saturation: 0.78, gamma: 1.05 }, k);
     case 'cinematic': {
-      const eq = eqWeighted({ contrast: 1.2, saturation: 0.85 }, k);
-      // 약한 리프트(블랙을 0.04로) + 하이라이트 살짝 누름.
-      const lift = num(0 + (0.04 - 0) * k, 4);
-      const high = num(1 + (0.96 - 1) * k, 4);
+      // COLOR_PRESETS.cinematic 테이블(contrast 1.30 / saturation 0.70 / 리프트 0.06·하이라이트 0.92)과
+      // 정확히 일치시킨다. 이전 코드가 1.2/0.85로 약하게 렌더돼 결과가 'subtle'했던 불일치를 교정.
+      const eq = eqWeighted({ contrast: 1.3, saturation: 0.7 }, k);
+      const lift = num(0 + (0.06 - 0) * k, 4);
+      const high = num(1 + (0.92 - 1) * k, 4);
       const curve = `curves=all='0/${lift} 0.5/0.5 1/${high}'`;
       return `${eq},${curve}`;
     }

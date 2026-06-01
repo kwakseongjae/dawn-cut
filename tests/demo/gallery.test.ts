@@ -7,6 +7,7 @@ import {
   type OverlayClip,
   SUBTITLE_PRESETS,
   buildTranscriptModel,
+  captionFrames,
   createInitialTimeline,
   drawSubtitle,
   pickKeywords,
@@ -225,33 +226,41 @@ describe('갤러리 — 다양한 실제 레퍼런스 × dawn-cut 기능', () =>
           maxGapUs: 400_000,
         });
         const style = SUBTITLE_PRESETS.koreanShorts;
-        for (const [i, cue] of cues.entries()) {
-          const png = out('tmp', `${clip.id}-cap-${i}.png`);
-          const c = createCanvas(1100, 240);
-          drawSubtitle(
-            c.getContext('2d') as unknown as DrawCtx,
-            1100,
-            240,
-            wrapCaption(cue.text, { maxCharsPerLine: 16, maxLines: 2 }),
-            style,
-            new Set(pickKeywords(cue.text, { max: 1 })),
-          );
-          writeFileSync(png, c.toBuffer('image/png'));
-          afterOv.push({
-            id: `c${i}`,
-            kind: 'image',
-            src: png,
-            x: 0.08,
-            y: 0.64,
-            scale: 0.84,
-            opacity: 1,
-            startUs: cue.startUs,
-            endUs: cue.endUs,
-            z: 100,
-          });
+        // 단어별 reveal 애니메이션: cue를 captionFrames로 펼쳐 어절이 말과 함께 또박또박 등장.
+        let fi = 0;
+        for (const cue of cues) {
+          const keys = new Set(pickKeywords(cue.text, { max: 1 }));
+          for (const fr of captionFrames(cue, 'reveal')) {
+            const png = out('tmp', `${clip.id}-cap-${fi}.png`);
+            const c = createCanvas(1100, 240);
+            drawSubtitle(
+              c.getContext('2d') as unknown as DrawCtx,
+              1100,
+              240,
+              wrapCaption(fr.text, { maxCharsPerLine: 16, maxLines: 2 }),
+              style,
+              keys,
+            );
+            writeFileSync(png, c.toBuffer('image/png'));
+            afterOv.push({
+              id: `c${fi}`,
+              kind: 'image',
+              src: png,
+              x: 0.08,
+              y: 0.64,
+              scale: 0.84,
+              opacity: 1,
+              startUs: fr.startUs,
+              endUs: fr.endUs,
+              z: 100,
+            });
+            fi++;
+          }
         }
         // biome-ignore lint/suspicious/noConsole: demo output
-        console.log(`[GALLERY] ${clip.id}: ${cues.length} cues + ${clip.grade} 색보정`);
+        console.log(
+          `[GALLERY] ${clip.id}: ${cues.length} cues → ${fi} reveal 프레임 + ${clip.grade} 색보정`,
+        );
       }
 
       await renderEdl(timelineToEdl(tl, file), before, {

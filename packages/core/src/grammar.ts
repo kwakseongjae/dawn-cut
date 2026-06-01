@@ -76,7 +76,7 @@ const INTEGER_RULE = String.raw`integer ::= "-"? int`;
 // 자막 스타일: 모든 필드 선택적 → 임의 순서 키-값 객체(의미 검증은 Zod). 한 줄 규칙.
 const SUBTITLE_RULES = String.raw`subtitleStyle ::= "{" ws ( styleMember ( ws "," ws styleMember )* )? ws "}"
 styleMember ::= styleKey ws ":" ws styleValue
-styleKey ::= "\"color\"" | "\"bg\"" | "\"stroke\"" | "\"strokeWidth\"" | "\"fontFamily\"" | "\"fontWeight\"" | "\"fontScale\"" | "\"emphasisColor\""
+styleKey ::= "\"color\"" | "\"bg\"" | "\"stroke\"" | "\"strokeWidth\"" | "\"fontFamily\"" | "\"fontWeight\"" | "\"fontScale\"" | "\"emphasisColor\"" | "\"animation\""
 styleValue ::= string | number`;
 
 const GLOSSARY_RULES = String.raw`applyGlossary ::= "{" ws "\"type\"" ws ":" ws "\"applyGlossary\"" ws "," ws "\"pairs\"" ws ":" ws pairArray ws "}"

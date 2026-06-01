@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeWord, scene } from './_testkit.js';
 import { deleteWordRange } from './commands.js';
-import { formatSrt, transcriptToCues, validateCues } from './subtitles.js';
+import { captionFrames, formatSrt, transcriptToCues, validateCues } from './subtitles.js';
 import { createInitialTimeline } from './timeline.js';
 import { buildTranscriptModel } from './transcript.js';
 
@@ -91,5 +91,66 @@ describe('subtitles (SUB-INV)', () => {
       .split(' ');
     expect(flat).toEqual(['물을', '약하게', '키고', '냄비에', '물', '한컵', '진간장', '한컵']);
     expect(validateCues(tight, timeline)).toEqual([]);
+  });
+
+  it('cue가 어절 타이밍(words)을 보존한다(애니메이션 입력)', () => {
+    const words = ['하나', '둘', '셋'].map((t, k) =>
+      makeWord(t, k * 100_000, k * 100_000 + 90_000),
+    );
+    const { 0: cue } = transcriptToCues(
+      buildTranscriptModel(words, 'm1', 'ko'),
+      createInitialTimeline('m1', 1_000_000, 30),
+      { maxGapUs: 1_000_000 },
+    );
+    expect(cue?.words?.map((w) => w.text)).toEqual(['하나', '둘', '셋']);
+    expect(cue?.words?.every((w) => w.endUs > w.startUs)).toBe(true);
+  });
+
+  describe('captionFrames — 애니메이션 서브프레임', () => {
+    const cue = {
+      index: 1,
+      startUs: 0,
+      endUs: 900_000,
+      text: '물 한 컵',
+      words: [
+        { text: '물', startUs: 0, endUs: 200_000 },
+        { text: '한', startUs: 300_000, endUs: 400_000 },
+        { text: '컵', startUs: 600_000, endUs: 700_000 },
+      ],
+    };
+
+    it("'none'은 단일 프레임(cue 전체)", () => {
+      expect(captionFrames(cue, 'none')).toEqual([
+        { text: '물 한 컵', startUs: 0, endUs: 900_000 },
+      ]);
+    });
+
+    it("'reveal'은 어절을 누적하며 등장(마지막=전체), 시간 단조·start<end", () => {
+      const f = captionFrames(cue, 'reveal');
+      expect(f.map((x) => x.text)).toEqual(['물', '물 한', '물 한 컵']);
+      expect(f[0]!.startUs).toBe(0); // 첫 프레임은 cue 시작에 맞춤
+      expect(f[2]!.endUs).toBe(900_000); // 마지막은 cue 끝
+      for (const fr of f) expect(fr.endUs).toBeGreaterThan(fr.startUs);
+      // 인접 프레임 경계가 단조 증가(겹침/역전 없음)
+      expect(f[1]!.startUs).toBe(300_000);
+      expect(f[2]!.startUs).toBe(600_000);
+    });
+
+    it("'karaoke'는 전체 텍스트 + 현재 어절을 activeWord로", () => {
+      const f = captionFrames(cue, 'karaoke');
+      expect(f.every((x) => x.text === '물 한 컵')).toBe(true);
+      expect(f.map((x) => x.activeWord)).toEqual(['물', '한', '컵']);
+    });
+
+    it('어절 1개 이하면 애니메이션이어도 단일 프레임', () => {
+      const one = {
+        index: 1,
+        startUs: 0,
+        endUs: 500_000,
+        text: '안녕',
+        words: [{ text: '안녕', startUs: 0, endUs: 500_000 }],
+      };
+      expect(captionFrames(one, 'reveal')).toHaveLength(1);
+    });
   });
 });
