@@ -64,4 +64,32 @@ describe('subtitles (SUB-INV)', () => {
     expect(cues[1]!.text.startsWith('이')).toBe(true);
     expect(validateCues(cues, timeline)).toEqual([]);
   });
+
+  it('maxCharsPerCue: 긴 발화를 짧은 쇼츠형 cue로 끊는다(단어 중간 안 자름)', () => {
+    const words = ['물을', '약하게', '키고', '냄비에', '물', '한컵', '진간장', '한컵'].map((t, k) =>
+      makeWord(t, k * 100_000, k * 100_000 + 90_000),
+    );
+    const transcript = buildTranscriptModel(words, 'm1', 'ko');
+    const timeline = createInitialTimeline('m1', 1_000_000, 30);
+    const loose = transcriptToCues(transcript, timeline, {
+      maxGapUs: 1_000_000,
+      maxWordsPerCue: 8,
+    });
+    const tight = transcriptToCues(transcript, timeline, {
+      maxGapUs: 1_000_000,
+      maxWordsPerCue: 8,
+      maxCharsPerCue: 8,
+    });
+    expect(tight.length).toBeGreaterThan(loose.length); // 더 잘게 쪼갬
+    // 다중 어절 cue는 캡(8자) 이내. 모든 어절이 보존된다(중간 안 자름).
+    for (const c of tight) {
+      if (c.text.includes(' ')) expect(c.text.length).toBeLessThanOrEqual(8);
+    }
+    const flat = tight
+      .map((c) => c.text)
+      .join(' ')
+      .split(' ');
+    expect(flat).toEqual(['물을', '약하게', '키고', '냄비에', '물', '한컵', '진간장', '한컵']);
+    expect(validateCues(tight, timeline)).toEqual([]);
+  });
 });

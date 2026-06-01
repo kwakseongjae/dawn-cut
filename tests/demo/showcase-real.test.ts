@@ -49,8 +49,10 @@ function rasterizeCaption(
   style: Parameters<typeof drawSubtitle>[4],
   emph?: Set<string>,
 ): Buffer {
-  const c = createCanvas(1100, 200);
-  drawSubtitle(c.getContext('2d') as unknown as DrawCtx, 1100, 200, text, style, emph);
+  const w = 1100;
+  const h = 240; // 쇼츠형 큰 글씨가 잘리지 않게 캔버스를 키운다.
+  const c = createCanvas(w, h);
+  drawSubtitle(c.getContext('2d') as unknown as DrawCtx, w, h, text, style, emph);
   return c.toBuffer('image/png');
 }
 
@@ -160,17 +162,22 @@ describe.skipIf(!haveAssets)('실제 콘텐츠 쇼케이스 (real YouTube short)
   it('① raw 요리 쇼츠 → 자동 자막(키워드 강조) + 따뜻한 색보정 (before/after)', async () => {
     if (!talk) throw new Error('no transcript');
     const { state, probe } = talk;
-    const cues = transcriptToCues(state.transcript, state.timeline);
+    // 쇼츠형: 짧고 펀치감 있는 cue(≤4어절·≤13자) → 한 줄 큰 자막으로 또박또박 뜬다.
+    const cues = transcriptToCues(state.transcript, state.timeline, {
+      maxWordsPerCue: 4,
+      maxCharsPerCue: 13,
+      maxGapUs: 400_000,
+    });
     expect(cues.length).toBeGreaterThan(2);
 
-    // 자막 PNG 오버레이(어절 줄바꿈 + cue별 키워드 top2 노란 강조).
-    const style = { ...SUBTITLE_PRESETS.korean, emphasisColor: '#ffe14d' };
+    // 자막 PNG 오버레이(쇼츠 프리셋 + cue별 핵심어 1개 노란 강조).
+    const style = SUBTITLE_PRESETS.koreanShorts;
     const subs: OverlayClip[] = cues.map((cue, i) => {
       const png = out('tmp', `cap-${i}.png`);
-      const keys = new Set(pickKeywords(cue.text, { max: 2 }));
+      const keys = new Set(pickKeywords(cue.text, { max: 1 }));
       writeFileSync(
         png,
-        rasterizeCaption(wrapCaption(cue.text, { maxCharsPerLine: 18, maxLines: 2 }), style, keys),
+        rasterizeCaption(wrapCaption(cue.text, { maxCharsPerLine: 16, maxLines: 2 }), style, keys),
       );
       return {
         id: `c${i}`,

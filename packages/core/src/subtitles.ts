@@ -14,6 +14,12 @@ export interface CueOptions {
   maxGapUs?: number;
   /** Cap words per cue. */
   maxWordsPerCue?: number;
+  /**
+   * Cap characters per cue (default ∞). Short-form/쇼츠 captions read best as a
+   * single punchy line — set this low (~12–16) to break long runs into snappy cues.
+   * A single word longer than the cap still gets its own cue (never split mid-word).
+   */
+  maxCharsPerCue?: number;
 }
 
 /**
@@ -28,6 +34,7 @@ export function transcriptToCues(
 ): SubtitleCue[] {
   const maxGapUs = opts.maxGapUs ?? 600_000;
   const maxWords = opts.maxWordsPerCue ?? 8;
+  const maxChars = opts.maxCharsPerCue ?? Number.POSITIVE_INFINITY;
 
   type Tok = { text: string; start: number; end: number };
   const toks: Tok[] = [];
@@ -52,9 +59,13 @@ export function transcriptToCues(
   // 문장 끝(.?!…) 어절에서 cue를 끊어 자막이 완결된 문장(또는 그 일부)으로 보이게 한다.
   // 그렇지 않으면 8어절 컷이 "…소개합니다. 이"처럼 다음 문장 첫 어절을 물고 끊긴다.
   const endsSentence = /[.?!。…]$/u;
+  // 누적 문자 수(공백 포함)로, 새 어절을 더하면 maxChars를 넘는지 본다.
+  const groupChars = () =>
+    group.reduce((n, t) => n + t.text.length, 0) + Math.max(0, group.length - 1);
   for (const tok of toks) {
     const prev = group[group.length - 1];
-    if (prev && (tok.start - prev.end > maxGapUs || group.length >= maxWords)) flush();
+    const overChars = group.length > 0 && groupChars() + 1 + tok.text.length > maxChars;
+    if (prev && (tok.start - prev.end > maxGapUs || group.length >= maxWords || overChars)) flush();
     group.push(tok);
     if (endsSentence.test(tok.text)) flush();
   }

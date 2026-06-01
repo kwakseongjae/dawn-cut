@@ -35,13 +35,22 @@ const NOBOX = { color: '#ffffff', bg: 'transparent', stroke: '' } as const;
 describe('SUBTITLE_PRESETS', () => {
   it('exposes the documented preset ids', () => {
     expect(Object.keys(SUBTITLE_PRESETS).sort()).toEqual(
-      ['cinematic', 'default', 'highlight', 'korean', 'podcast', 'tiktok'].sort(),
+      ['cinematic', 'default', 'highlight', 'korean', 'koreanShorts', 'podcast', 'tiktok'].sort(),
     );
   });
 
   it('korean preset prefers CJK fonts before falling back to system', () => {
     const p = SUBTITLE_PRESETS.korean!;
     expect(p.fontFamily?.toLowerCase()).toMatch(/apple sd gothic|pretendard|noto|malgun/);
+  });
+
+  it('koreanShorts preset: 크고 굵은 CJK + 두꺼운 외곽선 + 키워드 강조(쇼츠 룩)', () => {
+    const p = SUBTITLE_PRESETS.koreanShorts!;
+    expect(p.fontFamily?.toLowerCase()).toMatch(/apple sd gothic|pretendard|noto|malgun/); // 한글 글리프
+    expect(p.fontScale ?? 0).toBeGreaterThan(0.42); // 큰 글씨
+    expect(p.strokeWidth ?? 0).toBeGreaterThan(8); // 두꺼운 외곽선
+    expect(p.emphasisColor).toBeTruthy(); // 키워드 강조색
+    expect(p.fontFamily?.toLowerCase()).not.toContain('impact'); // 한글에 Impact 금지(두부 방지)
   });
 
   it('tiktok preset is bold, outlined, no bg (the recognizable look)', () => {

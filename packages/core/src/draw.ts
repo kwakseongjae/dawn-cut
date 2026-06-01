@@ -65,6 +65,20 @@ export const SUBTITLE_PRESETS: Record<string, SubtitleStyle> = {
       '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
     fontScale: 0.38,
   },
+  // 한국어 '쇼츠형' 자막: 크고 굵은 글씨 + 두꺼운 외곽선 + 가벼운 배경(밝은 화면에서도 가독) +
+  // 키워드 노란 강조. tiktok 프리셋(Impact)은 한글 글리프가 없어 두부(□)가 되므로 CJK 폰트로 둔다.
+  // 짧은 cue(한 줄, 2~4어절)와 함께 써야 큰 글씨가 캔버스에 안 잘린다.
+  koreanShorts: {
+    color: '#ffffff',
+    bg: 'rgba(0,0,0,0.32)',
+    stroke: 'rgba(0,0,0,0.92)',
+    strokeWidth: 12,
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: '800',
+    fontScale: 0.46,
+    emphasisColor: '#ffe14d',
+  },
 };
 export type SubtitlePresetId = keyof typeof SUBTITLE_PRESETS;
 
