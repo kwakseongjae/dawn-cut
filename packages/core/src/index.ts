@@ -29,3 +29,4 @@ export * from './effects.js';
 export * from './planner.js';
 export * from './rule-planner.js';
 export * from './grammar.js';
+export * from './templates.js';

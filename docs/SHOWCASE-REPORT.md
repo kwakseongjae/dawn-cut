@@ -7,7 +7,9 @@
 > **⟳ 구현 현황 업데이트 (이번 이터레이션 — 본 리포트의 최우선 권고를 바로 반영):**
 > - **★① 애니메이션 자막 = 구현 완료.** `subtitles.ts`에 어절 타이밍 보존(`SubtitleCue.words`) + `captionFrames(cue, 'reveal'|'karaoke')` 추가, `SubtitleStyle.animation` 필드(+Zod 스키마 +GBNF styleKey)로 command bus·LLM 플래너에 노출. 갤러리 cook이 **10 cue → 34 reveal 프레임**으로 단어가 말과 함께 또박또박 등장. (drawSubtitle은 정적 유지 — cue를 다중 PNG 프레임으로 펼쳐 기존 오버레이 합성을 그대로 재사용. 예측대로 신규 렌더 엔진 불필요.)
 > - **색보정 강도 정정 = 완료.** §3에서 지적한 cinematic 코드↔문서 불일치(`colorFilter()`가 1.2/0.85로 약하게 렌더)를 테이블 의도값(contrast 1.30/sat 0.70, lift 0.06/high 0.92)으로 정렬 → 코드·문서 일치 + 더 강한 시네마틱.
-> - 아래 본문은 *작성 시점* 기준 진단이다. 위 두 항목은 이제 "있음"으로 갱신됐다(나머지 권고는 미착수).
+> - **★② 강한 1탭 auto-enhance = `vivid` 프리셋 구현 완료.** 고채도(1.6)+약대비+웜틸트 '화사 보정'. effects/edit-command/grammar/UI 드롭다운("화사하게 vivid·1탭")에 노출. 색프리셋 6종. (적응형 강도(signalstats)는 사이드카 분석패스 필요 → 잔여.)
+> - **★③ 스타일 팩 템플릿 = 구현 완료.** `templates.ts`의 `STYLE_PACKS`(6종: 바이럴펀치/먹방시즐/뷰티글로우/골든아워/시티나이트/토크클린) — 각 팩 = **plan(EditCommand[] 묶음)**(자막스타일+애니 + 색 + 말버릇). 워크플로 설계·스키마 검증, 전 팩 dryRun 클린. command bus로 적용 → GUI·LLM·MCP 공유. (UI 1클릭 버튼 + 앱 export의 자막 애니 반영 = 잔여 productization.)
+> - 아래 본문은 *작성 시점* 기준 진단이다. 위 항목(애니 자막·cinematic·vivid·스타일 팩)은 이제 "있음"으로 갱신됐다 — **P0 3개 모두 코어 구현 완료.**
 
 ---
 
