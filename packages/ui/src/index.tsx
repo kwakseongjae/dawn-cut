@@ -1111,6 +1111,7 @@ function Transcript() {
     planReport,
     nlBusy,
     nlError,
+    llmReady,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -1278,12 +1279,19 @@ function Transcript() {
               }
             }}
           />
-          <span className="nl-hint">{nlBusy ? '생각 중…' : 'Enter'}</span>
+          <span className="nl-hint" data-testid="nl-engine">
+            {nlBusy ? '생각 중…' : llmReady ? 'AI · Enter' : 'Enter'}
+          </span>
         </div>
       )}
       {pendingPlan && (
         <div className="plan-card" data-testid="plan-card">
-          <div className="plan-head">제안: “{pendingPlan.input}”</div>
+          <div className="plan-head">
+            <span>제안: “{pendingPlan.input}”</span>
+            <span className="plan-engine" data-testid="plan-engine">
+              {pendingPlan.engine === 'llm' ? '🤖 AI' : '⚙︎ 룰'}
+            </span>
+          </div>
           {pendingPlan.commands.length > 0 ? (
             <ul className="plan-cmds">
               {pendingPlan.commands.map((c, i) => (
@@ -1862,7 +1870,10 @@ export function AppShell() {
       planAndPreview: (input: string) => useEditor.getState().planAndPreview(input),
       approvePlan: () => useEditor.getState().approvePlan(),
       rejectPlan: () => useEditor.getState().rejectPlan(),
+      detectLlm: () => useEditor.getState().detectLlm(),
     };
+    // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).
+    void useEditor.getState().detectLlm();
   }, []);
   const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {

@@ -1,5 +1,5 @@
 import type { Edl, OverlayClip } from '@dawn-cut/core';
-import type { ProbeResult, SilenceInterval, TranscribeResult } from '@dawn-cut/ui';
+import type { LlmStatus, ProbeResult, SilenceInterval, TranscribeResult } from '@dawn-cut/ui';
 import { contextBridge, ipcRenderer } from 'electron';
 
 type RenderOpts = {
@@ -42,6 +42,9 @@ const bridge = {
   openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile'),
   revealItem: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),
+  llmAvailable: (): Promise<LlmStatus> => ipcRenderer.invoke('llm:available'),
+  llmPlan: (prompt: string): Promise<{ text: string; ms: number }> =>
+    ipcRenderer.invoke('llm:plan', prompt),
 };
 
 contextBridge.exposeInMainWorld('dawn', bridge);

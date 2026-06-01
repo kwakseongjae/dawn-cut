@@ -12,6 +12,7 @@ import {
   renderEdl,
   writeSrt,
 } from '@dawn-cut/sidecar-ffmpeg';
+import { isLlmAvailable, llmComplete } from '@dawn-cut/sidecar-llm';
 import { transcribe } from '@dawn-cut/sidecar-stt';
 import { synthesizeTts } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
@@ -53,6 +54,18 @@ ipcMain.handle(
 );
 
 ipcMain.handle('subtitle:write', (_e, path: string, content: string) => writeSrt(path, content));
+
+// P3 로컬 LLM 플래너(llama.cpp). renderer가 buildPlanPrompt로 만든 프롬프트를 받아 raw 텍스트를
+// 돌려준다(파싱/dryRun은 renderer가 core로). DAWN_DISABLE_LLM이 set이면 가용성 false로 강제해
+// 결정적 룰 경로(e2e/CI)를 보장한다. 부재/오류 시 renderer가 룰 플래너로 폴백한다.
+ipcMain.handle('llm:available', () => {
+  if (process.env.DAWN_DISABLE_LLM) {
+    return { available: false, binPath: '', modelPath: '', reason: '비활성화(DAWN_DISABLE_LLM)' };
+  }
+  return isLlmAvailable();
+});
+
+ipcMain.handle('llm:plan', (_e, prompt: string) => llmComplete(prompt));
 
 ipcMain.handle('tts:synthesize', async (_e, text: string, voice: string) => {
   const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));

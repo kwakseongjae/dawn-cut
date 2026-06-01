@@ -109,9 +109,7 @@ describe.skipIf(!haveAssets)('NL editing demo (자연어 편집, 실제 동작)'
 
     const fw = probe.width;
     const fh = probe.height;
-    const beforeOv: OverlayClip[] = [
-      mkLabel('원본', dur, { x: 0.19, y: 0.03, scale: 0.62 }),
-    ];
+    const beforeOv: OverlayClip[] = [mkLabel('원본', dur, { x: 0.19, y: 0.03, scale: 0.62 })];
     const afterOv: OverlayClip[] = [
       mkLabel('AI 명령: "시네마틱하게"', dur, { x: 0.1, y: 0.03, scale: 0.8 }),
     ];

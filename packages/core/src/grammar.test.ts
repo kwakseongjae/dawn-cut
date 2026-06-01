@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { PLANNER_GRAMMAR, commandGrammar } from './grammar.js';
+import {
+  PLANNER_GRAMMAR,
+  PLANNER_PLAN_GRAMMAR,
+  commandGrammar,
+  plannerGrammar,
+} from './grammar.js';
 
 // edit-command.ts의 EditCommandSchema discriminatedUnion과 1:1로 일치해야 하는 9개 verb.
 const VERBS = [
@@ -154,6 +159,83 @@ describe('commandGrammar (GBNF)', () => {
   it('색보정 프리셋 5종 리터럴 포함', () => {
     for (const preset of ['warm', 'cool', 'punch', 'cinematic', 'flat']) {
       expect(g).toContain(String.raw`"\"${preset}\""`);
+    }
+  });
+
+  // ★ 회귀: llama.cpp GBNF 파서는 최상위 규칙 본문의 줄바꿈을 '규칙 종료'로 본다.
+  // 규칙을 여러 줄로 쪼개면(또는 `|`를 줄 앞에 두면) 'expecting name'으로 문법 전체가
+  // 로드 실패한다(실측). 모든 규칙은 한 줄이어야 한다 — 이 불변을 고정한다.
+  it('모든 규칙이 한 줄(다음 줄로 본문이 이어지지 않음)', () => {
+    const lines = g.split('\n').map((l) => l.trim());
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (line === '' || line.startsWith('#')) continue;
+      // 규칙을 시작하는 줄이 아니면(= `name ::=` 없음) 이전 규칙의 흘러넘친 본문이다 → 위반.
+      expect(
+        /^[A-Za-z][A-Za-z0-9_-]*\s*::=/.test(line),
+        `줄 ${i + 1} 규칙 정의 아님: ${line}`,
+      ).toBe(true);
+    }
+  });
+
+  it('대안 `|`가 줄 앞에 오지 않는다(파서 호환)', () => {
+    for (const raw of g.split('\n')) {
+      expect(raw.trimStart().startsWith('|')).toBe(false);
+    }
+  });
+});
+
+describe('plannerGrammar (안전 부분집합)', () => {
+  const p = plannerGrammar();
+  const ALLOWED = [
+    'removeFillers',
+    'applyGlossary',
+    'setSubtitleStyle',
+    'replaceSubtitleStyle',
+    'applyColorgrade',
+  ] as const;
+  const FORBIDDEN = ['deleteWordRange', 'removeSilences', 'cutSourceRange', 'applyZoom'] as const;
+
+  it('비어있지 않고 PLANNER_PLAN_GRAMMAR 상수와 동일(순수·결정적)', () => {
+    expect(typeof p).toBe('string');
+    expect(p.trim().length).toBeGreaterThan(0);
+    expect(PLANNER_PLAN_GRAMMAR).toBe(p);
+    expect(plannerGrammar()).toBe(p);
+  });
+
+  it('PLANNER_GRAMMAR(전체)와는 다르다(부분집합)', () => {
+    expect(p).not.toBe(PLANNER_GRAMMAR);
+    expect(p.length).toBeLessThan(PLANNER_GRAMMAR.length);
+  });
+
+  it.each(ALLOWED)('허용 verb 포함: %s', (verb) => {
+    expect(p).toContain(String.raw`"\"${verb}\""`);
+    expect(definedRules(p).has(verb)).toBe(true);
+  });
+
+  it.each(FORBIDDEN)('금지 verb 미포함(좌표·ID 필요): %s', (verb) => {
+    expect(p).not.toContain(String.raw`"\"${verb}\""`);
+    expect(definedRules(p).has(verb)).toBe(false);
+  });
+
+  it('applyColorgrade 규칙에 clipId가 없다(환각 봉쇄: 전체 적용 강제)', () => {
+    const line = p.split('\n').find((l) => /^applyColorgrade\s*::=/.test(l.trim()));
+    expect(line).toBeDefined();
+    expect(line).not.toContain('clipId');
+  });
+
+  it('미정의 비단말 없음 + 고아 규칙 없음(균형)', () => {
+    const defined = definedRules(p);
+    const refs = referencedNonterminals(p);
+    expect([...refs].filter((r) => !defined.has(r))).toEqual([]);
+    expect([...defined].filter((d) => d !== 'root' && !refs.has(d))).toEqual([]);
+  });
+
+  it('모든 규칙이 한 줄(파서 호환)', () => {
+    for (const raw of p.split('\n')) {
+      const line = raw.trim();
+      if (line === '' || line.startsWith('#')) continue;
+      expect(/^[A-Za-z][A-Za-z0-9_-]*\s*::=/.test(line)).toBe(true);
     }
   });
 });

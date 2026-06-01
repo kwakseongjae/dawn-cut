@@ -5,7 +5,12 @@ import { type DryRunReport, dryRunCommands } from './dryrun.js';
 // 안으로 흡수하고, '첫 번째 [' 단일 시도 → '모든 [ 위치를 시도하여 명령 배열(원소가 모두
 // 객체)을 우선 채택' 전략으로 교체. 마크다운 인용 [1]/링크 [label](url)/목록 등 산문 잡음
 // 대괄호를 건너뛰어 진짜 EditCommand 배열을 회복한다. 순수성/시그니처/공개 표면 불변.
-import { type EditCommand, type EditorState, safeParseEditCommand } from './edit-command.js';
+import {
+  type EditCommand,
+  type EditorState,
+  commandManifest,
+  safeParseEditCommand,
+} from './edit-command.js';
 import { detectFillers } from './fillers.js';
 import { transcriptToCues } from './subtitles.js';
 
@@ -31,6 +36,29 @@ export function summarizeState(state: EditorState): StateSummary {
 
 export type PlanProvider = (prompt: string) => Promise<string>;
 
+/**
+ * 로컬 LLM 플래너가 NL만으로 안전히 합성할 수 있는 verb 화이트리스트.
+ * grammar.ts의 plannerGrammar()와 정확히 같은 집합이어야 한다(프롬프트=문법 일치).
+ * 제외: deleteWordRange/removeSilences/cutSourceRange/applyZoom(외부 좌표·ID 필요).
+ */
+export const PLANNER_VERBS = [
+  'removeFillers',
+  'applyGlossary',
+  'setSubtitleStyle',
+  'replaceSubtitleStyle',
+  'applyColorgrade',
+] as const;
+
+/**
+ * commandManifest()를 플래너 안전 verb로만 거른 매니페스트. buildPlanPrompt에 넘기면
+ * 프롬프트가 안전한 도구만 노출 → 모델이 금지 verb(removeSilences 등)를 고를 여지를 없앤다.
+ * plannerGrammar()(디코딩 제약)와 2중으로 같은 경계를 만든다.
+ */
+export function plannerManifest(): Array<{ name: string; inputSchema: unknown }> {
+  const allow = new Set<string>(PLANNER_VERBS);
+  return commandManifest().filter((t) => allow.has(t.name));
+}
+
 export function buildPlanPrompt(
   nl: string,
   summary: StateSummary,
@@ -55,6 +83,8 @@ export function buildPlanPrompt(
     '2) 각 원소는 아래 도구 스키마 중 하나에 정확히 맞는 객체여야 한다.',
     '3) "사용 금지"로 표시된 verb는 절대 쓰지 마라(외부정보가 필요해 만들 수 없음).',
     '4) 요청을 수행할 수 없으면 빈 배열 []을 출력하라.',
+    '5) ID·좌표(clipId, wordId, mediaId, sourceStart/End, 무음 좌표)는 절대 추측하지 마라.',
+    '   모르면 그 필드를 생략하라. applyColorgrade·applyZoom은 clipId를 생략하면 전체 영상에 적용된다.',
     '',
     '사용 가능한 도구(verb별 입력 JSON-Schema):',
     tools,

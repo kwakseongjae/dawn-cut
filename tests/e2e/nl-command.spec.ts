@@ -15,9 +15,11 @@ type Auto = {
 
 test.skip(!existsSync(WHISPER_BIN), 'whisper.cpp not built');
 test('NL command: "시네마틱하게" → 제안 카드 → 승인 → 편집 기록 1', async () => {
+  // 결정적·빠른 룰 경로를 검증한다(로컬 LLM은 별도 데모/통합에서). LLM이 빌드돼 있어도 끈다.
   const app = await electron.launch({
     executablePath: electronPath as unknown as string,
     args: [mainEntry],
+    env: { ...process.env, DAWN_DISABLE_LLM: '1' },
   });
   try {
     const win = await app.firstWindow();

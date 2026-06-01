@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { type EditorState, commandManifest } from './edit-command.js';
 import {
+  PLANNER_VERBS,
   type PlanProvider,
   buildPlanPrompt,
   parsePlan,
   planAndPreview,
+  plannerManifest,
   summarizeState,
 } from './planner.js';
 import { createInitialTimeline } from './timeline.js';
@@ -206,6 +208,29 @@ describe('planAndPreview — provider→parse→dryRun 오케스트레이션', (
     expect(errors.length).toBeGreaterThan(0);
     expect(report.ok).toBe(true);
     expect(report.removedProgramUs).toBe(0);
+  });
+});
+
+describe('plannerManifest — LLM 플래너 안전 부분집합', () => {
+  it('PLANNER_VERBS의 verb만, 정확히 그 집합을 노출한다', () => {
+    const names = plannerManifest().map((t) => t.name);
+    expect(new Set(names)).toEqual(new Set(PLANNER_VERBS));
+    expect(names).toHaveLength(PLANNER_VERBS.length);
+  });
+
+  it('외부 좌표·ID가 필요한 verb는 제외한다(환각 차단)', () => {
+    const names = new Set(plannerManifest().map((t) => t.name));
+    for (const forbidden of ['deleteWordRange', 'removeSilences', 'cutSourceRange', 'applyZoom']) {
+      expect(names.has(forbidden)).toBe(false);
+    }
+  });
+
+  it('plannerManifest로 만든 프롬프트엔 금지 verb가 등장하지 않는다', () => {
+    const state = scene([['하나', 0, 1]]);
+    const prompt = buildPlanPrompt('시네마틱하게', summarizeState(state), plannerManifest());
+    expect(prompt).toContain('applyColorgrade');
+    expect(prompt).not.toContain('removeSilences');
+    expect(prompt).not.toContain('cutSourceRange');
   });
 });
 

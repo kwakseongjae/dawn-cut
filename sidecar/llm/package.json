@@ -1,0 +1,17 @@
+{
+  "name": "@dawn-cut/sidecar-llm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "llama.cpp CLI subprocess wrapper (Node-only). Local NL→EditCommand planner provider (Qwen2.5, Apache-2.0).",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@dawn-cut/core": "workspace:*"
+  }
+}

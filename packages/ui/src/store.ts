@@ -2,14 +2,18 @@ import {
   appendAudit,
   applyCommand,
   applyGlossary,
+  buildPlanPrompt,
   buildTranscriptModel,
   createInitialTimeline,
   deserializeProject,
   dryRunCommands,
   formatSrt,
   makeProject,
+  parsePlan,
+  plannerManifest,
   ruleBasedPlan,
   serializeProject,
+  summarizeState,
   timelineToEdl,
   transcriptToCues,
   videoClips,
@@ -91,10 +95,14 @@ interface EditorState {
   auditLog: AuditEntry[]; // 적용된 편집 명령의 결정적 해시체인 기록(replay/검증 토대)
   // ── 자연어 명령 (NL → plan → dryRun 미리보기 → 승인 → commit) ──
   nlBusy: boolean;
-  pendingPlan: { input: string; commands: EditCommand[] } | null; // 승인 대기(승인 전 상태 불변)
+  // 승인 대기(승인 전 상태 불변). engine = 이 plan을 만든 주체(로컬 LLM / 룰).
+  pendingPlan: { input: string; commands: EditCommand[]; engine: 'llm' | 'rule' } | null;
   planReport: DryRunReport | null; // pendingPlan의 dryRun diff
   nlError: string | null;
-  planAndPreview: (input: string) => void; // NL → 룰 플래너 → dryRun (상태 변경 없음)
+  llmReady: boolean; // 로컬 LLM 사용 가능(llama.cpp+모델). false면 룰 플래너만.
+  llmReason: string | null; // llmReady=false 사유(사람이 읽을 메시지) 또는 null.
+  detectLlm: () => Promise<void>; // 마운트 시 1회 llm:available 조회 → llmReady/llmReason 설정
+  planAndPreview: (input: string) => Promise<void>; // NL → (LLM 가능시 LLM, 실패시 룰) → dryRun
   approvePlan: () => void; // 유일한 상태변경 지점: 각 cmd applyCommand + appendAudit
   rejectPlan: () => void;
   // ── 대기 UX / 완료 / 무음 제어 (사이클2) ──
@@ -288,6 +296,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   pendingPlan: null,
   planReport: null,
   nlError: null,
+  llmReady: false,
+  llmReason: null,
 
   setSilenceParams: (patch) =>
     set({ silenceParams: { ...get().silenceParams, ...patch }, silencePreview: null }),
@@ -678,18 +688,52 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  planAndPreview: (input) => {
-    // 자연어 → 룰 플래너 → dryRun 미리보기. 상태는 절대 변경하지 않는다(승인 전).
-    const { timeline, transcript, subtitleStyle } = get();
+  detectLlm: async () => {
+    // 마운트 시 1회: 로컬 LLM 가용성 조회. 실패해도 조용히 룰 플래너로 동작.
+    try {
+      const status = await window.dawn?.llmAvailable();
+      set({ llmReady: status?.available ?? false, llmReason: status?.reason ?? null });
+    } catch {
+      set({ llmReady: false, llmReason: null });
+    }
+  },
+
+  planAndPreview: async (input) => {
+    // 자연어 → plan → dryRun 미리보기. 상태는 절대 변경하지 않는다(승인 전).
+    // 경로: LLM 사용 가능하면 로컬 LLM(자유형 NL·복합 편집)을 먼저 시도하고,
+    // 부재/오류/빈 plan이면 결정적 룰 플래너로 graceful fallback. 둘 다 같은 command bus로 흐른다.
+    const { timeline, transcript, subtitleStyle, llmReady } = get();
     if (!timeline || !transcript) return;
     set({ nlBusy: true, nlError: null, pendingPlan: null, planReport: null });
+    const state = { timeline, transcript, subtitleStyle };
     try {
-      const state = { timeline, transcript, subtitleStyle };
-      const commands = ruleBasedPlan(input, state);
+      let commands: EditCommand[] = [];
+      let engine: 'llm' | 'rule' = 'rule';
+
+      if (llmReady && window.dawn?.llmPlan) {
+        try {
+          // 프롬프트/매니페스트는 plannerGrammar()와 같은 안전 부분집합으로 구성(금지 verb·clipId 차단).
+          const prompt = buildPlanPrompt(input, summarizeState(state), plannerManifest());
+          const { text } = await window.dawn.llmPlan(prompt);
+          const { plan } = parsePlan(text); // 코드펜스/잡설 섞여도 JSON 배열만 추출 + Zod 검증.
+          if (plan.length > 0) {
+            commands = plan;
+            engine = 'llm';
+          }
+        } catch {
+          // LLM 실패(타임아웃/크래시 등) → 아래 룰 폴백.
+        }
+      }
+
+      if (commands.length === 0) {
+        commands = ruleBasedPlan(input, state);
+        engine = 'rule';
+      }
+
       const { report } = dryRunCommands(state, commands);
       set({
         nlBusy: false,
-        pendingPlan: { input, commands },
+        pendingPlan: { input, commands, engine },
         planReport: report,
         nlError:
           commands.length === 0

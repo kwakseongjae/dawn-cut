@@ -16,6 +16,13 @@ export interface TranscribeResult {
   language: string;
   words: Word[];
 }
+/** Structural mirror of @dawn-cut/sidecar-llm LlmStatus (ui must not depend on node sidecars). */
+export interface LlmStatus {
+  available: boolean;
+  binPath: string;
+  modelPath: string;
+  reason?: string;
+}
 /** Typed IPC bridge exposed by the Electron preload (contextBridge). */
 export interface DawnBridge {
   ping: () => Promise<string>;
@@ -47,6 +54,9 @@ export interface DawnBridge {
   openFile: () => Promise<string | null>;
   saveFile: () => Promise<string | null>;
   revealItem: (path: string) => Promise<void>;
+  // P3 LLM: 로컬 플래너(llama.cpp). 부재/비활성 시 store가 룰 플래너로 폴백한다.
+  llmAvailable: () => Promise<LlmStatus>;
+  llmPlan: (prompt: string) => Promise<{ text: string; ms: number }>;
 }
 
 declare global {
@@ -61,9 +71,10 @@ declare global {
       openProject: (path: string) => Promise<void>;
       exportGif: (path: string) => Promise<void>;
       addImageOverlay: (path: string) => Promise<void>;
-      planAndPreview: (input: string) => void;
+      planAndPreview: (input: string) => Promise<void>;
       approvePlan: () => void;
       rejectPlan: () => void;
+      detectLlm: () => Promise<void>;
     };
   }
 }

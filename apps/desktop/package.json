@@ -13,6 +13,7 @@
   "dependencies": {
     "@dawn-cut/core": "workspace:*",
     "@dawn-cut/sidecar-ffmpeg": "workspace:*",
+    "@dawn-cut/sidecar-llm": "workspace:*",
     "@dawn-cut/sidecar-stt": "workspace:*",
     "@dawn-cut/sidecar-tts": "workspace:*",
     "@dawn-cut/ui": "workspace:*",
