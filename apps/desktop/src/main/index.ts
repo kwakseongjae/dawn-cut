@@ -21,6 +21,12 @@ import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
+// ★ 하드웨어 비디오 디코드 비활성화(소프트웨어 디코드 강제). 일부 Mac+GPU 조합에서 Chromium의
+// 하드웨어 디코더가 표준 H.264조차 디코드하지 못해(로그: "Unsupported pixel format: -1") 미리보기가
+// 검게 나오는 문제를 해결한다. 미리보기는 작은 프록시라 소프트웨어 디코드로 충분히 매끄럽다.
+// (app.ready 이전, 모듈 로드 시점에 호출해야 적용된다.)
+app.disableHardwareAcceleration();
+
 // ── IPC handlers (typed channels; renderer has no node access) ──
 ipcMain.handle('app:ping', () => 'pong');
 

@@ -41,6 +41,8 @@ interface EditorState {
   // Electron이 못 그리는 영상은 백그라운드로 만든 H.264 프록시 경로(편집/내보내기는 원본 그대로).
   previewPath: string | null;
   proxyBusy: boolean; // 미리보기 프록시 변환 중
+  hasAudio: boolean; // 가져온 미디어에 오디오 트랙이 있는가(자막 생성 가능 여부)
+  transcribeError: string | null; // 자막 생성 실패/불가 사유(사람이 읽을 메시지)
   transcript: TranscriptModel | null;
   timeline: TimelineModel | null;
   selected: string[]; // selected word ids
@@ -300,6 +302,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   mediaPath: null,
   previewPath: null,
   proxyBusy: false,
+  hasAudio: false,
+  transcribeError: null,
   transcript: null,
   timeline: null,
   selected: [],
@@ -522,6 +526,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       mediaPath: path,
       previewPath: proxyNeeded ? null : path,
       proxyBusy: proxyNeeded,
+      hasAudio: probe.hasAudio,
+      transcribeError: null,
       transcript: null, // 자막은 'transcribeMedia'를 눌러야 생성된다.
       timeline,
       selected: [],
@@ -560,17 +566,30 @@ export const useEditor = create<EditorState>((set, get) => ({
   transcribeMedia: async () => {
     // 명시적 자막 생성(받아쓰기) — 가져온 미디어의 오디오를 추출해 whisper로 전사한다.
     // 사용자가 '자막 생성'을 눌렀을 때만 실행(가져오기 시 자동 실행 안 함).
-    const { mediaPath } = get();
+    const { mediaPath, hasAudio } = get();
     const dawn = window.dawn;
     if (!mediaPath || !dawn) return;
-    set({ status: 'extracting' });
-    const { wavPath } = await dawn.extractAudio(mediaPath);
-    set({ status: 'transcribing' });
-    const tr = await dawn.transcribe(wavPath, MEDIA_ID);
-    // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
-    const subWords = applyGlossary(tr.words, get().glossary);
-    const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
-    set({ transcript, status: 'ready' });
+    // 오디오 트랙이 없는 영상(화면녹화 등)은 추출이 실패한다 → 미리 막고 친절히 안내.
+    if (!hasAudio) {
+      set({ transcribeError: '이 영상에는 오디오(소리)가 없어 자막을 만들 수 없어요.' });
+      return;
+    }
+    set({ status: 'extracting', transcribeError: null });
+    try {
+      const { wavPath } = await dawn.extractAudio(mediaPath);
+      set({ status: 'transcribing' });
+      const tr = await dawn.transcribe(wavPath, MEDIA_ID);
+      // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
+      const subWords = applyGlossary(tr.words, get().glossary);
+      const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
+      set({ transcript, status: 'ready' });
+    } catch {
+      // 추출/전사 실패(오디오 없음·형식 문제 등) → 크래시 대신 메시지.
+      set({
+        status: 'ready',
+        transcribeError: '자막 생성에 실패했어요. 오디오 트랙이 없거나 형식 문제일 수 있어요.',
+      });
+    }
   },
 
   toggleWord: (id) => {
@@ -773,6 +792,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       mediaPath: project.mediaPath,
       previewPath: project.mediaPath, // 열기는 원본 미리보기(검으면 다시 가져오기로 프록시 생성)
       proxyBusy: false,
+      hasAudio: true, // 저장된 프로젝트는 이미 전사를 거쳤다고 가정
+      transcribeError: null,
       transcript: project.transcript,
       timeline: project.timeline,
       selected: [],

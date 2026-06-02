@@ -1201,6 +1201,8 @@ function Transcript() {
     timeline,
     mediaPath,
     transcribeMedia,
+    hasAudio,
+    transcribeError,
     status,
     selected,
     playheadUs,
@@ -1826,16 +1828,25 @@ function Transcript() {
               type="button"
               className="btn primary"
               data-testid="transcribe"
-              disabled={status === 'extracting' || status === 'transcribing'}
+              disabled={!hasAudio || status === 'extracting' || status === 'transcribing'}
               onClick={() => void transcribeMedia()}
             >
               🎙 자막 생성 (받아쓰기)
             </button>
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-              오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다.
-              <br />
-              자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.
-            </div>
+            {transcribeError ? (
+              <div
+                data-testid="transcribe-error"
+                style={{ marginTop: 10, fontSize: 12, color: '#ff8a8a' }}
+              >
+                {transcribeError}
+              </div>
+            ) : (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                {hasAudio
+                  ? '오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다. 자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.'
+                  : '이 영상에는 오디오가 없어 자막을 만들 수 없어요. (색보정·하이라이트·오버레이·내보내기는 그대로 됩니다.)'}
+              </div>
+            )}
           </div>
         )}
         {transcript?.segments.map((seg) => (
