@@ -1052,6 +1052,54 @@ body {
   box-shadow: 0 0 0 2px var(--accent);
   border-color: var(--accent);
 }
+/* OVERLAY 레인 — 시간 기준 블록(시작=위치, 폭=길이). 드래그=이동, 양끝 핸들=길이. 겹침 허용. */
+.ov-lane {
+  position: relative;
+  overflow: hidden;
+}
+.ov-block {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #cdb8ff;
+  background: linear-gradient(180deg, #3a2d55, #2d2442);
+  border: 1px solid #4a3a6b;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.ov-block:active {
+  cursor: grabbing;
+}
+.ov-block.on {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+  z-index: 2;
+}
+.ov-block-label {
+  pointer-events: none;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.ov-block-h {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: ew-resize;
+}
+.ov-block-h.l {
+  left: 0;
+}
+.ov-block-h.r {
+  right: 0;
+}
 .track.empty-track {
   color: var(--faint);
   font-size: 10px;

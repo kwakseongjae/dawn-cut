@@ -33,7 +33,7 @@ import {
 } from 'react';
 import './styles.css';
 import { deadSet, useEditor } from './store.js';
-import type { ColorPreset, PanelId } from './store.js';
+import type { ColorPreset, Overlay, PanelId } from './store.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -1956,6 +1956,7 @@ function Timeline() {
     seekTo,
     selectOverlay,
     selectedOverlayId,
+    updateOverlay,
   } = useEditor();
   const clips = timeline ? videoClips(timeline) : [];
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
@@ -1965,6 +1966,45 @@ function Timeline() {
     const rect = e.currentTarget.getBoundingClientRect();
     const r = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     seekTo(r * durationProgramUs);
+  };
+  // OVERLAY 레인: 시간 블록을 드래그(이동)/가장자리(길이) 조절. 시간대 겹침 허용(여러 스티커 동시).
+  const ovLaneRef = useRef<HTMLDivElement>(null);
+  const ovDrag = useRef<{
+    id: string;
+    mode: 'move' | 'l' | 'r';
+    px: number;
+    start: number;
+    end: number;
+  } | null>(null);
+  const OV_MIN = 300_000; // 최소 길이 0.3s
+  const ovClamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+  const onOvDown = (e: PointerEvent<HTMLElement>, o: Overlay, mode: 'move' | 'l' | 'r') => {
+    e.stopPropagation();
+    e.preventDefault();
+    selectOverlay(o.id);
+    ovDrag.current = { id: o.id, mode, px: e.clientX, start: o.startUs, end: o.endUs };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onOvMove = (e: PointerEvent<HTMLElement>) => {
+    const d = ovDrag.current;
+    const rect = ovLaneRef.current?.getBoundingClientRect();
+    if (!d || !rect || durationProgramUs <= 0) return;
+    const deltaUs = ((e.clientX - d.px) / rect.width) * durationProgramUs;
+    const len = d.end - d.start;
+    if (d.mode === 'move') {
+      const s = Math.round(ovClamp(d.start + deltaUs, 0, durationProgramUs - len));
+      updateOverlay(d.id, { startUs: s, endUs: s + len });
+    } else if (d.mode === 'l') {
+      updateOverlay(d.id, { startUs: Math.round(ovClamp(d.start + deltaUs, 0, d.end - OV_MIN)) });
+    } else {
+      updateOverlay(d.id, {
+        endUs: Math.round(ovClamp(d.end + deltaUs, d.start + OV_MIN, durationProgramUs)),
+      });
+    }
+  };
+  const onOvUp = (e: PointerEvent<HTMLElement>) => {
+    ovDrag.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
   return (
     <div className="timeline">
@@ -1997,23 +2037,57 @@ function Timeline() {
         </div>
         <div className="trackrow">
           <span className="lbl">Overlay</span>
-          <div className="track thin">
-            {overlays.length === 0 ? (
-              <span className="track empty-track">drop images / add stickers · preview</span>
-            ) : (
-              overlays.map((o, i) => (
-                <button
-                  type="button"
-                  className={`chip${selectedOverlayId === o.id ? ' on' : ''}`}
-                  key={o.id}
-                  style={{ width: 64, marginLeft: i ? 4 : 0, cursor: 'pointer' }}
-                  onClick={() => selectOverlay(o.id)}
-                  title="클릭해서 선택 → 위치·크기·타이밍 조절"
-                >
-                  {o.kind === 'image' ? '🖼' : o.kind === 'gif' ? 'GIF' : o.name}
-                </button>
-              ))
-            )}
+          <div className="track thin ov-lane" ref={ovLaneRef}>
+            {(() => {
+              const lane = overlays.filter((o) => o.kind !== 'subtitle'); // 자막은 '자막' 패널에서 관리
+              if (lane.length === 0)
+                return (
+                  <span className="track empty-track">
+                    스티커·이미지를 추가하면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이
+                  </span>
+                );
+              return lane.map((o) => {
+                const left = durationProgramUs > 0 ? (o.startUs / durationProgramUs) * 100 : 0;
+                const width =
+                  durationProgramUs > 0
+                    ? Math.max(2, ((o.endUs - o.startUs) / durationProgramUs) * 100)
+                    : 0;
+                const label =
+                  o.kind === 'image'
+                    ? '🖼'
+                    : o.kind === 'gif'
+                      ? 'GIF'
+                      : o.kind === 'video'
+                        ? '🎞'
+                        : o.name;
+                return (
+                  <div
+                    key={o.id}
+                    className={`ov-block${selectedOverlayId === o.id ? ' on' : ''}`}
+                    data-testid="ov-block"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                    onPointerDown={(e) => onOvDown(e, o, 'move')}
+                    onPointerMove={onOvMove}
+                    onPointerUp={onOvUp}
+                    title={`${fmt(o.startUs)}~${fmt(o.endUs)} · 드래그=이동 · 양끝=길이`}
+                  >
+                    <span
+                      className="ov-block-h l"
+                      onPointerDown={(e) => onOvDown(e, o, 'l')}
+                      onPointerMove={onOvMove}
+                      onPointerUp={onOvUp}
+                    />
+                    <span className="ov-block-label">{label}</span>
+                    <span
+                      className="ov-block-h r"
+                      onPointerDown={(e) => onOvDown(e, o, 'r')}
+                      onPointerMove={onOvMove}
+                      onPointerUp={onOvUp}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
         <div className="trackrow">

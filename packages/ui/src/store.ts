@@ -178,18 +178,24 @@ const CORNERS = [
   { x: 0.06, y: 0.06 },
   { x: 0.06, y: 0.62 },
 ];
+// 새 오버레이는 '현재 위치에서 3초간'을 기본으로 둔다(영상 전체로 깔리지 않게 — 직관적이고
+// 타임라인에서 드래그로 늘릴 수 있다). 시작은 플레이헤드, 길이 3초(영상 끝을 넘지 않게 클램프).
+const DEFAULT_OVERLAY_LEN_US = 3_000_000;
 function placement(
   index: number,
   durationUs: number,
+  startUs = 0,
 ): Omit<Overlay, 'id' | 'kind' | 'name' | 'src'> {
   const c = CORNERS[index % CORNERS.length]!;
+  const dur = durationUs || 1_000_000;
+  const s = Math.max(0, Math.min(Math.round(startUs), Math.max(0, dur - 500_000)));
   return {
     x: c.x,
     y: c.y,
     scale: 0.3,
     opacity: 1,
-    startUs: 0,
-    endUs: durationUs || 1_000_000,
+    startUs: s,
+    endUs: Math.min(s + DEFAULT_OVERLAY_LEN_US, dur),
     z: index,
   };
 }
@@ -465,7 +471,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   // 오버레이를 추가하면 곧바로 '선택' 상태로 둔다 → 속성 패널(위치/크기/타이밍)이 즉시 보인다
   // (발견성 개선: 예전엔 추가해도 클릭 전엔 컨트롤이 안 떠서 "기능이 없다"고 느꼈음).
   addImageOverlay: (path) => {
-    const { overlays, durationProgramUs } = get();
+    const { overlays, durationProgramUs, playheadUs } = get();
     const id = uid();
     set({
       overlays: [
@@ -475,19 +481,19 @@ export const useEditor = create<EditorState>((set, get) => ({
           kind: 'image',
           name: baseName(path),
           src: path,
-          ...placement(overlays.length, durationProgramUs),
+          ...placement(overlays.length, durationProgramUs, playheadUs),
         },
       ],
       selectedOverlayId: id,
     });
   },
   addOverlaySrc: (kind, name, src) => {
-    const { overlays, durationProgramUs } = get();
+    const { overlays, durationProgramUs, playheadUs } = get();
     const id = uid();
     set({
       overlays: [
         ...overlays,
-        { id, kind, name, src, ...placement(overlays.length, durationProgramUs) },
+        { id, kind, name, src, ...placement(overlays.length, durationProgramUs, playheadUs) },
       ],
       selectedOverlayId: id,
     });
@@ -499,10 +505,13 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedOverlayId: null,
     }),
   addAssetStub: (kind, name) => {
-    const { overlays, durationProgramUs } = get();
+    const { overlays, durationProgramUs, playheadUs } = get();
     const id = uid();
     set({
-      overlays: [...overlays, { id, kind, name, ...placement(overlays.length, durationProgramUs) }],
+      overlays: [
+        ...overlays,
+        { id, kind, name, ...placement(overlays.length, durationProgramUs, playheadUs) },
+      ],
       selectedOverlayId: id,
     });
   },
