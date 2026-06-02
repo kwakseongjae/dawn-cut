@@ -12,7 +12,8 @@ import type { SubtitleStyle } from './draw.js';
 import type { ClipEffect } from './effects.js';
 import { detectFillers } from './fillers.js';
 import { type GlossaryPair, applyGlossary } from './glossary.js';
-import { wordToProgram } from './sync.js';
+import { highlightCutSpans, selectHighlightWordIds } from './highlight.js';
+import { liveWords, wordToProgram } from './sync.js';
 import { validateSync } from './sync.js';
 import { validateTimeline, videoClips } from './timeline.js';
 import { buildTranscriptModel, validateTranscript } from './transcript.js';
@@ -138,6 +139,15 @@ const CommandSchemas = {
     wordId: z.string().min(1),
     text: z.string().min(1),
   }),
+  /**
+   * 자동 하이라이트 — 긴 영상을 핵심만 남긴 ~targetSeconds 길이로 컷(롱폼→쇼츠). 키워드 밀도로
+   * 문장을 점수화해 결정적으로 선택하고 나머지를 deleteWordRange로 잘라낸다. 좌표·ID가 필요 없어
+   * 자연어로 안전 합성 가능('60초로 하이라이트 만들어줘') → plannerGrammar/PLANNER_VERBS 포함.
+   */
+  autoHighlight: z.object({
+    type: z.literal('autoHighlight'),
+    targetSeconds: z.number().positive().default(60),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -153,6 +163,7 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.applyZoom,
   CommandSchemas.applyAutoEnhance,
   CommandSchemas.correctWord,
+  CommandSchemas.autoHighlight,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -305,6 +316,18 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
         state.transcript.language,
       );
       return { ...state, transcript };
+    }
+    case 'autoHighlight': {
+      // 핵심만 KEEP(키워드 밀도)하고 나머지를 deleteWordRange로 컷 → ~targetSeconds 길이.
+      const targetUs = Math.round(cmd.targetSeconds * 1_000_000);
+      const keep = selectHighlightWordIds(state.transcript, state.timeline, targetUs);
+      const ordered = liveWords(state.timeline, state.transcript);
+      let timeline = state.timeline;
+      // 비-KEEP 연속 구간을 잘라낸다. 소스 구간이 서로 겹치지 않아 순서와 무관하게 합성된다.
+      for (const [from, to] of highlightCutSpans(ordered, keep)) {
+        timeline = deleteWordRange(timeline, state.transcript, from, to).after;
+      }
+      return { ...state, timeline };
     }
   }
 }

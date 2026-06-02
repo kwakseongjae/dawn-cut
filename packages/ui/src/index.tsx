@@ -1175,6 +1175,7 @@ function Transcript() {
     replaceSubtitleStyle,
     removeFillers,
     correctWord,
+    autoHighlight,
     glossary,
     addGlossaryPair,
     removeGlossaryPair,
@@ -1418,6 +1419,18 @@ function Transcript() {
             {nlBusy ? '생각 중…' : llmReady ? 'AI · Enter' : 'Enter'}
           </span>
         </div>
+      )}
+      {advanced && transcript && (
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="auto-highlight"
+          onClick={() => autoHighlight(60)}
+          title="핵심만 남겨 ~60초 하이라이트로 컷합니다 (롱폼→쇼츠)"
+          style={{ fontSize: 11, padding: '4px 8px', margin: '0 8px 8px' }}
+        >
+          ✂️ 자동 하이라이트 (60초)
+        </button>
       )}
       {transcript && (
         <div className="nl-bar" data-testid="style-pack-bar">
@@ -2098,6 +2111,7 @@ export function AppShell() {
       applyStylePack: (id: string) => useEditor.getState().applyStylePack(id),
       autoEnhance: () => useEditor.getState().autoEnhance(),
       correctWord: (wordId: string, text: string) => useEditor.getState().correctWord(wordId, text),
+      autoHighlight: (targetSeconds: number) => useEditor.getState().autoHighlight(targetSeconds),
       detectLlm: () => useEditor.getState().detectLlm(),
     };
     // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).

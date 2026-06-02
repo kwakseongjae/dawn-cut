@@ -49,6 +49,34 @@ describe('ruleBasedPlan — 키워드 강조 매핑', () => {
   });
 });
 
+describe('ruleBasedPlan — 자동 하이라이트 매핑', () => {
+  const s = scene();
+
+  it('"60초 하이라이트로 만들어줘" → autoHighlight(60)', () => {
+    expect(ruleBasedPlan('60초 하이라이트로 만들어줘', s)).toEqual([
+      { type: 'autoHighlight', targetSeconds: 60 },
+    ]);
+  });
+
+  it('"핵심만 짧게 요약해줘" → autoHighlight(기본 60)', () => {
+    expect(ruleBasedPlan('핵심만 짧게 요약해줘', s)).toEqual([
+      { type: 'autoHighlight', targetSeconds: 60 },
+    ]);
+  });
+
+  it('"30초로 줄여줘" → autoHighlight(30)', () => {
+    expect(ruleBasedPlan('30초로 줄여줘', s)).toEqual([
+      { type: 'autoHighlight', targetSeconds: 30 },
+    ]);
+  });
+
+  it('"핵심 단어 강조해줘"는 autoHighlight가 아니다(키워드 강조)', () => {
+    const out = ruleBasedPlan('핵심 단어 강조해줘', s);
+    expect(out.some((c) => c.type === 'autoHighlight')).toBe(false);
+    expect(out).toEqual([{ type: 'highlightKeyword' }]);
+  });
+});
+
 describe('ruleBasedPlan — 색보정 프리셋 매핑', () => {
   const s = scene();
 

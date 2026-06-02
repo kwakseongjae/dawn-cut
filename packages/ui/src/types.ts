@@ -82,6 +82,7 @@ declare global {
       applyStylePack: (id: string) => void;
       autoEnhance: () => Promise<void>;
       correctWord: (wordId: string, text: string) => void;
+      autoHighlight: (targetSeconds: number) => void;
       detectLlm: () => Promise<void>;
     };
   }

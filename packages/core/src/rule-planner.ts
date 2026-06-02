@@ -80,6 +80,14 @@ const HIGHLIGHT_RULE =
   /(핵심|중요한?|키워드|요점|포인트)\s*(말|단어|문구|부분|구절)?\s*(을|를|만)?\s*(강조|하이라이트|표시)|강조\s*자막/;
 
 /**
+ * 자동 하이라이트(롱폼→쇼츠) 의도. 'N초로/짧게/요약/하이라이트 (영상·클립·로·만들)/쇼츠로 만들/숏폼'.
+ * 키워드 강조('핵심 …강조')와 구분: 여기는 '짧게 만들기' 맥락(초/요약/만들/클립)을 요구한다.
+ */
+const AUTOHL_RULE =
+  /(\d+)\s*초|짧게|요약|하이라이트\s*(영상|클립|으로|로|만들|편집)|쇼츠\s*(로|만들|편집)|숏폼/;
+const SECONDS_RULE = /(\d+)\s*초/;
+
+/**
  * 자연어(한국어) 편집 지시 1개를 EditCommand 배열로 변환한다(결정적·순수).
  *
  * 지원 의도:
@@ -118,6 +126,13 @@ export function ruleBasedPlan(nl: string, _state: EditorState): EditCommand[] {
   // 1.5) 키워드 강조 자막 — '핵심/키워드 …강조'. 색 지정은 단순화로 생략(기본 강조색).
   if (HIGHLIGHT_RULE.test(hay)) {
     commands.push({ type: 'highlightKeyword' });
+  }
+
+  // 1.7) 자동 하이라이트(롱폼→쇼츠) — 'N초로/짧게/요약/하이라이트 만들'. 초 수가 있으면 추출.
+  if (AUTOHL_RULE.test(hay)) {
+    const m = SECONDS_RULE.exec(hay);
+    const secs = m ? Number(m[1]) : 60; // 미지정 시 기본 60초.
+    commands.push({ type: 'autoHighlight', targetSeconds: secs > 0 ? secs : 60 });
   }
 
   // 2) 색보정 프리셋 — 색 키워드 + '편집 지시 게이트'(matchColorPreset) 통과 시에만.

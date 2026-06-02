@@ -92,6 +92,7 @@ interface EditorState {
   autoEnhanceEq: ColorEq | null; // 마지막 적용 eq(프리뷰 CSS 근사용; 실제 렌더는 timeline 이펙트)
   autoEnhance: () => Promise<void>;
   correctWord: (wordId: string, text: string) => void; // STT 오인식 어절 교정(검수)
+  autoHighlight: (targetSeconds: number) => void; // 롱폼→쇼츠: 핵심만 남겨 ~targetSeconds로 컷
   reframe: Reframe; // 익스포트 종횡비(원본/세로 9:16/정사각 1:1) — 자동 중앙 크롭
   setReframe: (r: Reframe) => void;
   // ── 한글 검수 자동화 (어절 위) ──
@@ -400,6 +401,27 @@ export const useEditor = create<EditorState>((set, get) => ({
     const cmd = { type: 'correctWord', wordId, text: t } as const;
     const { after } = applyCommand({ timeline, transcript }, cmd);
     set({ transcript: after.transcript, auditLog: appendAudit(get().auditLog, cmd, 0) });
+  },
+
+  autoHighlight: (targetSeconds) => {
+    // 롱폼→쇼츠 헤드라인: 핵심만 남기는 결정적 컷 플랜을 command bus로 적용(undo·감사). 사람 GUI가
+    // AI 에이전트와 동일한 verb를 구동한다(NL "60초 하이라이트로"도 같은 verb로 흐른다).
+    const { transcript, timeline } = get();
+    if (!transcript || !timeline) return;
+    const cmd = { type: 'autoHighlight', targetSeconds } as const;
+    const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
+    if (removedProgramUs <= 0) return; // 이미 짧으면 변화 없음.
+    set({
+      timeline: after.timeline,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      selected: [],
+      status: 'ready',
+      auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
+      ...derive(after.timeline),
+    });
   },
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),

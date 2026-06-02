@@ -205,6 +205,31 @@ describe('applyCommand — command bus dispatcher', () => {
     const id = state.transcript.order[0]!;
     expect(() => applyCommand(state, { type: 'correctWord', wordId: id, text: '' })).toThrow();
   });
+
+  it('autoHighlight: 핵심만 남기고 길이를 줄인다(타깃 근처), 불변식 유지', () => {
+    // 10개 문장(각 1s). 키워드가 풍부한 쪽이 남도록 점수 차등.
+    const rows: [string, number, number][] = [];
+    for (let i = 0; i < 10; i++) {
+      // 키워드 밀도를 다르게: 짝수 문장은 평범, 홀수는 '오픈소스 던컷 자막' 같은 풍부한 명사.
+      rows.push([
+        i % 2 === 0 ? `음 그냥 그래요${i}.` : `오픈소스 던컷 자막 핵심 기능${i}.`,
+        i,
+        i + 1,
+      ]);
+    }
+    const state = scene(rows);
+    const before = state.timeline.durationProgram; // 10s
+    const out = applyCommand(state, { type: 'autoHighlight', targetSeconds: 4 });
+    expect(out.after.timeline.durationProgram).toBeLessThan(before); // 잘렸다
+    expect(out.after.timeline.durationProgram).toBeGreaterThan(0); // 최소 1문장은 남는다
+    expect(out.removedProgramUs).toBeGreaterThan(0);
+    expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
+  });
+
+  it('autoHighlight: targetSeconds 생략 시 기본 60(Zod default) — 짧은 영상은 거의 그대로', () => {
+    const cmd = parseEditCommand({ type: 'autoHighlight' });
+    expect(cmd).toMatchObject({ type: 'autoHighlight', targetSeconds: 60 });
+  });
 });
 
 describe('EditCommand Zod 가드 (경계 런타임 검증)', () => {
@@ -242,6 +267,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'applyColorgrade',
       'applyGlossary',
       'applyZoom',
+      'autoHighlight',
       'correctWord',
       'cutSourceRange',
       'deleteWordRange',
