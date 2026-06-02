@@ -1,10 +1,5 @@
 import { extractChapters } from './chapters.js';
 import { type DryRunReport, dryRunCommands } from './dryrun.js';
-// /Users/kwakseongjae/Desktop/projects/dawn-cut/packages/core/src/planner.ts
-// 변경점: parsePlan은 그대로 두되, JSON.parse/Array.isArray 검사를 extractFirstJsonArray
-// 안으로 흡수하고, '첫 번째 [' 단일 시도 → '모든 [ 위치를 시도하여 명령 배열(원소가 모두
-// 객체)을 우선 채택' 전략으로 교체. 마크다운 인용 [1]/링크 [label](url)/목록 등 산문 잡음
-// 대괄호를 건너뛰어 진짜 EditCommand 배열을 회복한다. 순수성/시그니처/공개 표면 불변.
 import {
   type EditCommand,
   type EditorState,

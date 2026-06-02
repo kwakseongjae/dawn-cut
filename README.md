@@ -23,8 +23,11 @@ silence removal, 100% local.** No cloud, no account, no watermark, no subscripti
 
 ## Demo
 
-<!-- Replace with the hero GIF: original clip → tight, captioned cut. Recommended path: -->
-![dawn-cut demo: import → auto-transcribe → text-cut + silence-removal → captioned export](assets/hero.gif)
+<!-- TODO(release): add a license-clean hero GIF (original clip → captioned, graded cut) at
+     assets/hero.gif, then restore the image line below. Kept commented so the README doesn't
+     render a broken image before release. -->
+<!-- ![dawn-cut demo: import → auto-transcribe → text-cut + silence-removal → captioned export](assets/hero.gif) -->
+_(demo GIF coming with the first release — see `docs/PRODUCTION.md`)_
 
 > _Placeholder._ A reproducible end-to-end run (real `whisper.cpp` + FFmpeg) already
 > exists under [`demo-output/`](demo-output/README.md): a 23.6s English-narrated clip
