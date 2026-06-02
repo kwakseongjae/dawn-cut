@@ -15,6 +15,8 @@ type RenderOpts = {
 
 // Typed bridge. contextIsolation=true, nodeIntegration=false. Mirrors DawnBridge in @dawn-cut/ui.
 const bridge = {
+  // 쇼케이스/프로덕션 페이스 게이트 — DAWN_ADVANCED=1이면 전체(고급) UI, 아니면 단순 와우셋만 노출.
+  advanced: process.env.DAWN_ADVANCED === '1',
   ping: (): Promise<string> => ipcRenderer.invoke('app:ping'),
   probe: (path: string): Promise<ProbeResult> => ipcRenderer.invoke('media:probe', path),
   extractAudio: (path: string): Promise<{ wavPath: string }> =>

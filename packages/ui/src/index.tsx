@@ -223,13 +223,16 @@ const RAIL: { id: PanelId; ico: string; label: string; short: string }[] = [
 ];
 
 function Rail() {
-  const { panel, setPanel } = useEditor();
+  const { panel, setPanel, advanced } = useEditor();
+  // 단순(쇼케이스) 모드는 미디어 + 효과만 — 오버레이/스티커·TTS 패널은 고급에서.
+  const items = advanced ? RAIL : RAIL.filter((r) => r.id === 'media' || r.id === 'effect');
   return (
     <div className="rail">
-      {RAIL.map((r) => (
+      {items.map((r) => (
         <button
           key={r.id}
           type="button"
+          data-testid={`rail-${r.id}`}
           className={panel === r.id ? 'on' : ''}
           onClick={() => setPanel(r.id)}
           title={r.label}
@@ -1186,6 +1189,7 @@ function Transcript() {
     nlBusy,
     nlError,
     llmReady,
+    advanced,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -1392,7 +1396,7 @@ function Transcript() {
           ⟲ 초기화
         </button>
       </div>
-      {transcript && (
+      {advanced && transcript && (
         <div className="nl-bar" data-testid="nl-bar">
           <span className="nl-ico">🤖</span>
           <input
@@ -1489,167 +1493,169 @@ function Transcript() {
           </div>
         </div>
       )}
-      <div className="sub-pos" data-testid="subtitle-pos">
-        <SubtitlePreview style={subtitleStyle} text={currentCaption} emphasis={currentEmphasis} />
-        <div className="sub-pos-grid">
-          {ANCHORS.map((a) => {
-            const sel =
-              Math.abs(subtitlePos.y - a.y) < 0.05 &&
-              Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                className={sel ? 'on' : ''}
-                data-testid={`sub-anchor-${a.id}`}
-                title={`anchor ${a.id}`}
-                onClick={() => applyAnchor(a.x, a.y)}
+      {advanced && (
+        <div className="sub-pos" data-testid="subtitle-pos">
+          <SubtitlePreview style={subtitleStyle} text={currentCaption} emphasis={currentEmphasis} />
+          <div className="sub-pos-grid">
+            {ANCHORS.map((a) => {
+              const sel =
+                Math.abs(subtitlePos.y - a.y) < 0.05 &&
+                Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={sel ? 'on' : ''}
+                  data-testid={`sub-anchor-${a.id}`}
+                  title={`anchor ${a.id}`}
+                  onClick={() => applyAnchor(a.x, a.y)}
+                >
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="sub-pos-sliders">
+            <label className="ov-field">
+              x
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(subtitlePos.x * 100)}
+                data-testid="sub-x"
+                onChange={async (e) => {
+                  const x = Number(e.target.value) / 100;
+                  setSubtitlePos({ x });
+                  scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
+                }}
+              />
+            </label>
+            <label className="ov-field">
+              y
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(subtitlePos.y * 100)}
+                data-testid="sub-y"
+                onChange={async (e) => {
+                  const y = Number(e.target.value) / 100;
+                  setSubtitlePos({ y });
+                  scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
+                }}
+              />
+            </label>
+            <label className="ov-field">
+              size
+              <input
+                type="range"
+                min={20}
+                max={100}
+                value={Math.round(subtitlePos.scale * 100)}
+                data-testid="sub-scale"
+                onChange={async (e) => {
+                  const scale = Number(e.target.value) / 100;
+                  setSubtitlePos({ scale });
+                  scheduleReburn({ ...subtitlePos, scale }, subtitleStyle);
+                }}
+              />
+            </label>
+          </div>
+          <div className="sub-pos-sliders">
+            <label className="ov-field">
+              preset
+              <select
+                className="select"
+                data-testid="sub-preset"
+                defaultValue="default"
+                onChange={(e) => applyPreset(e.target.value)}
+                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
               >
-                {a.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="sub-pos-sliders">
-          <label className="ov-field">
-            x
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(subtitlePos.x * 100)}
-              data-testid="sub-x"
-              onChange={async (e) => {
-                const x = Number(e.target.value) / 100;
-                setSubtitlePos({ x });
-                scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
-              }}
-            />
-          </label>
-          <label className="ov-field">
-            y
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(subtitlePos.y * 100)}
-              data-testid="sub-y"
-              onChange={async (e) => {
-                const y = Number(e.target.value) / 100;
-                setSubtitlePos({ y });
-                scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
-              }}
-            />
-          </label>
-          <label className="ov-field">
-            size
-            <input
-              type="range"
-              min={20}
-              max={100}
-              value={Math.round(subtitlePos.scale * 100)}
-              data-testid="sub-scale"
-              onChange={async (e) => {
-                const scale = Number(e.target.value) / 100;
-                setSubtitlePos({ scale });
-                scheduleReburn({ ...subtitlePos, scale }, subtitleStyle);
-              }}
-            />
-          </label>
-        </div>
-        <div className="sub-pos-sliders">
-          <label className="ov-field">
-            preset
-            <select
-              className="select"
-              data-testid="sub-preset"
-              defaultValue="default"
-              onChange={(e) => applyPreset(e.target.value)}
-              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-            >
-              {Object.keys(SUBTITLE_PRESETS).map((id) => (
-                <option key={id} value={id}>
-                  {id}
+                {Object.keys(SUBTITLE_PRESETS).map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="ov-field">
+              color
+              <input
+                type="color"
+                value={subtitleStyle.color ?? '#ffffff'}
+                data-testid="sub-color"
+                onChange={(e) => applyStyle({ color: e.target.value })}
+              />
+            </label>
+            <label className="ov-field">
+              outline
+              <input
+                type="color"
+                value={(subtitleStyle.stroke as string) || '#000000'}
+                data-testid="sub-stroke"
+                onChange={(e) => applyStyle({ stroke: e.target.value })}
+              />
+            </label>
+            <label className="ov-field">
+              bg
+              <select
+                className="select"
+                value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
+                data-testid="sub-bg"
+                onChange={(e) => applyStyle({ bg: e.target.value })}
+                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
+              >
+                <option value="rgba(0,0,0,0.55)">dark 55%</option>
+                <option value="rgba(0,0,0,0.85)">dark 85%</option>
+                <option value="rgba(255,255,255,0.7)">light</option>
+                <option value="transparent">none</option>
+              </select>
+            </label>
+            <label className="ov-field">
+              font
+              <select
+                className="select"
+                value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
+                data-testid="sub-font"
+                onChange={(e) => applyStyle({ fontFamily: e.target.value })}
+                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
+              >
+                <option value="system-ui, sans-serif">system</option>
+                <option value="Georgia, serif">serif</option>
+                <option value="'Courier New', monospace">mono</option>
+                <option value="Impact, sans-serif">impact</option>
+                <option
+                  value={
+                    '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
+                  }
+                >
+                  CJK (Korean)
                 </option>
-              ))}
-            </select>
-          </label>
-          <label className="ov-field">
-            color
-            <input
-              type="color"
-              value={subtitleStyle.color ?? '#ffffff'}
-              data-testid="sub-color"
-              onChange={(e) => applyStyle({ color: e.target.value })}
-            />
-          </label>
-          <label className="ov-field">
-            outline
-            <input
-              type="color"
-              value={(subtitleStyle.stroke as string) || '#000000'}
-              data-testid="sub-stroke"
-              onChange={(e) => applyStyle({ stroke: e.target.value })}
-            />
-          </label>
-          <label className="ov-field">
-            bg
-            <select
-              className="select"
-              value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
-              data-testid="sub-bg"
-              onChange={(e) => applyStyle({ bg: e.target.value })}
-              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-            >
-              <option value="rgba(0,0,0,0.55)">dark 55%</option>
-              <option value="rgba(0,0,0,0.85)">dark 85%</option>
-              <option value="rgba(255,255,255,0.7)">light</option>
-              <option value="transparent">none</option>
-            </select>
-          </label>
-          <label className="ov-field">
-            font
-            <select
-              className="select"
-              value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
-              data-testid="sub-font"
-              onChange={(e) => applyStyle({ fontFamily: e.target.value })}
-              style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-            >
-              <option value="system-ui, sans-serif">system</option>
-              <option value="Georgia, serif">serif</option>
-              <option value="'Courier New', monospace">mono</option>
-              <option value="Impact, sans-serif">impact</option>
-              <option
-                value={
-                  '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
-                }
-              >
-                CJK (Korean)
-              </option>
-            </select>
-          </label>
-          <label className="ov-field">
-            강조
-            <input
-              type="checkbox"
-              data-testid="sub-emphasis"
-              checked={keywordEmphasis}
-              onChange={(e) => applyEmphasis(e.target.checked)}
-            />
-          </label>
-          <label className="ov-field">
-            강조색
-            <input
-              type="color"
-              data-testid="sub-emphasis-color"
-              value={subtitleStyle.emphasisColor ?? '#ffd54f'}
-              disabled={!keywordEmphasis}
-              onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
-            />
-          </label>
+              </select>
+            </label>
+            <label className="ov-field">
+              강조
+              <input
+                type="checkbox"
+                data-testid="sub-emphasis"
+                checked={keywordEmphasis}
+                onChange={(e) => applyEmphasis(e.target.checked)}
+              />
+            </label>
+            <label className="ov-field">
+              강조색
+              <input
+                type="color"
+                data-testid="sub-emphasis-color"
+                value={subtitleStyle.emphasisColor ?? '#ffd54f'}
+                disabled={!keywordEmphasis}
+                onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
+              />
+            </label>
+          </div>
         </div>
-      </div>
+      )}
       <div className="review-tools" data-testid="review-tools">
         <button
           type="button"
@@ -1686,65 +1692,69 @@ function Transcript() {
             ↪ 다음 의심 어절
           </button>
         )}
-        <details className="glossary">
-          <summary>📒 내 사전 ({glossary.length})</summary>
-          <div className="glossary-body">
-            {glossary.length === 0 && (
-              <div className="glossary-hint">
-                자주 틀리는 고유명사를 등록하면 전사 후 자동 교정됩니다.
+        {advanced && (
+          <>
+            <details className="glossary">
+              <summary>📒 내 사전 ({glossary.length})</summary>
+              <div className="glossary-body">
+                {glossary.length === 0 && (
+                  <div className="glossary-hint">
+                    자주 틀리는 고유명사를 등록하면 전사 후 자동 교정됩니다.
+                  </div>
+                )}
+                {glossary.map((p, i) => (
+                  <div className="glossary-row" key={`${p.from}-${i}`} data-testid="glossary-row">
+                    <span>
+                      {p.from} → {p.to || '(삭제)'}
+                    </span>
+                    <button
+                      type="button"
+                      className="x"
+                      data-testid="glossary-remove"
+                      onClick={() => removeGlossaryPair(i)}
+                      aria-label="사전 항목 삭제"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <GlossaryAdd onAdd={addGlossaryPair} />
               </div>
-            )}
-            {glossary.map((p, i) => (
-              <div className="glossary-row" key={`${p.from}-${i}`} data-testid="glossary-row">
-                <span>
-                  {p.from} → {p.to || '(삭제)'}
-                </span>
-                <button
-                  type="button"
-                  className="x"
-                  data-testid="glossary-remove"
-                  onClick={() => removeGlossaryPair(i)}
-                  aria-label="사전 항목 삭제"
-                >
-                  ✕
-                </button>
+            </details>
+            <details className="chapters">
+              <summary>📑 챕터 / 타임스탬프</summary>
+              <div className="chapters-body">
+                <div className="chapters-actions">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    data-testid="gen-chapters"
+                    disabled={!transcript}
+                    onClick={genChapters}
+                    title="무음·문장 경계로 챕터를 추출합니다"
+                  >
+                    추출
+                  </button>
+                  {chapters.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      data-testid="copy-chapters"
+                      onClick={copyChapters}
+                    >
+                      📋 복사
+                    </button>
+                  )}
+                </div>
+                {chapters.length > 0 && (
+                  <pre className="chapters-out" data-testid="chapters-out">
+                    {formatChapters(chapters)}
+                  </pre>
+                )}
               </div>
-            ))}
-            <GlossaryAdd onAdd={addGlossaryPair} />
-          </div>
-        </details>
-        <details className="chapters">
-          <summary>📑 챕터 / 타임스탬프</summary>
-          <div className="chapters-body">
-            <div className="chapters-actions">
-              <button
-                type="button"
-                className="btn ghost"
-                data-testid="gen-chapters"
-                disabled={!transcript}
-                onClick={genChapters}
-                title="무음·문장 경계로 챕터를 추출합니다"
-              >
-                추출
-              </button>
-              {chapters.length > 0 && (
-                <button
-                  type="button"
-                  className="btn ghost"
-                  data-testid="copy-chapters"
-                  onClick={copyChapters}
-                >
-                  📋 복사
-                </button>
-              )}
-            </div>
-            {chapters.length > 0 && (
-              <pre className="chapters-out" data-testid="chapters-out">
-                {formatChapters(chapters)}
-              </pre>
-            )}
-          </div>
-        </details>
+            </details>
+          </>
+        )}
       </div>
       <div className="transcript-body" data-testid="transcript-panel">
         {!transcript && (

@@ -58,6 +58,7 @@ interface EditorState {
   selectedOverlayId: string | null;
   subtitlePos: { x: number; y: number; scale: number };
   subtitleStyle: SubtitleStyle;
+  advanced: boolean; // 고급(전체) UI 노출 — DAWN_ADVANCED=1(preload). false=쇼케이스 단순 UI.
 
   importPath: (path: string) => Promise<void>;
   toggleWord: (id: string) => void;
@@ -295,6 +296,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   selectedOverlayId: null,
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
+  // preload가 노출한 DAWN_ADVANCED 플래그(모듈 로드 시 1회 평가; 비-electron/테스트=false).
+  advanced: typeof window !== 'undefined' ? (window.dawn?.advanced ?? false) : false,
   keywordEmphasis: false,
   colorPreset: 'none',
   autoEnhanceEq: null,
