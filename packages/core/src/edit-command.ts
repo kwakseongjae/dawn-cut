@@ -102,6 +102,32 @@ const CommandSchemas = {
     startUs: z.number().int().nonnegative(),
     endUs: z.number().int().positive(),
   }),
+  /**
+   * 적응형 자동 보정 — 영상 분석(signalstats)으로 계산한 명시적 eq를 클립에 기록(clipId 생략
+   * 시 전 비디오클립). 길이 불변=비파괴. '외부전용'(측정값이 필요해 NL만으로 합성 불가 →
+   * plannerGrammar/PLANNER_VERBS 제외). UI/에이전트가 autoEnhanceParams(stats)로 eq를 만들어 넣는다.
+   */
+  applyAutoEnhance: z.object({
+    type: z.literal('applyAutoEnhance'),
+    clipId: z.string().optional(),
+    eq: z.object({
+      contrast: z.number().optional(),
+      saturation: z.number().optional(),
+      brightness: z.number().optional(),
+      gamma: z.number().optional(),
+    }),
+    intensity: z.number().min(0).max(1).optional(),
+  }),
+  /**
+   * STT 오인식 어절 텍스트 교정(사람 검수). 타임스탬프/id/소스구간 보존 → SYNC 불변식 유지.
+   * '외부전용'(wordId 필요 → plannerGrammar/PLANNER_VERBS 제외). 교정된 텍스트는 cue/SRT/번인에
+   * 자동 반영된다(transcriptToCues가 word.text를 쓰므로).
+   */
+  correctWord: z.object({
+    type: z.literal('correctWord'),
+    wordId: z.string().min(1),
+    text: z.string().min(1),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -114,6 +140,8 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.replaceSubtitleStyle,
   CommandSchemas.applyColorgrade,
   CommandSchemas.applyZoom,
+  CommandSchemas.applyAutoEnhance,
+  CommandSchemas.correctWord,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -233,6 +261,29 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
         endUs: cmd.endUs,
       };
       return { ...state, timeline: addEffectToClips(state.timeline, cmd.clipId, effect) };
+    }
+    case 'applyAutoEnhance': {
+      // 계산된 eq를 color 이펙트로 기록(길이 불변). preset 경로와 동일하게 클립 effects에 append.
+      const effect: ClipEffect = {
+        kind: 'color',
+        eq: cmd.eq,
+        ...(cmd.intensity != null ? { intensity: cmd.intensity } : {}),
+      };
+      return { ...state, timeline: addEffectToClips(state.timeline, cmd.clipId, effect) };
+    }
+    case 'correctWord': {
+      // 어절 텍스트만 교체(타임스탬프/id/소스 보존 → sync 불변). 사람이 검수한 값이므로 confidence=1.
+      const w = state.transcript.words[cmd.wordId];
+      if (!w) return state; // 모르는 wordId → no-op(상태 보존)
+      const words = state.transcript.order.map((id) =>
+        id === cmd.wordId ? { ...w, text: cmd.text, confidence: 1 } : state.transcript.words[id]!,
+      );
+      const transcript = buildTranscriptModel(
+        words,
+        state.transcript.mediaId,
+        state.transcript.language,
+      );
+      return { ...state, transcript };
     }
   }
 }

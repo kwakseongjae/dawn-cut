@@ -1,4 +1,4 @@
-import type { Edl, OverlayClip } from '@dawn-cut/core';
+import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
 import type { LlmStatus, ProbeResult, SilenceInterval, TranscribeResult } from '@dawn-cut/ui';
 import { contextBridge, ipcRenderer } from 'electron';
 
@@ -25,6 +25,7 @@ const bridge = {
     path: string,
     opts?: { noiseDb?: number; minSilenceUs?: number },
   ): Promise<SilenceInterval[]> => ipcRenderer.invoke('analyze:silence', path, opts),
+  analyzeVideo: (path: string): Promise<VideoStats> => ipcRenderer.invoke('analyze:video', path),
   render: (
     edl: Edl,
     outPath: string,

@@ -145,6 +145,50 @@ describe('applyCommand — command bus dispatcher', () => {
     const state = scene([['a', 0, 1]]);
     expect(() => applyCommand(state, { type: 'applyColorgrade', preset: 'neon' })).toThrow();
   });
+
+  it('applyAutoEnhance: 계산된 eq를 color 이펙트로 기록(길이 불변, 불변식 유지)', () => {
+    const state = scene([
+      ['앞', 0, 1],
+      ['뒤', 1, 2],
+    ]);
+    const out = applyCommand(state, {
+      type: 'applyAutoEnhance',
+      eq: { contrast: 1.1, saturation: 1.35, brightness: 0.05, gamma: 1.02 },
+    });
+    const clips = Object.values(out.after.timeline.clips);
+    expect(clips.every((c) => c.effects?.some((e) => e.kind === 'color' && 'eq' in e))).toBe(true);
+    expect(out.removedProgramUs).toBe(0); // 비파괴(길이 불변)
+    expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
+  });
+
+  it('correctWord: 어절 텍스트 교정(타임스탬프/id 보존, confidence=1, sync 유지)', () => {
+    const state = scene([
+      ['던컷', 0, 1],
+      ['좋아요', 1, 2],
+    ]);
+    const id = state.transcript.order[0]!;
+    const before = state.transcript.words[id]!;
+    const out = applyCommand(state, { type: 'correctWord', wordId: id, text: 'dawn-cut' });
+    const after = out.after.transcript.words[id]!;
+    expect(after.text).toBe('dawn-cut');
+    expect(after.sourceStart).toBe(before.sourceStart); // 타임스탬프 보존
+    expect(after.sourceEnd).toBe(before.sourceEnd);
+    expect(after.confidence).toBe(1); // 사람 검수 → 확정
+    expect(out.removedProgramUs).toBe(0); // 타임라인 불변
+    expect(validateSync(out.after.timeline, out.after.transcript)).toEqual([]);
+  });
+
+  it('correctWord: 모르는 wordId면 no-op(상태 보존)', () => {
+    const state = scene([['x', 0, 1]]);
+    const out = applyCommand(state, { type: 'correctWord', wordId: 'nope', text: 'y' });
+    expect(out.after.transcript).toBe(state.transcript);
+  });
+
+  it('correctWord: 빈 텍스트 거부(Zod min(1))', () => {
+    const state = scene([['x', 0, 1]]);
+    const id = state.transcript.order[0]!;
+    expect(() => applyCommand(state, { type: 'correctWord', wordId: id, text: '' })).toThrow();
+  });
 });
 
 describe('EditCommand Zod 가드 (경계 런타임 검증)', () => {
@@ -178,9 +222,11 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
   it('verb별 inputSchema(JSON-Schema)를 노출', () => {
     const m = commandManifest();
     expect(m.map((x) => x.name).sort()).toEqual([
+      'applyAutoEnhance',
       'applyColorgrade',
       'applyGlossary',
       'applyZoom',
+      'correctWord',
       'cutSourceRange',
       'deleteWordRange',
       'removeFillers',

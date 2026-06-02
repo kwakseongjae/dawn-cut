@@ -1,4 +1,4 @@
-import type { Edl, OverlayClip, Word } from '@dawn-cut/core';
+import type { Edl, OverlayClip, VideoStats, Word } from '@dawn-cut/core';
 
 // Structural mirrors of the sidecar return types (ui must not depend on node sidecars).
 export interface ProbeResult {
@@ -33,6 +33,7 @@ export interface DawnBridge {
     path: string,
     opts?: { noiseDb?: number; minSilenceUs?: number },
   ) => Promise<SilenceInterval[]>;
+  analyzeVideo: (path: string) => Promise<VideoStats>;
   render: (
     edl: Edl,
     outPath: string,
@@ -77,6 +78,8 @@ declare global {
       approvePlan: () => void;
       rejectPlan: () => void;
       applyStylePack: (id: string) => void;
+      autoEnhance: () => Promise<void>;
+      correctWord: (wordId: string, text: string) => void;
       detectLlm: () => Promise<void>;
     };
   }

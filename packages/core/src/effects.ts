@@ -27,12 +27,29 @@ export interface ZoomEffect {
   endUs: number;
 }
 
-/** 색보정 프리셋 적용. intensity 로 효과 강도를 0(원본)~1(프리셋 풀강도) 가중. */
+/** 색보정 프리셋 이름. */
+export type ColorPreset = 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat' | 'vivid';
+
+/** 명시적 eq 파라미터(자동 보정이 계산해 기록하는 값). 1=항등(밝기는 0=항등). */
+export interface ColorEq {
+  contrast?: number;
+  saturation?: number;
+  brightness?: number;
+  gamma?: number;
+}
+
+/**
+ * 색보정 적용. 두 모드:
+ *  - preset: 명명된 프리셋을 intensity(0~1)로 가중(기존 동작).
+ *  - eq: 명시적 eq 파라미터를 직접 적용(자동 보정 등 '계산된 그레이드'). preset보다 우선한다.
+ */
 export interface ColorEffect {
   kind: 'color';
-  preset: 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat' | 'vivid';
-  /** 0~1. 생략 시 1. 0이면 사실상 패스스루(null 필터). */
+  preset?: ColorPreset;
+  /** 0~1. 생략 시 1. 0이면 사실상 패스스루(null 필터). eq 모드에도 가중으로 적용된다. */
   intensity?: number;
+  /** 명시적 eq 파라미터. 있으면 preset 대신 이걸 적용(자동 보정 결과를 EDL에 그대로 기록). */
+  eq?: ColorEq;
 }
 
 export type ClipEffect = ZoomEffect | ColorEffect;
@@ -110,7 +127,7 @@ export function zoomFilter(e: ZoomEffect, fps: number): string {
  *  - cinematic: 대비↑ 채도↓ 약한 리프트(필름룩) — eq + curves.
  *  - flat:      Log 풍의 평탄화(대비↓ 채도↓, 그레이딩 여지) — eq.
  */
-export const COLOR_PRESETS: Record<ColorEffect['preset'], string> = {
+export const COLOR_PRESETS: Record<ColorPreset, string> = {
   warm: "curves=r='0/0 0.5/0.58 1/1':g='0/0 0.5/0.5 1/1':b='0/0 0.5/0.42 1/1'",
   cool: "curves=r='0/0 0.5/0.42 1/1':g='0/0 0.5/0.5 1/1':b='0/0 0.5/0.58 1/1'",
   punch: 'eq=contrast=1.30:saturation=1.40:brightness=0.02',
@@ -140,7 +157,15 @@ export const COLOR_PRESETS: Record<ColorEffect['preset'], string> = {
  */
 export function colorFilter(e: ColorEffect): string {
   const k = clamp(e.intensity ?? 1, 0, 1);
-  const preset: ColorEffect['preset'] = e.preset in COLOR_PRESETS ? e.preset : 'flat';
+
+  // eq 모드(자동 보정 등 계산된 그레이드): 명시적 파라미터를 직접 가중 적용. preset보다 우선.
+  if (e.eq) {
+    if (k <= 0) return 'eq=contrast=1';
+    const out = eqWeighted(e.eq, k);
+    return out === 'eq=' ? 'eq=contrast=1' : out; // 정의된 파라미터가 없으면 항등(체인 안전)
+  }
+
+  const preset: ColorPreset = e.preset && e.preset in COLOR_PRESETS ? e.preset : 'flat';
 
   if (k <= 0) return 'eq=contrast=1'; // 패스스루(항등) — 체인 안전
 
@@ -197,6 +222,64 @@ function warmCoolCurve(tone: 'warm' | 'cool', k: number): string {
   const g = '0.5'; // 그린은 항등 유지
   const b = num(0.5 + (fullB - 0.5) * k, 4);
   return `curves=r='0/0 0.5/${r} 1/1':g='0/0 0.5/${g} 1/1':b='0/0 0.5/${b} 1/1'`;
+}
+
+/**
+ * ffmpeg signalstats 가 측정한 영상 통계(적응형 자동 보정의 입력).
+ * 휘도는 0~255, 채도는 signalstats SATAVG 스케일(실측상 평이한 영상 ≈ 5~60).
+ */
+export interface VideoStats {
+  /** 평균 휘도(YAVG, 0~255). */
+  yavg: number;
+  /** 최저 휘도(YMIN, 0~255). */
+  ymin: number;
+  /** 최고 휘도(YMAX, 0~255). */
+  ymax: number;
+  /** 평균 채도(SATAVG). */
+  satavg: number;
+}
+
+const round3 = (n: number): number => (Number.isFinite(n) ? Math.round(n * 1000) / 1000 : 0);
+
+/**
+ * '1탭 자동 보정' — 측정된 영상 통계를 보기 좋은 eq 파라미터로 매핑하는 순수 함수.
+ *
+ * 설계 원칙:
+ *  - 결정적: 동일 통계 → 동일 출력(round3로 부동소수 고정).
+ *  - 항상 개선 방향: contrast/saturation/gamma ≥ 1, 어두우면 밝히고, 둔하면 화사하게.
+ *  - 안전 클램프: 어떤 입력에도 과보정으로 화면이 깨지지 않게 상·하한을 둔다.
+ *
+ * 매핑(실측 보정):
+ *  - 밝기: 평균 휘도를 목표(132)로 끌어올리되 가산값을 [-0.10, 0.16]로 제한.
+ *  - 대비: 휘도 분포가 좁으면(플랫) 키우고, 넓으면 건드리지 않음(1.0~1.30).
+ *  - 채도: 둔한 영상(낮은 SATAVG)일수록 더 화사하게(1.0~1.50).
+ *  - 감마: 어둡거나 그림자가 뭉개졌을 때만 중간톤을 살짝 들어올림(1.0~1.18).
+ *
+ * 결과는 applyAutoEnhance verb의 eq로 ColorEffect에 기록되어 EDL이 정확한 값을
+ * 재현한다(길이 불변=비파괴). colorFilter(eq)가 ffmpeg `eq=` 로 렌더한다.
+ */
+export function autoEnhanceParams(stats: VideoStats): ColorEq {
+  const yavg = clamp(stats.yavg, 0, 255);
+  const ymin = clamp(stats.ymin, 0, 255);
+  const ymax = clamp(stats.ymax, ymin + 1, 255);
+  const satavg = clamp(stats.satavg, 0, 255);
+
+  // 밝기(가산): 목표 132로 끌되 과보정 방지.
+  const brightness = clamp(((132 - yavg) / 255) * 0.55, -0.1, 0.16);
+  // 대비(곱셈): 분포가 좁을수록 키우고 1.0 미만으로는 내리지 않음.
+  const spread = (ymax - ymin) / 255;
+  const contrast = clamp(1 + (0.8 - spread) * 0.55, 1.0, 1.3);
+  // 채도(곱셈): SATAVG 64를 '충분'으로 보고, 둔할수록 더 화사하게.
+  const saturation = clamp(1 + (1 - satavg / 64) * 0.4, 1.0, 1.5);
+  // 감마(곱셈): 어둡거나 그림자가 뭉개졌을 때만 중간톤 리프트.
+  const gamma = yavg < 115 || ymin < 10 ? clamp(1 + (120 - yavg) / 700, 1.0, 1.18) : 1.0;
+
+  return {
+    contrast: round3(contrast),
+    saturation: round3(saturation),
+    brightness: round3(brightness),
+    gamma: round3(gamma),
+  };
 }
 
 /**

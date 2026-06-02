@@ -306,6 +306,23 @@ body {
   background: rgba(255, 213, 79, 0.14);
   box-shadow: inset 0 -2px 0 rgba(255, 213, 79, 0.85);
 }
+/* 저신뢰(STT 오인식 의심) 어절 — 빨간 점선 밑줄로 검수 표시(검수 모드에서만) */
+.word.uncertain {
+  background: rgba(255, 107, 107, 0.12);
+  box-shadow: inset 0 -2px 0 rgba(255, 107, 107, 0.85);
+}
+/* 인라인 어절 교정 입력 */
+.word-edit {
+  display: inline;
+  width: 7em;
+  padding: 0 3px;
+  margin: 0 1px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: #0a0d18;
+  color: var(--text);
+  font: inherit;
+}
 /* 한글 검수 도구 (말버릇 제거 + 내 사전) */
 .review-tools {
   display: flex;

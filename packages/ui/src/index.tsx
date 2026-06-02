@@ -10,6 +10,7 @@ import {
   dryRunCommands,
   extractChapters,
   formatChapters,
+  lowConfidenceWords,
   moveOverlay,
   pickKeywords,
   programToWord,
@@ -20,7 +21,7 @@ import {
   wordToProgram,
   wrapCaption,
 } from '@dawn-cut/core';
-import type { Chapter, Edl, SubtitleStyle } from '@dawn-cut/core';
+import type { Chapter, ColorEq, Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
   type DragEvent,
   type MouseEvent,
@@ -517,6 +518,16 @@ const CSS_COLOR_APPROX: Record<ColorPreset, string> = {
   flat: 'contrast(0.82) saturate(0.78)',
 };
 
+// 자동 보정 eq → 프리뷰용 CSS 필터 근사(익스포트는 ffmpeg eq로 정확). 분위기 미리보기.
+function cssFromEq(eq: ColorEq | null): string | null {
+  if (!eq) return null;
+  const parts: string[] = [];
+  if (eq.brightness != null) parts.push(`brightness(${(1 + eq.brightness).toFixed(3)})`);
+  if (eq.contrast != null) parts.push(`contrast(${eq.contrast.toFixed(3)})`);
+  if (eq.saturation != null) parts.push(`saturate(${eq.saturation.toFixed(3)})`);
+  return parts.length ? parts.join(' ') : null;
+}
+
 const REFRAME_OPTS: { id: 'source' | '9:16' | '1:1'; label: string }[] = [
   { id: 'source', label: '원본 비율' },
   { id: '9:16', label: '세로 9:16 (쇼츠/릴스)' },
@@ -524,10 +535,38 @@ const REFRAME_OPTS: { id: 'source' | '9:16' | '1:1'; label: string }[] = [
 ];
 
 function EffectPanel() {
-  const { colorPreset, setColorPreset, reframe, setReframe, timeline } = useEditor();
+  const {
+    colorPreset,
+    setColorPreset,
+    reframe,
+    setReframe,
+    timeline,
+    mediaPath,
+    autoEnhance,
+    autoEnhanceEq,
+  } = useEditor();
   return (
     <div className="dock-body">
-      <strong style={{ fontSize: 13 }}>색보정 (Color)</strong>
+      <strong style={{ fontSize: 13 }}>자동 보정 (Auto)</strong>
+      <button
+        type="button"
+        className="btn primary"
+        data-testid="auto-enhance"
+        disabled={!timeline || !mediaPath}
+        onClick={() => void autoEnhance()}
+        title="영상을 분석해 밝기·대비·채도를 자동으로 보정합니다 (1탭)"
+        style={{ marginTop: 8, width: '100%' }}
+      >
+        ✨ 자동 보정 (1탭)
+      </button>
+      {autoEnhanceEq && (
+        <p className="muted-note" data-testid="auto-enhance-applied" style={{ marginTop: 6 }}>
+          적용됨 · 채도 ×{autoEnhanceEq.saturation?.toFixed(2)} · 대비 ×
+          {autoEnhanceEq.contrast?.toFixed(2)} · 밝기 {autoEnhanceEq.brightness! >= 0 ? '+' : ''}
+          {autoEnhanceEq.brightness?.toFixed(2)} (⌘Z로 되돌리기)
+        </p>
+      )}
+      <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>색보정 (Color)</strong>
       <label className="ov-field" style={{ marginTop: 8 }}>
         프리셋
         <select
@@ -607,8 +646,14 @@ function Preview() {
     updateOverlay,
     removeOverlay,
     colorPreset,
+    autoEnhanceEq,
   } = useEditor();
   const selectedOverlay = overlays.find((o) => o.id === selectedOverlayId) ?? null;
+  // 프리뷰 필터 = 색보정 프리셋 근사 + 자동 보정 eq 근사(둘 다 CSS, 익스포트는 ffmpeg 정확).
+  const previewFilter =
+    [colorPreset !== 'none' ? CSS_COLOR_APPROX[colorPreset] : null, cssFromEq(autoEnhanceEq)]
+      .filter(Boolean)
+      .join(' ') || undefined;
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{
@@ -752,7 +797,7 @@ function Preview() {
               src={`file://${mediaPath}`}
               preload="auto"
               onEnded={() => setPlaying(false)}
-              style={colorPreset !== 'none' ? { filter: CSS_COLOR_APPROX[colorPreset] } : undefined}
+              style={previewFilter ? { filter: previewFilter } : undefined}
             />
             {visibleOverlays.map((o) => (
               <div
@@ -1128,6 +1173,7 @@ function Transcript() {
     keywordEmphasis,
     setKeywordEmphasis,
     removeFillers,
+    correctWord,
     glossary,
     addGlossaryPair,
     removeGlossaryPair,
@@ -1157,6 +1203,20 @@ function Transcript() {
     const { report } = dryRunCommands({ timeline, transcript }, [{ type: 'removeFillers' }]);
     return report.ok ? report.removedProgramUs : 0;
   }, [transcript, timeline, fillerIds]);
+  // 자막 정확도 검수: STT 신뢰도가 낮은(오인식 의심) 어절을 표시(opt-in '검수 모드').
+  const [reviewMode, setReviewMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const uncertainIds = useMemo(
+    () =>
+      new Set(
+        transcript
+          ? lowConfidenceWords(transcript)
+              .map((w) => w.id)
+              .filter((id) => !dead.has(id))
+          : [],
+      ),
+    [transcript, dead],
+  );
   // 현재 재생 위치의 cue(원문) — 프리뷰 자막/키워드강조의 단일 출처.
   const currentCue = useMemo(() => {
     if (!transcript || !timeline) return null;
@@ -1284,6 +1344,28 @@ function Transcript() {
       clearOverlaysByKind('subtitle');
       await doBurn(defaultPos, {});
     }
+  };
+  // 검수 교정: 어절 텍스트를 command bus로 고치고(타임스탬프 보존), 번인돼 있으면 재번인.
+  const commitWordEdit = async (id: string, text: string) => {
+    setEditingId(null);
+    const t = text.trim();
+    const w = transcript?.words[id];
+    if (!t || !w || w.text === t) return;
+    correctWord(id, t);
+    if (burnt) {
+      clearOverlaysByKind('subtitle');
+      await doBurn(subtitlePos, subtitleStyle); // doBurn은 fresh getState()로 교정 텍스트 반영
+    }
+  };
+  // 다음 저신뢰 어절로 플레이헤드 이동(검수 동선).
+  const jumpNextUncertain = () => {
+    if (!timeline || !transcript || uncertainIds.size === 0) return;
+    const withProg = [...uncertainIds]
+      .map((id) => ({ id, p: wordToProgram(timeline, transcript.words[id]!) }))
+      .filter((x) => x.p)
+      .sort((a, b) => a.p!.start - b.p!.start);
+    const next = withProg.find((x) => x.p!.start > playheadUs + 1) ?? withProg[0];
+    if (next?.p) setPlayhead(next.p.start);
   };
   return (
     <div className="transcript">
@@ -1579,6 +1661,31 @@ function Transcript() {
         >
           🧹 말버릇 {fillerIds.size}개 제거{fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
         </button>
+        <label
+          className="ov-field"
+          data-testid="review-mode-field"
+          title="STT 신뢰도가 낮은 어절을 빨갛게 표시합니다. 더블클릭으로 고칠 수 있어요."
+        >
+          <input
+            type="checkbox"
+            data-testid="review-mode"
+            checked={reviewMode}
+            disabled={!transcript}
+            onChange={(e) => setReviewMode(e.target.checked)}
+          />
+          🔎 검수 {reviewMode && uncertainIds.size > 0 ? `(${uncertainIds.size})` : ''}
+        </label>
+        {reviewMode && uncertainIds.size > 0 && (
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="jump-uncertain"
+            onClick={jumpNextUncertain}
+            title="다음 검수 대상 어절로 이동"
+          >
+            ↪ 다음 의심 어절
+          </button>
+        )}
         <details className="glossary">
           <summary>📒 내 사전 ({glossary.length})</summary>
           <div className="glossary-body">
@@ -1653,12 +1760,32 @@ function Transcript() {
               const w = transcript.words[id];
               if (!w) return null;
               const isDead = dead.has(id);
+              const isUncertain = reviewMode && uncertainIds.has(id);
+              if (editingId === id) {
+                // 인라인 교정 입력 — Enter/blur 커밋, Esc 취소.
+                return (
+                  <input
+                    key={id}
+                    className="word-edit"
+                    data-testid="word-edit"
+                    defaultValue={w.text}
+                    // biome-ignore lint/a11y/noAutofocus: inline correction focuses the edited word
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void commitWordEdit(id, e.currentTarget.value);
+                      else if (e.key === 'Escape') setEditingId(null);
+                    }}
+                    onBlur={(e) => void commitWordEdit(id, e.currentTarget.value)}
+                  />
+                );
+              }
               const cls = [
                 'word',
                 isDead ? 'dead' : '',
                 selected.includes(id) ? 'sel' : '',
                 id === activeId ? 'active' : '',
                 fillerIds.has(id) ? 'filler' : '',
+                isUncertain ? 'uncertain' : '',
               ]
                 .filter(Boolean)
                 .join(' ');
@@ -1668,6 +1795,7 @@ function Transcript() {
                   className={cls}
                   data-testid="word"
                   data-dead={isDead ? 'true' : 'false'}
+                  data-uncertain={isUncertain ? 'true' : 'false'}
                   onClick={(e) => {
                     if (isDead) return;
                     if (e.metaKey || e.ctrlKey) {
@@ -1679,8 +1807,18 @@ function Transcript() {
                     }
                     toggleWord(id);
                   }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    if (!isDead) setEditingId(id); // 더블클릭 → 텍스트 교정
+                  }}
                   onKeyDown={() => {}}
-                  title={timeline ? '⌘/Ctrl+click to seek here' : undefined}
+                  title={
+                    isUncertain
+                      ? `신뢰도 ${(w.confidence * 100).toFixed(0)}% · 더블클릭으로 교정`
+                      : timeline
+                        ? '⌘/Ctrl+click 위치 이동 · 더블클릭 교정'
+                        : undefined
+                  }
                 >
                   {w.text}{' '}
                 </span>
@@ -1811,6 +1949,7 @@ const BUSY_LABEL: Record<string, string> = {
   extracting: '오디오 추출 중',
   transcribing: '한국어 자막 생성 중',
   'detecting silence': '무음 구간 스캔 중',
+  analyzing: '영상 분석 중 (자동 보정)',
   'synthesizing voice': '음성 합성 중',
   exporting: '내보내는 중',
   'exporting gif': 'GIF 내보내는 중',
@@ -1945,6 +2084,8 @@ export function AppShell() {
       approvePlan: () => useEditor.getState().approvePlan(),
       rejectPlan: () => useEditor.getState().rejectPlan(),
       applyStylePack: (id: string) => useEditor.getState().applyStylePack(id),
+      autoEnhance: () => useEditor.getState().autoEnhance(),
+      correctWord: (wordId: string, text: string) => useEditor.getState().correctWord(wordId, text),
       detectLlm: () => useEditor.getState().detectLlm(),
     };
     // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).

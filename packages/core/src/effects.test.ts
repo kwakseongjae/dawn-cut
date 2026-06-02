@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   COLOR_PRESETS,
   type ColorEffect,
+  type VideoStats,
   type ZoomEffect,
+  autoEnhanceParams,
   colorFilter,
   effectFilter,
   zoomFilter,
@@ -223,6 +225,111 @@ describe('colorFilter', () => {
   it('is deterministic: same input → identical string', () => {
     const c = color({ preset: 'cinematic', intensity: 0.7 });
     expect(colorFilter(c)).toBe(colorFilter(c));
+  });
+});
+
+describe('colorFilter — explicit eq mode (auto-enhance)', () => {
+  it('eq params are applied directly at full intensity (no preset)', () => {
+    const s = colorFilter({
+      kind: 'color',
+      eq: { contrast: 1.2, saturation: 1.4, brightness: 0.05, gamma: 1.05 },
+    });
+    expect(s).toContain('eq=');
+    expect(s).toContain('contrast=1.2000');
+    expect(s).toContain('saturation=1.4000');
+    expect(s).toContain('brightness=0.0500');
+    expect(s).toContain('gamma=1.0500');
+    expect(s).not.toContain('curves='); // eq 모드는 커브 없음
+  });
+
+  it('eq takes precedence over preset when both present', () => {
+    const s = colorFilter({ kind: 'color', preset: 'warm', eq: { saturation: 1.5 } });
+    expect(s).toBe('eq=saturation=1.5000');
+    expect(s).not.toContain('curves=');
+  });
+
+  it('eq mode honors intensity weighting toward identity', () => {
+    const s = colorFilter({
+      kind: 'color',
+      eq: { saturation: 1.4, brightness: 0.1 },
+      intensity: 0.5,
+    });
+    expect(s).toContain('saturation=1.2000'); // 1 + (1.4-1)*0.5
+    expect(s).toContain('brightness=0.0500'); // 0.1*0.5
+  });
+
+  it('guard: empty eq → identity passthrough', () => {
+    expect(colorFilter({ kind: 'color', eq: {} })).toBe('eq=contrast=1');
+  });
+
+  it('guard: eq mode intensity<=0 → passthrough', () => {
+    expect(colorFilter({ kind: 'color', eq: { contrast: 1.4 }, intensity: 0 })).toBe(
+      'eq=contrast=1',
+    );
+  });
+});
+
+describe('autoEnhanceParams', () => {
+  const stats = (over: Partial<VideoStats> = {}): VideoStats => ({
+    yavg: 128,
+    ymin: 16,
+    ymax: 240,
+    satavg: 64,
+    ...over,
+  });
+
+  it('is deterministic: same stats → identical params', () => {
+    expect(autoEnhanceParams(stats())).toEqual(autoEnhanceParams(stats()));
+  });
+
+  it('always improves: contrast/saturation/gamma ≥ 1', () => {
+    for (const s of [stats(), stats({ yavg: 30 }), stats({ yavg: 220 }), stats({ satavg: 5 })]) {
+      const p = autoEnhanceParams(s);
+      expect(p.contrast!).toBeGreaterThanOrEqual(1);
+      expect(p.saturation!).toBeGreaterThanOrEqual(1);
+      expect(p.gamma!).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('dark footage → positive brightness; bright footage → ≤0', () => {
+    expect(autoEnhanceParams(stats({ yavg: 60 })).brightness!).toBeGreaterThan(0);
+    expect(autoEnhanceParams(stats({ yavg: 220 })).brightness!).toBeLessThanOrEqual(0);
+  });
+
+  it('dull footage (low SATAVG) → stronger saturation boost', () => {
+    const dull = autoEnhanceParams(stats({ satavg: 5 })).saturation!;
+    const rich = autoEnhanceParams(stats({ satavg: 64 })).saturation!;
+    expect(dull).toBeGreaterThan(rich);
+    expect(rich).toBeCloseTo(1, 2); // 이미 화사하면 거의 손대지 않음
+  });
+
+  it('narrow luma spread (flat) → higher contrast than wide spread', () => {
+    const flat = autoEnhanceParams(stats({ ymin: 110, ymax: 150 })).contrast!;
+    const wide = autoEnhanceParams(stats({ ymin: 0, ymax: 255 })).contrast!;
+    expect(flat).toBeGreaterThan(wide);
+  });
+
+  it('all params stay within safe bounds for extreme inputs', () => {
+    for (const s of [
+      stats({ yavg: 0, ymin: 0, ymax: 1, satavg: 0 }),
+      stats({ yavg: 255, ymin: 255, ymax: 255, satavg: 255 }),
+      stats({ yavg: Number.NaN, ymin: -50, ymax: 9999, satavg: -1 }),
+    ]) {
+      const p = autoEnhanceParams(s);
+      expect(p.contrast!).toBeGreaterThanOrEqual(1.0);
+      expect(p.contrast!).toBeLessThanOrEqual(1.3);
+      expect(p.saturation!).toBeLessThanOrEqual(1.5);
+      expect(p.brightness!).toBeGreaterThanOrEqual(-0.1);
+      expect(p.brightness!).toBeLessThanOrEqual(0.16);
+      expect(p.gamma!).toBeLessThanOrEqual(1.18);
+    }
+  });
+
+  it('produces a renderable eq filter via colorFilter', () => {
+    const eq = autoEnhanceParams(stats({ yavg: 105, ymin: 22, ymax: 255, satavg: 7 }));
+    const s = colorFilter({ kind: 'color', eq });
+    expect(s.startsWith('eq=')).toBe(true);
+    expect(s).toContain('saturation=');
   });
 });
 

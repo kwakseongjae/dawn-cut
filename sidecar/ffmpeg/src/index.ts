@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { buildOverlayFilter, effectFilter } from '@dawn-cut/core';
-import type { Edl, OverlayClip } from '@dawn-cut/core';
+import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
 
 const exec = promisify(execFile);
 
@@ -58,6 +58,59 @@ function parseFps(rate: string | undefined): number {
   const [num, den] = rate.split('/').map(Number);
   if (!num || !den) return 0;
   return Math.round((num / den) * 1000) / 1000;
+}
+
+/**
+ * ffmpeg `signalstats` → 평균 휘도(YAVG)/채도(SATAVG)/휘도 범위(YMIN·YMAX) (IPC `analyze:video`).
+ *
+ * '1탭 적응형 자동 보정'의 입력. 짧은 샘플만 분석한다(전체 디코드 불필요 → 빠르고 결정적).
+ * detectSilences와 동일하게 stderr를 파싱한다(`metadata=print`가 lavfi.signalstats.* 를 찍는다).
+ * 파싱 실패 시 무해한 중립값(밝기 보통/적당 대비)을 돌려준다 → 자동 보정이 과보정하지 않는다.
+ *
+ * 측정값은 core의 순수 `autoEnhanceParams(stats)` 로 넘겨 eq 파라미터를 계산한다(렌더는 별도).
+ */
+export async function analyzeVideo(
+  path: string,
+  opts: { sampleSec?: number; sampleFps?: number } = {},
+): Promise<VideoStats> {
+  const sampleSec = Math.min(60, Math.max(0.5, opts.sampleSec ?? 6));
+  const sampleFps = Math.min(10, Math.max(0.5, opts.sampleFps ?? 2));
+  const { stderr } = await exec(FFMPEG, [
+    '-hide_banner',
+    '-t',
+    String(sampleSec),
+    '-i',
+    path,
+    '-vf',
+    `fps=${sampleFps},signalstats,metadata=print`,
+    '-f',
+    'null',
+    '-',
+  ]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
+
+  const yavgs: number[] = [];
+  const satavgs: number[] = [];
+  let ymin = Number.POSITIVE_INFINITY;
+  let ymax = Number.NEGATIVE_INFINITY;
+  for (const line of stderr.split('\n')) {
+    const ya = /lavfi\.signalstats\.YAVG=([\d.]+)/.exec(line);
+    const sa = /lavfi\.signalstats\.SATAVG=([\d.]+)/.exec(line);
+    const yi = /lavfi\.signalstats\.YMIN=([\d.]+)/.exec(line);
+    const yx = /lavfi\.signalstats\.YMAX=([\d.]+)/.exec(line);
+    if (ya) yavgs.push(Number(ya[1]));
+    if (sa) satavgs.push(Number(sa[1]));
+    if (yi) ymin = Math.min(ymin, Number(yi[1]));
+    if (yx) ymax = Math.max(ymax, Number(yx[1]));
+  }
+  if (yavgs.length === 0) return { yavg: 128, ymin: 16, ymax: 240, satavg: 40 }; // 파싱 실패 폴백
+  const mean = (xs: number[], d: number) =>
+    xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : d;
+  return {
+    yavg: mean(yavgs, 128),
+    ymin: Number.isFinite(ymin) ? ymin : 16,
+    ymax: Number.isFinite(ymax) ? ymax : 240,
+    satavg: mean(satavgs, 40),
+  };
 }
 
 /**

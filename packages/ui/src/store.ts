@@ -2,6 +2,7 @@ import {
   appendAudit,
   applyCommand,
   applyGlossary,
+  autoEnhanceParams,
   buildPlanPrompt,
   buildTranscriptModel,
   createInitialTimeline,
@@ -21,6 +22,7 @@ import {
 } from '@dawn-cut/core';
 import type {
   AuditEntry,
+  ColorEq,
   DryRunReport,
   EditCommand,
   GlossaryPair,
@@ -87,6 +89,10 @@ interface EditorState {
   setKeywordEmphasis: (on: boolean) => void;
   colorPreset: ColorPreset; // 전역 색보정 프리셋(익스포트 시 전 클립에 적용)
   setColorPreset: (p: ColorPreset) => void;
+  // 적응형 자동 보정(1탭): 영상 분석 → autoEnhanceParams → applyAutoEnhance(command bus+감사+undo).
+  autoEnhanceEq: ColorEq | null; // 마지막 적용 eq(프리뷰 CSS 근사용; 실제 렌더는 timeline 이펙트)
+  autoEnhance: () => Promise<void>;
+  correctWord: (wordId: string, text: string) => void; // STT 오인식 어절 교정(검수)
   reframe: Reframe; // 익스포트 종횡비(원본/세로 9:16/정사각 1:1) — 자동 중앙 크롭
   setReframe: (r: Reframe) => void;
   // ── 한글 검수 자동화 (어절 위) ──
@@ -291,6 +297,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitleStyle: {},
   keywordEmphasis: false,
   colorPreset: 'none',
+  autoEnhanceEq: null,
   reframe: 'source',
   glossary: loadGlossary(),
   auditLog: [],
@@ -353,6 +360,48 @@ export const useEditor = create<EditorState>((set, get) => ({
   setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
   setColorPreset: (p) => set({ colorPreset: p }),
   setReframe: (r) => set({ reframe: r }),
+
+  autoEnhance: async () => {
+    // 1탭 적응형 보정: 영상을 분석(signalstats) → 순수 autoEnhanceParams로 eq 계산 →
+    // applyAutoEnhance를 command bus로 적용(전 클립, 길이 불변) + 감사로그 + undo 스택.
+    // 사람 GUI가 AI 에이전트와 똑같은 verb를 구동한다(에이전트도 같은 흐름으로 자동 보정 가능).
+    const { mediaPath, timeline, transcript } = get();
+    const dawn = window.dawn;
+    if (!mediaPath || !timeline || !transcript || !dawn) return;
+    set({ status: 'analyzing' });
+    try {
+      const stats = await dawn.analyzeVideo(mediaPath);
+      const eq = autoEnhanceParams(stats);
+      const cmd = { type: 'applyAutoEnhance', eq } as const;
+      const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
+      set({
+        timeline: after.timeline,
+        autoEnhanceEq: eq,
+        past: [...get().past, timeline],
+        future: [],
+        canUndo: true,
+        canRedo: false,
+        status: 'ready',
+        auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
+        ...derive(after.timeline),
+      });
+    } catch {
+      set({ status: 'ready' }); // 분석 실패 → 조용히 원복(미디어 손상/ffmpeg 부재)
+    }
+  },
+
+  correctWord: (wordId, text) => {
+    // STT 오인식 어절을 사람이 교정 — command bus 경유(applyGlossaryNow와 동형). 타임스탬프/id
+    // 보존이라 sync 불변, 교정 텍스트는 cue/SRT/번인에 자동 반영. 감사로그에 남는다(타임라인 불변).
+    const { transcript, timeline } = get();
+    const t = text.trim();
+    if (!transcript || !timeline || !t) return;
+    const w = transcript.words[wordId];
+    if (!w || w.text === t) return;
+    const cmd = { type: 'correctWord', wordId, text: t } as const;
+    const { after } = applyCommand({ timeline, transcript }, cmd);
+    set({ transcript: after.transcript, auditLog: appendAudit(get().auditLog, cmd, 0) });
+  },
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>
@@ -445,6 +494,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       lastExport: null,
       silencePreview: null,
       auditLog: [],
+      autoEnhanceEq: null,
       ...derive(timeline),
     });
   },
@@ -665,6 +715,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       lastExport: null,
       silencePreview: null,
       auditLog: [],
+      autoEnhanceEq: null,
     });
   },
 

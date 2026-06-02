@@ -17,6 +17,7 @@ export * from './placement.js';
 export * from './draw.js';
 export * from './easing.js';
 export * from './whisper.js';
+export * from './confidence.js';
 export * from './caption.js';
 export * from './fillers.js';
 export * from './glossary.js';

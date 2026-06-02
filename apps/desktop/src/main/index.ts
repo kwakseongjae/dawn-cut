@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Edl } from '@dawn-cut/core';
 import {
+  analyzeVideo,
   detectSilences,
   extractAudio,
   probeMedia,
@@ -54,6 +55,9 @@ ipcMain.handle(
 );
 
 ipcMain.handle('subtitle:write', (_e, path: string, content: string) => writeSrt(path, content));
+
+// 적응형 자동 보정 입력: 영상 통계(signalstats). 계산(autoEnhanceParams)·적용(command bus)은 renderer가 core로.
+ipcMain.handle('analyze:video', (_e, path: string) => analyzeVideo(path));
 
 // P3 로컬 LLM 플래너(llama.cpp). renderer가 buildPlanPrompt로 만든 프롬프트를 받아 raw 텍스트를
 // 돌려준다(파싱/dryRun은 renderer가 core로). DAWN_DISABLE_LLM이 set이면 가용성 false로 강제해
