@@ -33,7 +33,7 @@
 | 컷/말버릇·무음 제거/glossary | ship-ready | `g5-silence`, `detectFillers`, `applyGlossary`. 단위·통합 통과. |
 | 오버레이(이미지/gif/스티커/키프레임/블렌드/B-roll) | ship-ready | `g18/g19/g22/g23/g26` 픽셀검증, **출력영상에 실제 합성**. |
 | TTS 보이스오버 | ship-ready | 실 macOS `say`+whisper 왕복 `g17/g17b`. |
-| command bus 9 verb + 해시체인 감사 + dryRun | ship-ready | `edit-command.ts`(불변식 throw), `audit.ts`(canonical JSON, R2). property test 포함. |
+| command bus 11 verb + 해시체인 감사 + dryRun | ship-ready | `edit-command.ts`(불변식 throw, +applyAutoEnhance·correctWord), `audit.ts`(canonical JSON, R2). property test 포함. |
 
 #### v0.2 (동작하나 폴리시/연결 필요 — "실험적" 라벨로 같이 낼 수는 있음)
 
