@@ -282,6 +282,8 @@ function Dropzone({ onFiles, hint }: { onFiles: (f: File[]) => void; hint: strin
 function MediaPanel() {
   const {
     mediaPath,
+    previewPath,
+    proxyBusy,
     transcript,
     status,
     importPath,
@@ -320,7 +322,9 @@ function MediaPanel() {
                   : "자막 없음 — '자막 생성' 버튼"}
             </div>
           </div>
-          <span className="badge live">원본</span>
+          <span className="badge live" data-testid="media-badge">
+            {proxyBusy ? '변환 중' : previewPath && previewPath !== mediaPath ? '프록시' : '원본'}
+          </span>
         </div>
       )}
       {imageOverlays.map((o) => (
