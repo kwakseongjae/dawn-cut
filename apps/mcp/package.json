@@ -13,6 +13,7 @@
   "scripts": { "build": "tsc -p tsconfig.json --noEmit" },
   "dependencies": {
     "@dawn-cut/core": "workspace:*",
+    "@dawn-cut/sidecar-ffmpeg": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.1.12"
   }

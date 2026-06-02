@@ -17,8 +17,10 @@ import {
   makeProject,
   serializeProject,
   summarizeState,
+  timelineToEdl,
   verifyAudit,
 } from '@dawn-cut/core';
+import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
 
 export interface ApplyResult {
   summary: StateSummary;
@@ -119,5 +121,20 @@ export class DawnSession {
   /** 감사로그 전체(해시체인) — 외부에서 재생/검증용. */
   auditLog(): { entries: AuditEntry[]; verified: boolean } {
     return { entries: this.audit, verified: verifyAudit(this.audit) };
+  }
+
+  /**
+   * 현재 편집(타임라인=컷+색보정/줌 이펙트)을 실제 mp4로 렌더한다(sidecar-ffmpeg).
+   * 외부 AI 파이프라인의 마지막 단계 — open→(plan)→apply→render. 길이/색/줌/파일오버레이가 반영된다.
+   * 주의(MVP): 자막 '번인'은 렌더에 미포함(자막 PNG 래스터는 UI/데모 캔버스 파이프라인에 있음).
+   */
+  async render(outPath: string): Promise<{ outPath: string; durationUs: number }> {
+    const st = this.require();
+    if (!this.project) throw new Error('열린 프로젝트가 없습니다.');
+    const probe = await probeMedia(this.project.mediaPath);
+    const edl = timelineToEdl(st.timeline, this.project.mediaPath);
+    await renderEdl(edl, outPath, { frameW: probe.width, frameH: probe.height });
+    const result = await probeMedia(outPath);
+    return { outPath, durationUs: result.durationUs };
   }
 }

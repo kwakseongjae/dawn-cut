@@ -111,6 +111,9 @@ importers:
       '@dawn-cut/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@dawn-cut/sidecar-ffmpeg':
+        specifier: workspace:*
+        version: link:../../sidecar/ffmpeg
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
