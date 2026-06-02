@@ -12,7 +12,7 @@
 //   문법이 통째로 로드 실패한다(docs/P3-LLM-SIDECAR.md).
 //
 // 두 가지 문법을 노출한다:
-//  - commandGrammar() : edit-command.ts의 11개 verb 전체(= MCP tool 표면과 1:1). 충실한 surface.
+//  - commandGrammar() : edit-command.ts의 12개 verb 전체(= MCP tool 표면과 1:1). 충실한 surface.
 //  - plannerGrammar() : 로컬 LLM '플래너' 전용 안전 부분집합. 좌표·ID(clipId/wordId/소스/무음)를
 //    NL만으로 합성할 수 없으므로 그런 필드를 요구하는 verb를 빼고, applyColorgrade에서도
 //    clipId를 제거(생략 시 전체 적용)해 환각을 구조적으로 차단한다. rule-planner.ts의
@@ -21,12 +21,12 @@
 // 순수·결정적: 입력이 없고 항상 동일한 GBNF 문자열을 반환한다(node import 없음).
 
 /**
- * EditCommand 11개 verb의 JSON 객체 배열을 표현하는 llama.cpp GBNF 문법 문자열을 반환한다.
+ * EditCommand 12개 verb의 JSON 객체 배열을 표현하는 llama.cpp GBNF 문법 문자열을 반환한다.
  *
- * 11개 verb(deleteWordRange/removeSilences/removeFillers/cutSourceRange/applyGlossary/
- * setSubtitleStyle/replaceSubtitleStyle/applyColorgrade/applyZoom/applyAutoEnhance/correctWord)와
- * 1:1로 대응한다. verb를 추가하면 cmd 대안과 규칙을 추가해야 한다.
- * (applyAutoEnhance·correctWord는 외부전용이라 plannerGrammar에는 없다.)
+ * 12개 verb(deleteWordRange/removeSilences/removeFillers/cutSourceRange/applyGlossary/
+ * setSubtitleStyle/replaceSubtitleStyle/highlightKeyword/applyColorgrade/applyZoom/
+ * applyAutoEnhance/correctWord)와 1:1로 대응한다. verb를 추가하면 cmd 대안과 규칙을 추가해야 한다.
+ * (highlightKeyword는 NL-안전이라 plannerGrammar에도 포함; applyAutoEnhance·correctWord는 외부전용이라 제외.)
  *
  * 주의: GBNF는 '구조'만 보장한다. 필드 의미(비음수/열린구간/사전값 등)는 Zod(safeParse)가
  * 최종 검증한다. 이 문법은 파서 친화적 출력을 유도하는 1차 제약이다.
@@ -41,7 +41,7 @@ export function commandGrammar(): string {
  * 로컬 LLM 플래너 전용 GBNF(안전 부분집합)를 반환한다.
  *
  * 포함 verb(NL만으로 안전 합성 가능): removeFillers, applyGlossary, setSubtitleStyle,
- * replaceSubtitleStyle, applyColorgrade(preset, clipId 없음).
+ * replaceSubtitleStyle, highlightKeyword, applyColorgrade(preset, clipId 없음).
  * 제외 verb(외부 좌표·ID 필요 → 환각 위험): deleteWordRange(wordId)·removeSilences(무음 좌표)·
  * cutSourceRange(소스 좌표)·applyZoom(정밀 시간창). 이들은 store가 감지 결과로 별도 합성한다.
  *
@@ -86,9 +86,9 @@ pair ::= "{" ws "\"from\"" ws ":" ws string ws "," ws "\"to\"" ws ":" ws string 
 
 const COLOR_PRESET_RULE = String.raw`colorPreset ::= "\"warm\"" | "\"cool\"" | "\"punch\"" | "\"cinematic\"" | "\"flat\"" | "\"vivid\""`;
 
-// ── 전체 문법(11 verb) ──
+// ── 전체 문법(12 verb) ──
 const FULL_GBNF = `${String.raw`root ::= "[" ws ( cmd ( ws "," ws cmd )* )? ws "]"
-cmd ::= deleteWordRange | removeSilences | removeFillers | cutSourceRange | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | applyColorgrade | applyZoom | applyAutoEnhance | correctWord
+cmd ::= deleteWordRange | removeSilences | removeFillers | cutSourceRange | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | applyColorgrade | applyZoom | applyAutoEnhance | correctWord
 deleteWordRange ::= "{" ws "\"type\"" ws ":" ws "\"deleteWordRange\"" ws "," ws "\"fromWordId\"" ws ":" ws string ws "," ws "\"toWordId\"" ws ":" ws string ws "}"
 removeSilences ::= "{" ws "\"type\"" ws ":" ws "\"removeSilences\"" ws "," ws "\"silences\"" ws ":" ws silenceArray ( ws "," ws "\"padUs\"" ws ":" ws integer )? ws "}"
 silenceArray ::= "[" ws ( silence ( ws "," ws silence )* )? ws "]"
@@ -97,6 +97,7 @@ removeFillers ::= "{" ws "\"type\"" ws ":" ws "\"removeFillers\"" ( ws "," ws "\
 cutSourceRange ::= "{" ws "\"type\"" ws ":" ws "\"cutSourceRange\"" ws "," ws "\"mediaId\"" ws ":" ws string ws "," ws "\"sourceStart\"" ws ":" ws integer ws "," ws "\"sourceEnd\"" ws ":" ws integer ws "}"
 setSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"setSubtitleStyle\"" ws "," ws "\"patch\"" ws ":" ws subtitleStyle ws "}"
 replaceSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"replaceSubtitleStyle\"" ws "," ws "\"style\"" ws ":" ws subtitleStyle ws "}"
+highlightKeyword ::= "{" ws "\"type\"" ws ":" ws "\"highlightKeyword\"" ( ws "," ws "\"color\"" ws ":" ws string )? ws "}"
 applyColorgrade ::= "{" ws "\"type\"" ws ":" ws "\"applyColorgrade\"" ws "," ws ( "\"clipId\"" ws ":" ws string ws "," ws )? "\"preset\"" ws ":" ws colorPreset ( ws "," ws "\"intensity\"" ws ":" ws number )? ws "}"
 applyZoom ::= "{" ws "\"type\"" ws ":" ws "\"applyZoom\"" ws "," ws ( "\"clipId\"" ws ":" ws string ws "," ws )? "\"from\"" ws ":" ws number ws "," ws "\"to\"" ws ":" ws number ws "," ws "\"startUs\"" ws ":" ws integer ws "," ws "\"endUs\"" ws ":" ws integer ws "}"
 applyAutoEnhance ::= "{" ws "\"type\"" ws ":" ws "\"applyAutoEnhance\"" ws "," ws ( "\"clipId\"" ws ":" ws string ws "," ws )? "\"eq\"" ws ":" ws autoEq ( ws "," ws "\"intensity\"" ws ":" ws number )? ws "}"
@@ -113,10 +114,11 @@ ${BASE_TERMINALS}
 
 // ── 플래너 안전 부분집합(5 verb, clipId/좌표/외부ID 없음) ──
 const PLAN_GBNF = `${String.raw`root ::= "[" ws ( cmd ( ws "," ws cmd )* )? ws "]"
-cmd ::= removeFillers | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | applyColorgrade
+cmd ::= removeFillers | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | applyColorgrade
 removeFillers ::= "{" ws "\"type\"" ws ":" ws "\"removeFillers\"" ( ws "," ws "\"lexicon\"" ws ":" ws stringArray )? ws "}"
 setSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"setSubtitleStyle\"" ws "," ws "\"patch\"" ws ":" ws subtitleStyle ws "}"
 replaceSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"replaceSubtitleStyle\"" ws "," ws "\"style\"" ws ":" ws subtitleStyle ws "}"
+highlightKeyword ::= "{" ws "\"type\"" ws ":" ws "\"highlightKeyword\"" ( ws "," ws "\"color\"" ws ":" ws string )? ws "}"
 applyColorgrade ::= "{" ws "\"type\"" ws ":" ws "\"applyColorgrade\"" ws "," ws "\"preset\"" ws ":" ws colorPreset ( ws "," ws "\"intensity\"" ws ":" ws number )? ws "}"`}
 ${GLOSSARY_RULES}
 ${SUBTITLE_RULES}

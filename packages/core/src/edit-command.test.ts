@@ -115,6 +115,22 @@ describe('applyCommand — command bus dispatcher', () => {
     expect(out.after.subtitleStyle).toEqual({ fontScale: 0.5 });
   });
 
+  it('highlightKeyword: 키워드 강조 on(+색) 패치(비파괴, 타임라인 불변)', () => {
+    const state = { ...scene([['x', 0, 1]]), subtitleStyle: { color: '#fff' } };
+    const out = applyCommand(state, { type: 'highlightKeyword', color: '#ffd54f' });
+    expect(out.after.subtitleStyle).toEqual({
+      color: '#fff',
+      emphasizeKeywords: true,
+      emphasisColor: '#ffd54f',
+    });
+    expect(out.removedProgramUs).toBe(0);
+  });
+
+  it('highlightKeyword: 색 생략 시 emphasizeKeywords만 켠다', () => {
+    const out = applyCommand(scene([['x', 0, 1]]), { type: 'highlightKeyword' });
+    expect(out.after.subtitleStyle).toEqual({ emphasizeKeywords: true });
+  });
+
   it('applyColorgrade: 전 비디오클립에 색보정 이펙트 추가(길이 불변, 불변식 유지)', () => {
     const state = scene([
       ['앞', 0, 1],
@@ -229,6 +245,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'correctWord',
       'cutSourceRange',
       'deleteWordRange',
+      'highlightKeyword',
       'removeFillers',
       'removeSilences',
       'replaceSubtitleStyle',

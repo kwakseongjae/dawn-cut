@@ -46,6 +46,7 @@ const SubtitleStyleZ = z.object({
   fontWeight: z.string().optional(),
   fontScale: z.number().optional(),
   emphasisColor: z.string().optional(),
+  emphasizeKeywords: z.boolean().optional(),
   animation: z.enum(['none', 'reveal', 'karaoke']).optional(),
 });
 
@@ -85,6 +86,15 @@ const CommandSchemas = {
   replaceSubtitleStyle: z.object({
     type: z.literal('replaceSubtitleStyle'),
     style: SubtitleStyleZ,
+  }),
+  /**
+   * 핵심 어절 강조 자막 on(+선택 색). 비파괴(자막 스타일만; 타임라인/전사 불변). 좌표·ID가
+   * 필요 없어 자연어로 안전 합성 가능('핵심 강조해줘') → plannerGrammar/PLANNER_VERBS 포함.
+   * 렌더 시 pickKeywords가 cue별 핵심 어절을 골라 emphasisColor로 칠한다.
+   */
+  highlightKeyword: z.object({
+    type: z.literal('highlightKeyword'),
+    color: z.string().optional(),
   }),
   /** 색보정 프리셋을 클립에 적용(clipId 생략 시 전 비디오클립). 길이 불변=비파괴. */
   applyColorgrade: z.object({
@@ -138,6 +148,7 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.applyGlossary,
   CommandSchemas.setSubtitleStyle,
   CommandSchemas.replaceSubtitleStyle,
+  CommandSchemas.highlightKeyword,
   CommandSchemas.applyColorgrade,
   CommandSchemas.applyZoom,
   CommandSchemas.applyAutoEnhance,
@@ -244,6 +255,16 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       return { ...state, subtitleStyle: { ...(state.subtitleStyle ?? {}), ...cmd.patch } };
     case 'replaceSubtitleStyle':
       return { ...state, subtitleStyle: cmd.style };
+    case 'highlightKeyword':
+      // 키워드 강조 on(+선택 색) — 자막 스타일 패치(비파괴). 렌더 시 pickKeywords가 적용.
+      return {
+        ...state,
+        subtitleStyle: {
+          ...(state.subtitleStyle ?? {}),
+          emphasizeKeywords: true,
+          ...(cmd.color ? { emphasisColor: cmd.color } : {}),
+        },
+      };
     case 'applyColorgrade': {
       const effect: ClipEffect = {
         kind: 'color',

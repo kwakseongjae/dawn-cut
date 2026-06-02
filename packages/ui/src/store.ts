@@ -86,8 +86,6 @@ interface EditorState {
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
   replaceSubtitleStyle: (style: SubtitleStyle) => void;
-  keywordEmphasis: boolean; // 키워드 강조 자막 on/off (색은 subtitleStyle.emphasisColor)
-  setKeywordEmphasis: (on: boolean) => void;
   colorPreset: ColorPreset; // 전역 색보정 프리셋(익스포트 시 전 클립에 적용)
   setColorPreset: (p: ColorPreset) => void;
   // 적응형 자동 보정(1탭): 영상 분석 → autoEnhanceParams → applyAutoEnhance(command bus+감사+undo).
@@ -298,7 +296,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitleStyle: {},
   // preload가 노출한 DAWN_ADVANCED 플래그(모듈 로드 시 1회 평가; 비-electron/테스트=false).
   advanced: typeof window !== 'undefined' ? (window.dawn?.advanced ?? false) : false,
-  keywordEmphasis: false,
   colorPreset: 'none',
   autoEnhanceEq: null,
   reframe: 'source',
@@ -360,7 +357,6 @@ export const useEditor = create<EditorState>((set, get) => ({
     );
     set({ subtitleStyle: after.subtitleStyle ?? {} });
   },
-  setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
   setColorPreset: (p) => set({ colorPreset: p }),
   setReframe: (r) => set({ reframe: r }),
 

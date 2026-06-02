@@ -989,7 +989,7 @@ function CueEditor({
   onUpdate: (id: string, patch: { text?: string; cueStyle?: SubtitleStyle; src?: string }) => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const keywordEmphasis = useEditor((s) => s.keywordEmphasis);
+  const emphasizeKeywords = useEditor((s) => s.subtitleStyle.emphasizeKeywords ?? false);
   const reRasterize = async (text: string, style: SubtitleStyle) => {
     setBusy(true);
     try {
@@ -997,7 +997,7 @@ function CueEditor({
         rasterizeSubtitle(
           wrapCaption(text, { maxCharsPerLine: 16, maxLines: 2 }),
           style,
-          emphasisFor(text, keywordEmphasis),
+          emphasisFor(text, emphasizeKeywords),
         ),
       );
       if (res) onUpdate(overlay.id, { text, cueStyle: style, src: res.path });
@@ -1173,8 +1173,6 @@ function Transcript() {
     subtitleStyle,
     setSubtitleStyle,
     replaceSubtitleStyle,
-    keywordEmphasis,
-    setKeywordEmphasis,
     removeFillers,
     correctWord,
     glossary,
@@ -1231,10 +1229,12 @@ function Transcript() {
     () => (currentCue ? wrapCaption(currentCue.text, { maxCharsPerLine: 16, maxLines: 2 }) : ''),
     [currentCue],
   );
+  // 키워드 강조 on/off는 이제 subtitleStyle.emphasizeKeywords(EditorState, command bus·MCP 구동)에서.
+  const emphasizeKeywords = subtitleStyle.emphasizeKeywords ?? false;
   // emphasis Set은 메모이즈(안정 참조)해야 SubtitlePreview useEffect 무한재그림 방지.
   const currentEmphasis = useMemo(
-    () => emphasisFor(currentCue?.text ?? '', keywordEmphasis),
-    [currentCue, keywordEmphasis],
+    () => emphasisFor(currentCue?.text ?? '', emphasizeKeywords),
+    [currentCue, emphasizeKeywords],
   );
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const genChapters = () => {
@@ -1247,7 +1247,7 @@ function Transcript() {
   const doBurn = async (
     pos: { x: number; y: number; scale: number },
     style: SubtitleStyle,
-    emphOn: boolean = keywordEmphasis,
+    emphOn: boolean = emphasizeKeywords,
   ) => {
     // fresh state를 읽는다 — 스타일 팩처럼 직전에 transcript/timeline을 바꾼(말버릇 컷) 핸들러가
     // 호출해도 stale 클로저로 옛 어절을 번인하지 않게.
@@ -1317,10 +1317,12 @@ function Transcript() {
     scheduleReburn(subtitlePos, next);
   };
   const applyEmphasis = async (on: boolean) => {
-    setKeywordEmphasis(on);
+    // 키워드 강조 = subtitleStyle.emphasizeKeywords (command bus 경유 = highlightKeyword verb와 동일 효과).
+    setSubtitleStyle({ emphasizeKeywords: on });
     if (burnt) {
       clearOverlaysByKind('subtitle');
-      await doBurn(subtitlePos, subtitleStyle, on); // 새 토글값으로 재버닝(상태 비동기 회피)
+      // 새 토글값으로 재버닝(상태 비동기 회피) — style에도 명시 반영.
+      await doBurn(subtitlePos, { ...subtitleStyle, emphasizeKeywords: on }, on);
     }
   };
   const applyPreset = async (presetId: string) => {
@@ -1639,7 +1641,7 @@ function Transcript() {
               <input
                 type="checkbox"
                 data-testid="sub-emphasis"
-                checked={keywordEmphasis}
+                checked={emphasizeKeywords}
                 onChange={(e) => applyEmphasis(e.target.checked)}
               />
             </label>
@@ -1649,7 +1651,7 @@ function Transcript() {
                 type="color"
                 data-testid="sub-emphasis-color"
                 value={subtitleStyle.emphasisColor ?? '#ffd54f'}
-                disabled={!keywordEmphasis}
+                disabled={!emphasizeKeywords}
                 onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
               />
             </label>

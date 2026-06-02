@@ -41,6 +41,7 @@ export const PLANNER_VERBS = [
   'applyGlossary',
   'setSubtitleStyle',
   'replaceSubtitleStyle',
+  'highlightKeyword',
   'applyColorgrade',
 ] as const;
 
@@ -63,6 +64,8 @@ export function plannerManifest(): Array<{ name: string; inputSchema: unknown }>
 const FEW_SHOT = [
   '요청: "쨍하고 생생하게 해줘" → [{"type":"applyColorgrade","preset":"punch"}]',
   '요청: "어 음 같은 말버릇 빼줘" → [{"type":"removeFillers"}]',
+  '요청: "핵심 단어 강조해줘" → [{"type":"highlightKeyword"}]',
+  '요청: "중요한 말 노란색으로 강조" → [{"type":"highlightKeyword","color":"#ffd54f"}]',
   '요청: "영화처럼 분위기 있게" → [{"type":"applyColorgrade","preset":"cinematic"}]',
   '요청: "자막 노란색으로 크고 굵게" → [{"type":"replaceSubtitleStyle","style":{"color":"yellow","fontScale":1.5,"fontWeight":"bold"}}]',
   '요청: "오늘 점심 뭐 먹지" → []',

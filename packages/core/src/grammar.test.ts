@@ -6,7 +6,7 @@ import {
   plannerGrammar,
 } from './grammar.js';
 
-// edit-command.ts의 EditCommandSchema discriminatedUnion과 1:1로 일치해야 하는 11개 verb.
+// edit-command.ts의 EditCommandSchema discriminatedUnion과 1:1로 일치해야 하는 12개 verb.
 const VERBS = [
   'deleteWordRange',
   'removeSilences',
@@ -15,6 +15,7 @@ const VERBS = [
   'applyGlossary',
   'setSubtitleStyle',
   'replaceSubtitleStyle',
+  'highlightKeyword',
   'applyColorgrade',
   'applyZoom',
   'applyAutoEnhance',
@@ -115,14 +116,14 @@ describe('commandGrammar (GBNF)', () => {
     expect(definedRules(g).has('cmd')).toBe(true);
   });
 
-  it.each(VERBS)('11 verb type 리터럴 포함: %s', (verb) => {
+  it.each(VERBS)('12 verb type 리터럴 포함: %s', (verb) => {
     // GBNF 내 escape된 type 리터럴 형태: "\"<verb>\""
     expect(g).toContain(String.raw`"\"${verb}\""`);
     // 각 verb가 별도 규칙으로도 정의되어 있다.
     expect(definedRules(g).has(verb)).toBe(true);
   });
 
-  it('11개 type 리터럴이 모두 정확히 존재(개수 검증)', () => {
+  it('12개 type 리터럴이 모두 정확히 존재(개수 검증)', () => {
     for (const verb of VERBS) {
       const needle = String.raw`"\"${verb}\""`;
       const count = g.split(needle).length - 1;
@@ -194,6 +195,7 @@ describe('plannerGrammar (안전 부분집합)', () => {
     'applyGlossary',
     'setSubtitleStyle',
     'replaceSubtitleStyle',
+    'highlightKeyword',
     'applyColorgrade',
   ] as const;
   const FORBIDDEN = [

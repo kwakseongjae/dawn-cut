@@ -22,6 +22,33 @@ function scene(rows: [string, number, number][] = [['안녕하세요', 0, 1]]): 
   };
 }
 
+describe('ruleBasedPlan — 키워드 강조 매핑', () => {
+  const s = scene();
+
+  it('"핵심 단어 강조해줘" → highlightKeyword', () => {
+    expect(ruleBasedPlan('핵심 단어 강조해줘', s)).toEqual([{ type: 'highlightKeyword' }]);
+  });
+
+  it('"중요한 부분 하이라이트" → highlightKeyword', () => {
+    expect(ruleBasedPlan('중요한 부분 하이라이트', s)).toEqual([{ type: 'highlightKeyword' }]);
+  });
+
+  it('"채도 강조"는 highlightKeyword로 오탐되지 않는다(대상어 없음 → 보수적으로 [])', () => {
+    // 룰 플래너는 보수적: '채도'는 COLOR_TARGET이 아니고 핵심/키워드 대상어도 없어 빈 배열.
+    // 중요한 건 highlightKeyword가 false-fire하지 않는 것.
+    const out = ruleBasedPlan('채도 강조해줘', s);
+    expect(out.some((c) => c.type === 'highlightKeyword')).toBe(false);
+    expect(out).toEqual([]);
+  });
+
+  it('"말버릇 빼고 핵심 강조" → removeFillers + highlightKeyword', () => {
+    expect(ruleBasedPlan('말버릇 빼고 핵심 강조해줘', s)).toEqual([
+      { type: 'removeFillers' },
+      { type: 'highlightKeyword' },
+    ]);
+  });
+});
+
 describe('ruleBasedPlan — 색보정 프리셋 매핑', () => {
   const s = scene();
 
