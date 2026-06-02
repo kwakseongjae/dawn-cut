@@ -11,7 +11,10 @@ const FIXTURE = resolve(ROOT, 'fixtures/sample.mp4');
 const WHISPER_BIN = resolve(ROOT, 'vendor/whisper.cpp/build/bin/whisper-cli');
 
 type Auto = {
-  __editor: { importPath: (p: string) => Promise<void>; autoHighlight: (s: number) => void };
+  __editor: {
+    importAndTranscribe: (p: string) => Promise<void>;
+    autoHighlight: (s: number) => void;
+  };
 };
 const num = async (loc: { innerText: () => Promise<string> }) =>
   Number((await loc.innerText()).trim());
@@ -25,7 +28,7 @@ async function launch(advanced: boolean) {
   const win = await app.firstWindow();
   await win.waitForLoadState('domcontentloaded');
   await win.waitForFunction(() => Boolean((window as unknown as { __editor?: unknown }).__editor));
-  await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
+  await win.evaluate((p) => (window as unknown as Auto).__editor.importAndTranscribe(p), FIXTURE);
   await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
   return { app, win };
 }

@@ -9,7 +9,7 @@ const mainEntry = resolve(ROOT, 'apps/desktop/out/main/index.js');
 const FIXTURE = resolve(ROOT, 'fixtures/sample.mp4');
 const WHISPER_BIN = resolve(ROOT, 'vendor/whisper.cpp/build/bin/whisper-cli');
 
-type Auto = { __editor: { importPath: (p: string) => Promise<void> } };
+type Auto = { __editor: { importAndTranscribe: (p: string) => Promise<void> } };
 
 test.skip(!existsSync(WHISPER_BIN), 'whisper.cpp not built');
 test('스타일 팩 1클릭(UI) → command bus 적용(감사 3) + 자막 자동 번인', async () => {
@@ -25,7 +25,7 @@ test('스타일 팩 1클릭(UI) → command bus 적용(감사 3) + 자막 자동
       Boolean((window as unknown as { __editor?: unknown }).__editor),
     );
 
-    await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
+    await win.evaluate((p) => (window as unknown as Auto).__editor.importAndTranscribe(p), FIXTURE);
     await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
 
     // 스타일 팩 선택기가 보인다.

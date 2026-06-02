@@ -35,13 +35,15 @@ test('vertical slice: import → transcript → delete words → remove silences
     type Auto = {
       __editor: {
         importPath: (p: string) => Promise<void>;
+        importAndTranscribe: (p: string) => Promise<void>;
         exportTo: (p: string) => Promise<void>;
         exportSrt: (p: string) => Promise<void>;
         saveProject: (p: string) => Promise<void>;
         openProject: (p: string) => Promise<void>;
       };
     };
-    await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
+    // 텍스트 기반 편집을 쓰므로 자막까지 생성(가져오기는 이제 프로브만 — 자막은 명시적).
+    await win.evaluate((p) => (window as unknown as Auto).__editor.importAndTranscribe(p), FIXTURE);
     await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
 
     // cycle-2: privacy badge always present; silence-sensitivity menu present with media.

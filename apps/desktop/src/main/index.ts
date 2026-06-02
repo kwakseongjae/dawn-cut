@@ -114,7 +114,33 @@ ipcMain.handle('shell:reveal', (_e, path: string) => {
 ipcMain.handle('dialog:openFile', async () => {
   const r = await dialog.showOpenDialog({
     properties: ['openFile'],
-    filters: [{ name: 'Media', extensions: ['mp4', 'mov', 'm4v', 'wav', 'mp3'] }],
+    filters: [
+      {
+        name: 'Media',
+        // ffmpeg/ffprobe가 읽는 컨테이너 전반(가져오기). 미리보기 재생은 코덱이 Chromium 지원일 때만
+        // (H.264/VP9/AV1 등; HEVC/ProRes는 디코드 안 될 수 있음) — 편집·내보내기는 코덱 무관.
+        extensions: [
+          'mp4',
+          'mov',
+          'm4v',
+          'mkv',
+          'webm',
+          'avi',
+          'flv',
+          'ts',
+          'mpg',
+          'mpeg',
+          'wmv',
+          '3gp',
+          'wav',
+          'mp3',
+          'm4a',
+          'aac',
+          'flac',
+          'ogg',
+        ],
+      },
+    ],
   });
   return r.canceled ? null : (r.filePaths[0] ?? null);
 });

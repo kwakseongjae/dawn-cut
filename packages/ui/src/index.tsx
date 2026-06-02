@@ -304,7 +304,7 @@ function MediaPanel() {
     <div className="dock-body">
       <Dropzone
         onFiles={handle}
-        hint="Drop a video or image here, or click to browse. Video imports + auto-transcribes; images attach as overlays."
+        hint="영상이나 이미지를 끌어다 놓거나 클릭해서 선택하세요. 영상은 바로 불러오고(자막은 '자막 생성' 버튼), 이미지는 오버레이로 붙습니다."
       />
       {mediaPath && (
         <div className="asset-card">
@@ -659,6 +659,10 @@ function Preview() {
       .join(' ') || undefined;
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  // 미리보기 디코드 실패(코덱 미지원 등) 표시. 새 미디어를 열면 리셋.
+  const [videoErr, setVideoErr] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when media changes
+  useEffect(() => setVideoErr(false), [mediaPath]);
   const drag = useRef<{
     id: string;
     mode: 'move' | 'resize';
@@ -797,11 +801,24 @@ function Preview() {
           <div className="video-frame" ref={frameRef}>
             <video
               ref={videoRef}
-              src={`file://${mediaPath}`}
+              // 한글/공백 파일명도 열리도록 경로를 인코딩(file:// URL). decode 실패(코덱 등)는 onError로.
+              src={`file://${encodeURI(mediaPath)}`}
               preload="auto"
               onEnded={() => setPlaying(false)}
+              onError={() => setVideoErr(true)}
+              onLoadedData={() => setVideoErr(false)}
               style={previewFilter ? { filter: previewFilter } : undefined}
             />
+            {videoErr && (
+              <div className="video-err" data-testid="video-error">
+                <div className="big">미리보기를 재생할 수 없어요</div>
+                <div className="sub">
+                  이 영상 코덱(예: HEVC/H.265·ProRes)은 미리보기 플레이어가 디코드하지 못합니다.
+                  <br />
+                  편집·자막·내보내기는 그대로 동작합니다. (H.264 mp4로 두면 미리보기도 됩니다.)
+                </div>
+              </div>
+            )}
             {visibleOverlays.map((o) => (
               <div
                 key={o.id}
@@ -1161,6 +1178,9 @@ function Transcript() {
   const {
     transcript,
     timeline,
+    mediaPath,
+    transcribeMedia,
+    status,
     selected,
     playheadUs,
     toggleWord,
@@ -1772,11 +1792,29 @@ function Transcript() {
         )}
       </div>
       <div className="transcript-body" data-testid="transcript-panel">
-        {!transcript && (
+        {!transcript && !mediaPath && (
           <div className="empty-transcript">
-            가져오면 자막이 여기 나타납니다.
+            먼저 영상을 가져오세요.
             <br />
-            텍스트를 지우면 영상이 잘립니다.
+            그다음 "자막 생성"을 누르면 받아쓰기가 시작됩니다.
+          </div>
+        )}
+        {!transcript && mediaPath && (
+          <div className="empty-transcript">
+            <button
+              type="button"
+              className="btn primary"
+              data-testid="transcribe"
+              disabled={status === 'extracting' || status === 'transcribing'}
+              onClick={() => void transcribeMedia()}
+            >
+              🎙 자막 생성 (받아쓰기)
+            </button>
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다.
+              <br />
+              자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.
+            </div>
           </div>
         )}
         {transcript?.segments.map((seg) => (
@@ -2096,6 +2134,12 @@ export function AppShell() {
   useEffect(() => {
     window.__editor = {
       importPath: (p: string) => useEditor.getState().importPath(p),
+      transcribe: () => useEditor.getState().transcribeMedia(),
+      // e2e 편의: 가져오기(프로브) + 자막 생성(받아쓰기)을 한 번에. UI 플로우는 둘이 분리돼 있다.
+      importAndTranscribe: async (p: string) => {
+        await useEditor.getState().importPath(p);
+        await useEditor.getState().transcribeMedia();
+      },
       exportTo: (p: string) => useEditor.getState().exportTo(p),
       exportSrt: (p: string) => useEditor.getState().exportSrt(p),
       saveProject: (p: string) => useEditor.getState().saveProject(p),

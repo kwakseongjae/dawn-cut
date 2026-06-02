@@ -70,6 +70,8 @@ declare global {
     // automation surface for E2E (path-dependent steps); harmless in production.
     __editor?: {
       importPath: (path: string) => Promise<void>;
+      transcribe: () => Promise<void>;
+      importAndTranscribe: (path: string) => Promise<void>;
       exportTo: (path: string) => Promise<void>;
       exportSrt: (path: string) => Promise<void>;
       saveProject: (path: string) => Promise<void>;

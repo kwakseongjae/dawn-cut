@@ -14,7 +14,10 @@ const PLAIN = resolve(ROOT, 'artifacts/g17-plain.mp4');
 const SUBBED = resolve(ROOT, 'artifacts/g17-subbed.mp4');
 
 type Auto = {
-  __editor: { importPath: (p: string) => Promise<void>; exportTo: (p: string) => Promise<void> };
+  __editor: {
+    importAndTranscribe: (p: string) => Promise<void>;
+    exportTo: (p: string) => Promise<void>;
+  };
 };
 
 /** Sum of RGB averages of a cropped region of `video` at `atSec`. */
@@ -55,7 +58,7 @@ test('subtitle burn-in changes the bottom-center pixels of the exported video', 
     await win.waitForFunction(() =>
       Boolean((window as unknown as { __editor?: unknown }).__editor),
     );
-    await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
+    await win.evaluate((p) => (window as unknown as Auto).__editor.importAndTranscribe(p), FIXTURE);
     await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
 
     // control export (no subtitles)

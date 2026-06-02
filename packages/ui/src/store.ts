@@ -60,7 +60,8 @@ interface EditorState {
   subtitleStyle: SubtitleStyle;
   advanced: boolean; // 고급(전체) UI 노출 — DAWN_ADVANCED=1(preload). false=쇼케이스 단순 UI.
 
-  importPath: (path: string) => Promise<void>;
+  importPath: (path: string) => Promise<void>; // 프로브만(즉시) — 자막 자동 생성 안 함
+  transcribeMedia: () => Promise<void>; // 명시적 자막 생성(받아쓰기)
   toggleWord: (id: string) => void;
   deleteSelection: () => void;
   removeSilencesAction: () => Promise<void>;
@@ -483,21 +484,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     }),
 
   importPath: async (path) => {
+    // 가져오기 = 프로브만(즉시). 오디오 추출·자막 생성은 자동으로 하지 않는다 —
+    // 무거운(수십 초) 받아쓰기를 사용자가 원할 때 명시적으로(transcribeMedia) 실행한다.
     const dawn = window.dawn;
     if (!dawn) throw new Error('bridge unavailable');
     set({ status: 'probing' });
     const probe = await dawn.probe(path);
-    set({ status: 'extracting' });
-    const { wavPath } = await dawn.extractAudio(path);
-    set({ status: 'transcribing' });
-    const tr = await dawn.transcribe(wavPath, MEDIA_ID);
-    // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
-    const subWords = applyGlossary(tr.words, get().glossary);
-    const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
     const timeline = createInitialTimeline(MEDIA_ID, probe.durationUs, probe.fps || 30);
     set({
       mediaPath: path,
-      transcript,
+      transcript: null, // 자막은 'transcribeMedia'를 눌러야 생성된다.
       timeline,
       selected: [],
       status: 'ready',
@@ -518,6 +514,22 @@ export const useEditor = create<EditorState>((set, get) => ({
       autoEnhanceEq: null,
       ...derive(timeline),
     });
+  },
+
+  transcribeMedia: async () => {
+    // 명시적 자막 생성(받아쓰기) — 가져온 미디어의 오디오를 추출해 whisper로 전사한다.
+    // 사용자가 '자막 생성'을 눌렀을 때만 실행(가져오기 시 자동 실행 안 함).
+    const { mediaPath } = get();
+    const dawn = window.dawn;
+    if (!mediaPath || !dawn) return;
+    set({ status: 'extracting' });
+    const { wavPath } = await dawn.extractAudio(mediaPath);
+    set({ status: 'transcribing' });
+    const tr = await dawn.transcribe(wavPath, MEDIA_ID);
+    // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
+    const subWords = applyGlossary(tr.words, get().glossary);
+    const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
+    set({ transcript, status: 'ready' });
   },
 
   toggleWord: (id) => {

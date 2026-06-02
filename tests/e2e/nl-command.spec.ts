@@ -10,7 +10,10 @@ const FIXTURE = resolve(ROOT, 'fixtures/sample.mp4');
 const WHISPER_BIN = resolve(ROOT, 'vendor/whisper.cpp/build/bin/whisper-cli');
 
 type Auto = {
-  __editor: { importPath: (p: string) => Promise<void>; planAndPreview: (s: string) => void };
+  __editor: {
+    importAndTranscribe: (p: string) => Promise<void>;
+    planAndPreview: (s: string) => void;
+  };
 };
 
 test.skip(!existsSync(WHISPER_BIN), 'whisper.cpp not built');
@@ -29,7 +32,7 @@ test('NL command: "시네마틱하게" → 제안 카드 → 승인 → 편집 �
       Boolean((window as unknown as { __editor?: unknown }).__editor),
     );
 
-    await win.evaluate((p) => (window as unknown as Auto).__editor.importPath(p), FIXTURE);
+    await win.evaluate((p) => (window as unknown as Auto).__editor.importAndTranscribe(p), FIXTURE);
     await expect(win.getByTestId('status')).toHaveText('ready', { timeout: 60_000 });
 
     // 자연어 입력창이 보인다.
