@@ -33,10 +33,10 @@ const GENESIS_PREV_HASH = '';
 
 /**
  * 한 항목의 해시 입력 문자열을 결정적으로 구성한다.
- * prevHash·seq·JSON.stringify(command)·removedProgramUs 를 순서대로 이어 붙인다.
+ * prevHash·seq·canonicalJson(command)·removedProgramUs 를 순서대로 이어 붙인다.
  *
- * command 직렬화는 JSON.stringify 에 의존하므로, 키 순서가 다르면 다른 해시가 된다.
- * (감사 목적상 '동일 객체 = 동일 직렬화'를 호출자가 보장한다고 가정한다.)
+ * command 직렬화는 키를 정렬한 canonical JSON 을 쓴다(R2) — 의미상 동일한 명령이 키 순서만
+ * 달라도 같은 해시가 되도록. 따라서 호출자가 키 순서를 맞출 필요가 없다.
  */
 function hashInput(
   prevHash: string,
@@ -44,7 +44,19 @@ function hashInput(
   command: unknown,
   removedProgramUs: number,
 ): string {
-  return `${prevHash}${seq}${JSON.stringify(command)}${removedProgramUs}`;
+  return `${prevHash}${seq}${canonicalJson(command)}${removedProgramUs}`;
+}
+
+/**
+ * 키를 정렬한 결정적 JSON 직렬화(순수). 객체는 키 사전순 정렬, 배열은 순서 보존,
+ * 원시값은 JSON.stringify 그대로. 의미상 동일한 값 → 항상 동일한 문자열(해시 안정화).
+ */
+function canonicalJson(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`;
+  const obj = v as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(',')}}`;
 }
 
 /**

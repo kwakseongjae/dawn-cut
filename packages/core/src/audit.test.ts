@@ -52,6 +52,24 @@ describe('audit (해시체인 감사 로그)', () => {
       expect(log1).not.toBe(log0);
     });
 
+    it('키 순서가 달라도 의미상 같은 명령은 같은 해시(canonical JSON, R2)', () => {
+      const a = appendAudit([], { type: 'applyColorgrade', preset: 'warm', intensity: 0.5 }, 0);
+      const b = appendAudit([], { intensity: 0.5, type: 'applyColorgrade', preset: 'warm' }, 0);
+      expect(a[0]!.hash).toBe(b[0]!.hash);
+      // 중첩 객체도 키 정렬됨.
+      const c = appendAudit(
+        [],
+        { type: 'setSubtitleStyle', patch: { color: '#fff', fontScale: 0.4 } },
+        0,
+      );
+      const e = appendAudit(
+        [],
+        { type: 'setSubtitleStyle', patch: { fontScale: 0.4, color: '#fff' } },
+        0,
+      );
+      expect(c[0]!.hash).toBe(e[0]!.hash);
+    });
+
     it('결정적: 동일 순서로 쌓으면 동일한 hash 사슬', () => {
       const buildA = appendAudit(appendAudit([], { verb: 'x' }, 1), { verb: 'y' }, 2);
       const buildB = appendAudit(appendAudit([], { verb: 'x' }, 1), { verb: 'y' }, 2);
