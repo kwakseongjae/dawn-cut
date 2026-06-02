@@ -163,12 +163,19 @@ export class DawnSession {
    * 외부 AI 파이프라인의 마지막 단계 — open→(plan)→apply→render. 길이/색/줌/파일오버레이가 반영된다.
    * 주의(MVP): 자막 '번인'은 렌더에 미포함(자막 PNG 래스터는 UI/데모 캔버스 파이프라인에 있음).
    */
-  async render(outPath: string): Promise<{ outPath: string; durationUs: number }> {
+  async render(
+    outPath: string,
+    reframe?: '9:16' | '1:1' | 'source',
+  ): Promise<{ outPath: string; durationUs: number }> {
     const st = this.require();
     if (!this.project) throw new Error('열린 프로젝트가 없습니다.');
     const probe = await probeMedia(this.project.mediaPath);
     const edl = timelineToEdl(st.timeline, this.project.mediaPath);
-    await renderEdl(edl, outPath, { frameW: probe.width, frameH: probe.height });
+    await renderEdl(edl, outPath, {
+      frameW: probe.width,
+      frameH: probe.height,
+      ...(reframe && reframe !== 'source' ? { reframe } : {}),
+    });
     const result = await probeMedia(outPath);
     return { outPath, durationUs: result.durationUs };
   }

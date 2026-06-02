@@ -517,8 +517,14 @@ const CSS_COLOR_APPROX: Record<ColorPreset, string> = {
   flat: 'contrast(0.82) saturate(0.78)',
 };
 
+const REFRAME_OPTS: { id: 'source' | '9:16' | '1:1'; label: string }[] = [
+  { id: 'source', label: '원본 비율' },
+  { id: '9:16', label: '세로 9:16 (쇼츠/릴스)' },
+  { id: '1:1', label: '정사각 1:1' },
+];
+
 function EffectPanel() {
-  const { colorPreset, setColorPreset, timeline } = useEditor();
+  const { colorPreset, setColorPreset, reframe, setReframe, timeline } = useEditor();
   return (
     <div className="dock-body">
       <strong style={{ fontSize: 13 }}>색보정 (Color)</strong>
@@ -538,9 +544,26 @@ function EffectPanel() {
           ))}
         </select>
       </label>
+      <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>비율 (Reframe)</strong>
+      <label className="ov-field" style={{ marginTop: 8 }}>
+        익스포트 비율
+        <select
+          className="select"
+          data-testid="reframe"
+          value={reframe}
+          disabled={!timeline}
+          onChange={(e) => setReframe(e.target.value as 'source' | '9:16' | '1:1')}
+        >
+          {REFRAME_OPTS.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <p className="muted-note">
-        프리뷰는 <b>CSS 근사</b>, 익스포트는 FFmpeg(eq/curves)로 정확히 적용됩니다. 펀치인 줌 등은
-        곧.
+        프리뷰는 <b>CSS 근사</b>, 익스포트는 FFmpeg(eq/curves)로 정확히 적용됩니다. 9:16/1:1은
+        익스포트 시 중앙 크롭됩니다.
       </p>
     </div>
   );

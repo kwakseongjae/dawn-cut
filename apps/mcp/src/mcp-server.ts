@@ -146,12 +146,18 @@ export function buildServer(session: DawnSession = new DawnSession()): McpServer
     'render',
     {
       description:
-        '현재 편집(컷+색보정/줌)을 mp4로 렌더(절대경로 outPath). 외부 AI 파이프라인의 마지막 단계: open→apply→render. 자막 번인은 미포함(MVP).',
-      inputSchema: { outPath: z.string().describe('출력 mp4 절대경로') },
+        '현재 편집(컷+색보정/줌)을 mp4로 렌더(절대경로 outPath). reframe로 세로 9:16/정사각 1:1 중앙 크롭(쇼츠). 외부 AI 파이프라인의 마지막 단계: open→apply→render. 자막 번인은 미포함(MVP).',
+      inputSchema: {
+        outPath: z.string().describe('출력 mp4 절대경로'),
+        reframe: z
+          .enum(['source', '9:16', '1:1'])
+          .optional()
+          .describe('익스포트 종횡비(기본 원본)'),
+      },
     },
-    async ({ outPath }) => {
+    async ({ outPath, reframe }) => {
       try {
-        return json(await session.render(outPath));
+        return json(await session.render(outPath, reframe));
       } catch (e) {
         return fail(e);
       }

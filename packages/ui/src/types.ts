@@ -42,6 +42,7 @@ export interface DawnBridge {
       overlays?: OverlayClip[];
       frameW?: number;
       frameH?: number;
+      reframe?: 'source' | '9:16' | '1:1';
       voicePath?: string;
       voiceStartUs?: number;
     },

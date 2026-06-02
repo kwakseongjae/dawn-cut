@@ -87,6 +87,8 @@ interface EditorState {
   setKeywordEmphasis: (on: boolean) => void;
   colorPreset: ColorPreset; // 전역 색보정 프리셋(익스포트 시 전 클립에 적용)
   setColorPreset: (p: ColorPreset) => void;
+  reframe: Reframe; // 익스포트 종횡비(원본/세로 9:16/정사각 1:1) — 자동 중앙 크롭
+  setReframe: (r: Reframe) => void;
   // ── 한글 검수 자동화 (어절 위) ──
   glossary: GlossaryPair[]; // 고유명사 '내 사전' (localStorage 영속)
   addGlossaryPair: (from: string, to: string) => void;
@@ -237,6 +239,7 @@ function derive(timeline: TimelineModel) {
 }
 
 export type ColorPreset = 'none' | 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat' | 'vivid';
+export type Reframe = 'source' | '9:16' | '1:1';
 /** 색보정 프리셋(전역 룩)을 전 클립에 적용한 타임라인(익스포트용). command bus 경유, 길이 불변. */
 function gradeTimeline(
   timeline: TimelineModel,
@@ -288,6 +291,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitleStyle: {},
   keywordEmphasis: false,
   colorPreset: 'none',
+  reframe: 'source',
   glossary: loadGlossary(),
   auditLog: [],
   sourceDurationUs: 0,
@@ -348,6 +352,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   setKeywordEmphasis: (on) => set({ keywordEmphasis: on }),
   setColorPreset: (p) => set({ colorPreset: p }),
+  setReframe: (r) => set({ reframe: r }),
 
   selectOverlay: (id) => set({ selectedOverlayId: id }),
   updateOverlay: (id, patch) =>
@@ -543,7 +548,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   exportTo: async (path) => {
-    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript } = get();
+    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript, reframe } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: 'exporting' });
@@ -567,6 +572,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       frameH,
       voicePath: ttsClips.find((c) => c.wavPath)?.wavPath,
       ...(subtitlesPath ? { subtitlesPath } : {}),
+      ...(reframe !== 'source' ? { reframe } : {}),
     });
     set({
       status: 'exported',
@@ -580,7 +586,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   exportVideo: async (path, format) => {
-    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript } = get();
+    const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript, reframe } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: format === 'gif' ? 'exporting gif' : 'exporting' });
@@ -591,6 +597,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       frameW,
       frameH,
       voicePath: format === 'gif' ? undefined : ttsClips.find((c) => c.wavPath)?.wavPath,
+      ...(reframe !== 'source' ? { reframe } : {}),
     });
     set({
       status: format === 'gif' ? 'gif exported' : 'exported',

@@ -111,6 +111,23 @@ export interface RenderOpts {
   frameH?: number;
   voicePath?: string; // extra audio (TTS voiceover) mixed over the program audio
   voiceStartUs?: number; // program offset for the voiceover
+  // 자동 리프레이밍: 소스를 목표 종횡비로 중앙 크롭(쇼츠 9:16, 정사각 1:1). 'source'/미지정=원본 유지.
+  // 오버레이 좌표는 크롭된 프레임 기준으로 재계산된다(safe-area 보존).
+  reframe?: '9:16' | '1:1' | 'source';
+}
+
+/** 소스 w×h를 목표 종횡비로 중앙 크롭할 짝수 치수(짝수=yuv420p 안전). */
+function cropForAspect(w: number, h: number, aspect: '9:16' | '1:1'): { w: number; h: number } {
+  const [tw, th] = aspect === '9:16' ? [9, 16] : [1, 1];
+  const target = tw / th;
+  const src = w / h;
+  let cw = w;
+  let ch = h;
+  if (src > target)
+    cw = Math.round(h * target); // 소스가 더 넓다 → 폭을 깎음
+  else ch = Math.round(w / target); // 소스가 더 좁다(세로) → 높이를 깎음
+  const even = (n: number) => Math.max(2, n - (n % 2));
+  return { w: even(Math.min(cw, w)), h: even(Math.min(ch, h)) };
 }
 
 export async function renderEdl(
@@ -141,11 +158,22 @@ export async function renderEdl(
   });
   const n = edl.segments.length;
 
+  // ── 리프레이밍: concat된 [vbase]를 목표 종횡비로 중앙 크롭한 뒤 그 위에 오버레이를 올린다.
+  // reframe 없으면(또는 'source') baseLabel='vbase'·ovW/ovH=소스치수·cropFilter=''로 기존과 바이트 동일.
+  const srcW = opts.frameW ?? 1280;
+  const srcH = opts.frameH ?? 720;
+  const wantReframe = opts.reframe === '9:16' || opts.reframe === '1:1';
+  const crop = wantReframe ? cropForAspect(srcW, srcH, opts.reframe as '9:16' | '1:1') : null;
+  const baseLabel = crop ? 'vrf' : 'vbase';
+  const cropFilter = crop ? `[vbase]crop=${crop.w}:${crop.h}[vrf]` : '';
+  const ovW = crop ? crop.w : srcW;
+  const ovH = crop ? crop.h : srcH;
+
   // overlays are appended as inputs 1..N (before any subtitle input)
   const ovf =
     overlays.length > 0
-      ? buildOverlayFilter('vbase', overlays, opts.frameW ?? 1280, opts.frameH ?? 720, 1)
-      : { inputs: [] as string[], filter: '', out: '[vbase]' };
+      ? buildOverlayFilter(baseLabel, overlays, ovW, ovH, 1)
+      : { inputs: [] as string[], filter: '', out: `[${baseLabel}]` };
 
   // animated GIFs need -ignore_loop 0 so they loop for the whole clip
   const pushOverlayInputs = (arr: string[]) => {
@@ -157,8 +185,9 @@ export async function renderEdl(
 
   if (format === 'gif') {
     const vconcat = `${vparts.join(';')};${vlabels.join('')}concat=n=${n}:v=1:a=0[vbase]`;
-    const composed = ovf.filter ? `${vconcat};${ovf.filter}` : vconcat;
-    const vin = ovf.filter ? ovf.out.slice(1, -1) : 'vbase';
+    const cropPart = cropFilter ? `;${cropFilter}` : '';
+    const composed = ovf.filter ? `${vconcat}${cropPart};${ovf.filter}` : `${vconcat}${cropPart}`;
+    const vin = ovf.filter ? ovf.out.slice(1, -1) : baseLabel;
     const filter = `${composed};[${vin}]fps=12,scale=540:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse[v]`;
     const gargs = ['-y', '-loglevel', 'error', '-i', input];
     pushOverlayInputs(gargs);
@@ -169,8 +198,9 @@ export async function renderEdl(
 
   const interleaved = edl.segments.map((_, i) => `${vlabels[i]}${alabels[i]}`).join('');
   const concat = `${vparts.join(';')};${aparts.join(';')};${interleaved}concat=n=${n}:v=1:a=1[vbase][a]`;
-  let filter = ovf.filter ? `${concat};${ovf.filter}` : concat;
-  const videoLabel = ovf.out; // '[vbase]' when no overlays, else '[voN]'
+  const cropPart = cropFilter ? `;${cropFilter}` : '';
+  let filter = ovf.filter ? `${concat}${cropPart};${ovf.filter}` : `${concat}${cropPart}`;
+  const videoLabel = ovf.out; // '[vbase]'(reframe 시 '[vrf]') when no overlays, else '[voN]'
 
   const args = ['-y', '-loglevel', 'error', '-i', input];
   pushOverlayInputs(args);
