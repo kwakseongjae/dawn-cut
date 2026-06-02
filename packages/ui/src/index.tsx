@@ -913,9 +913,12 @@ function Preview() {
       {selectedOverlay && (
         <div className="ov-props" data-testid="overlay-props">
           <span className="ov-props-title">{selectedOverlay.name}</span>
-          <span className="ov-props-hint">미리보기에서 드래그=이동 · 시작/끝=타이밍</span>
+          <span className="ov-props-hint">
+            드래그=위치 · {fmt(selectedOverlay.startUs)}~{fmt(selectedOverlay.endUs)} (
+            {fmt(selectedOverlay.endUs - selectedOverlay.startUs)} 동안 표시)
+          </span>
           <label className="ov-field">
-            크기
+            크기 {Math.round(selectedOverlay.scale * 100)}%
             <input
               type="range"
               min={3}
@@ -927,7 +930,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            투명도
+            투명도 {Math.round(selectedOverlay.opacity * 100)}%
             <input
               type="range"
               min={0}
@@ -939,7 +942,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            시작
+            시작 {fmt(selectedOverlay.startUs)}
             <input
               type="range"
               min={0}
@@ -954,7 +957,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            끝
+            끝 {fmt(selectedOverlay.endUs)}
             <input
               type="range"
               min={0}
@@ -997,7 +1000,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            회전
+            회전 {selectedOverlay.rotation ?? 0}°
             <input
               type="range"
               min={-180}
