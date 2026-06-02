@@ -913,8 +913,9 @@ function Preview() {
       {selectedOverlay && (
         <div className="ov-props" data-testid="overlay-props">
           <span className="ov-props-title">{selectedOverlay.name}</span>
+          <span className="ov-props-hint">미리보기에서 드래그=이동 · 시작/끝=타이밍</span>
           <label className="ov-field">
-            size
+            크기
             <input
               type="range"
               min={3}
@@ -926,7 +927,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            opacity
+            투명도
             <input
               type="range"
               min={0}
@@ -938,7 +939,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            start
+            시작
             <input
               type="range"
               min={0}
@@ -953,7 +954,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            end
+            끝
             <input
               type="range"
               min={0}
@@ -968,7 +969,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            anim x
+            이동 x(끝위치)
             <input
               type="range"
               min={0}
@@ -982,7 +983,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            anim y
+            이동 y(끝위치)
             <input
               type="range"
               min={0}
@@ -996,7 +997,7 @@ function Preview() {
             />
           </label>
           <label className="ov-field">
-            rotate
+            회전
             <input
               type="range"
               min={-180}
@@ -1015,7 +1016,7 @@ function Preview() {
               updateOverlay(selectedOverlay.id, { to: undefined, rotation: undefined })
             }
           >
-            ⟲ reset
+            ⟲ 애니 초기화
           </button>
           {selectedOverlay.kind === 'subtitle' && selectedOverlay.text && (
             <CueEditor overlay={selectedOverlay} onUpdate={updateOverlay} />
@@ -1023,9 +1024,10 @@ function Preview() {
           <button
             type="button"
             className="btn ghost"
+            data-testid="overlay-remove"
             onClick={() => removeOverlay(selectedOverlay.id)}
           >
-            ✕ remove
+            ✕ 이 오버레이 제거
           </button>
         </div>
       )}
@@ -1942,7 +1944,16 @@ function Transcript() {
 
 // ── Multi-track timeline ─────────────────────────────────────────────
 function Timeline() {
-  const { timeline, durationProgramUs, playheadUs, overlays, ttsClips, seekTo } = useEditor();
+  const {
+    timeline,
+    durationProgramUs,
+    playheadUs,
+    overlays,
+    ttsClips,
+    seekTo,
+    selectOverlay,
+    selectedOverlayId,
+  } = useEditor();
   const clips = timeline ? videoClips(timeline) : [];
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
   // 트랙을 클릭하면 그 시점으로 플레이헤드 이동(+일시정지). 클립 자식 클릭도 트랙으로 버블링됨.
@@ -1988,9 +1999,16 @@ function Timeline() {
               <span className="track empty-track">drop images / add stickers · preview</span>
             ) : (
               overlays.map((o, i) => (
-                <div className="chip" key={o.id} style={{ width: 64, marginLeft: i ? 4 : 0 }}>
+                <button
+                  type="button"
+                  className={`chip${selectedOverlayId === o.id ? ' on' : ''}`}
+                  key={o.id}
+                  style={{ width: 64, marginLeft: i ? 4 : 0, cursor: 'pointer' }}
+                  onClick={() => selectOverlay(o.id)}
+                  title="클릭해서 선택 → 위치·크기·타이밍 조절"
+                >
                   {o.kind === 'image' ? '🖼' : o.kind === 'gif' ? 'GIF' : o.name}
-                </div>
+                </button>
               ))
             )}
           </div>

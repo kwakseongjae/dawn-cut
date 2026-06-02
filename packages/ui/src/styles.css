@@ -1047,6 +1047,11 @@ body {
   background: linear-gradient(180deg, #1f3a30, #1a2f28);
   border-color: #2f5a48;
 }
+/* 타임라인에서 선택된 오버레이 칩 강조(미리보기 선택과 동기화) */
+.chip.on {
+  box-shadow: 0 0 0 2px var(--accent);
+  border-color: var(--accent);
+}
 .track.empty-track {
   color: var(--faint);
   font-size: 10px;
@@ -1110,6 +1115,10 @@ body {
   font-weight: 650;
   font-size: 12px;
   color: var(--accent);
+}
+.ov-props-hint {
+  font-size: 11px;
+  color: var(--faint);
 }
 .ov-field {
   display: flex;

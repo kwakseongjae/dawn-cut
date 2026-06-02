@@ -462,39 +462,48 @@ export const useEditor = create<EditorState>((set, get) => ({
   setPlayhead: (us) => set({ playheadUs: us }),
   setPlaying: (p) => set({ playing: p }),
   setPanel: (p) => set({ panel: p }),
+  // 오버레이를 추가하면 곧바로 '선택' 상태로 둔다 → 속성 패널(위치/크기/타이밍)이 즉시 보인다
+  // (발견성 개선: 예전엔 추가해도 클릭 전엔 컨트롤이 안 떠서 "기능이 없다"고 느꼈음).
   addImageOverlay: (path) => {
     const { overlays, durationProgramUs } = get();
+    const id = uid();
     set({
       overlays: [
         ...overlays,
         {
-          id: uid(),
+          id,
           kind: 'image',
           name: baseName(path),
           src: path,
           ...placement(overlays.length, durationProgramUs),
         },
       ],
+      selectedOverlayId: id,
     });
   },
   addOverlaySrc: (kind, name, src) => {
     const { overlays, durationProgramUs } = get();
+    const id = uid();
     set({
       overlays: [
         ...overlays,
-        { id: uid(), kind, name, src, ...placement(overlays.length, durationProgramUs) },
+        { id, kind, name, src, ...placement(overlays.length, durationProgramUs) },
       ],
+      selectedOverlayId: id,
     });
   },
   addOverlayWith: (o) => set({ overlays: [...get().overlays, { id: uid(), ...o }] }),
-  clearOverlaysByKind: (kind) => set({ overlays: get().overlays.filter((o) => o.kind !== kind) }),
+  clearOverlaysByKind: (kind) =>
+    set({
+      overlays: get().overlays.filter((o) => o.kind !== kind),
+      selectedOverlayId: null,
+    }),
   addAssetStub: (kind, name) => {
     const { overlays, durationProgramUs } = get();
+    const id = uid();
     set({
-      overlays: [
-        ...overlays,
-        { id: uid(), kind, name, ...placement(overlays.length, durationProgramUs) },
-      ],
+      overlays: [...overlays, { id, kind, name, ...placement(overlays.length, durationProgramUs) }],
+      selectedOverlayId: id,
     });
   },
   generateVoiceover: async (voice, text) => {
