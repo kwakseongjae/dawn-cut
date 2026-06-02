@@ -20,12 +20,14 @@
 | `open_project(path)` | `.dawn` 적재(검증 포함) → 상태 요약·미디어 경로 | 손상 프로젝트는 로드 거부 |
 | `state_summary()` | 길이µs/어절수/cue수/필러수/챕터/자막스타일 유무 | 읽기 전용 |
 | `command_manifest()` | 9개 verb + 각 입력 JSON-Schema(= `commandManifest()`) | 읽기 전용. AI가 명령 형식을 여기서 발견 |
+| `plan(instruction)` | **자연어 지시 → EditCommand[]**(로컬 LLM, 없으면 룰 폴백) + dry-run 미리보기 | **불변**. 저수준 명령 대신 자연어 위임(P3+P4 융합) |
 | `dry_run(commands)` | 상태 변경 없이 원자적 미리보기 → ok/길이변화/cue변화/error | **불변** |
 | `apply(commands)` | command bus로 적용 + 해시체인 감사로그 | **유일한 상태 변경 지점**. 불변식 위반 시 거부 |
 | `save_project(path?)` | 현재 상태를 `.dawn`로 직렬화 저장 | — |
 | `audit_log()` | 적용 명령의 해시체인 + 검증 결과 | 읽기 전용. 재생/감사 |
+| `render(outPath)` | 현재 편집(컷+색보정/줌)을 **mp4로 렌더**(ffmpeg) → 경로·길이 | 자막 번인 미포함(MVP) |
 
-권장 흐름: `open_project → command_manifest → dry_run(미리보기) → apply(적용) → save_project`.
+권장 흐름: `open_project → command_manifest → (plan 또는 직접 commands) → dry_run(미리보기) → apply(적용) → save_project → render`.
 
 ---
 
@@ -92,8 +94,9 @@ MCP 클라이언트 설정(예: Claude Desktop `claude_desktop_config.json`)에 
 안전 파이프라인 위에서.
 
 > 주의(MVP 범위): 현재 MCP 서버는 **`.dawn` 프로젝트 파일** 위에서 동작한다(헤드리스). 실행 중인
-> Electron 편집기의 라이브 상태를 직접 조작하는 브리지(앱↔MCP)는 후속 작업이다. export(렌더)
-> 도구도 후속(ffmpeg 사이드카 연결)으로 둔다 — 지금은 편집→저장까지가 표면.
+> Electron 편집기의 라이브 상태를 직접 조작하는 브리지(앱↔MCP)는 후속 작업이다. **`plan`(자연어→
+> commands)·`render`(mp4 export)는 구현됨** — 외부 AI가 open→plan→apply→render로 전 파이프라인을
+> 닫을 수 있다. 단 `render`의 자막 '번인'은 아직 미포함(자막 PNG 래스터가 UI/데모 캔버스 경로에 있음).
 
 ---
 

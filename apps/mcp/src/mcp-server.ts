@@ -61,6 +61,22 @@ export function buildServer(session: DawnSession = new DawnSession()): McpServer
     },
   );
 
+  server.registerTool(
+    'plan',
+    {
+      description:
+        '자연어 편집 지시를 EditCommand[]로 계획한다(로컬 LLM, 없으면 룰 폴백). 상태 불변(미리보기) — 결과 commands를 검토 후 apply하라. 저수준 명령 대신 "말버릇 빼고 시네마틱하게" 같은 자연어를 위임할 때 쓴다.',
+      inputSchema: { instruction: z.string().describe('자연어 편집 지시(한국어)') },
+    },
+    async ({ instruction }) => {
+      try {
+        return json(await session.plan(instruction));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
   const commandsShape = {
     commands: z
       .array(z.record(z.string(), z.unknown()))

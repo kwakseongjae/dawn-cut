@@ -57,10 +57,12 @@ describe('dawn-cut MCP server — 실제 프로토콜 왕복', () => {
       expect.arrayContaining([
         'open_project',
         'command_manifest',
+        'plan',
         'dry_run',
         'apply',
         'save_project',
         'audit_log',
+        'render',
       ]),
     );
   });

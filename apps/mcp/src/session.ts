@@ -15,12 +15,16 @@ import {
   deserializeProject,
   dryRunCommands,
   makeProject,
+  planAndPreview,
+  plannerManifest,
+  ruleBasedPlan,
   serializeProject,
   summarizeState,
   timelineToEdl,
   verifyAudit,
 } from '@dawn-cut/core';
 import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
+import { isLlmAvailable, llmPlanProvider } from '@dawn-cut/sidecar-llm';
 
 export interface ApplyResult {
   summary: StateSummary;
@@ -67,6 +71,37 @@ export class DawnSession {
   /** 편집 명령 표면(9 verb + 입력 JSON-Schema) = GUI command bus와 1:1. */
   manifest(): Array<{ name: string; inputSchema: unknown }> {
     return commandManifest();
+  }
+
+  /**
+   * 자연어 지시를 EditCommand[]로 계획한다(P3+P4 융합) — 외부 AI가 저수준 명령 대신 자연어를 위임.
+   * 로컬 LLM 가용 시 LLM 플래너(plannerGrammar 안전 부분집합), 부재/실패/빈plan이면 결정적 룰 플래너로
+   * graceful fallback(GUI store.planAndPreview와 동일 정책). 상태는 변경하지 않는다(미리보기) — 호출측이
+   * commands를 검토 후 apply 한다.
+   */
+  async plan(nl: string): Promise<{
+    engine: 'llm' | 'rule';
+    commands: EditCommand[];
+    report: DryRunReport;
+    errors: string[];
+  }> {
+    const state = this.require();
+    if (isLlmAvailable().available) {
+      try {
+        const { plan, report, errors } = await planAndPreview(
+          nl,
+          state,
+          llmPlanProvider,
+          plannerManifest(),
+        );
+        if (plan.length > 0) return { engine: 'llm', commands: plan, report, errors };
+      } catch {
+        // LLM 실패 → 룰 폴백.
+      }
+    }
+    const commands = ruleBasedPlan(nl, state);
+    const { report } = dryRunCommands(state, commands);
+    return { engine: 'rule', commands, report, errors: [] };
   }
 
   /** 명령 묶음을 상태 변경 없이 미리 평가(원자적·결정적). 적용 전 안전 게이트. */

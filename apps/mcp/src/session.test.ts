@@ -8,8 +8,10 @@ import {
   makeProject,
   serializeProject,
 } from '@dawn-cut/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DawnSession } from './session.js';
+
+afterEach(() => vi.unstubAllEnvs());
 
 function writeProject(): { path: string; dir: string } {
   const words: Word[] = [
@@ -78,6 +80,20 @@ describe('DawnSession — MCP command-bus over .dawn', () => {
     const bad = s.dryRun([{ type: 'nope-verb' }]);
     expect(bad.ok).toBe(false);
     expect(bad.error).toBeTruthy();
+  });
+
+  it('plan(자연어) → 룰 폴백 경로(LLM 비활성 강제) → removeFillers', async () => {
+    // LLM 바이너리/모델을 없는 경로로 stub → isLlmAvailable false → 결정적 룰 플래너 경로.
+    vi.stubEnv('DAWN_LLAMA_SERVER_BIN', '/nope/llama-server');
+    vi.stubEnv('DAWN_LLAMA_BIN', '/nope/llama-cli');
+    vi.stubEnv('DAWN_LLM_MODEL_PATH', '/nope/model.gguf');
+    const { path } = writeProject();
+    const s = new DawnSession();
+    s.open(path);
+    const r = await s.plan('말버릇 빼줘');
+    expect(r.engine).toBe('rule');
+    expect(r.commands.map((c) => c.type)).toContain('removeFillers');
+    expect(r.report.ok).toBe(true);
   });
 
   it('여러 명령 순차 적용 → 감사체인 누적·검증', () => {
