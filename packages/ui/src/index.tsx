@@ -283,6 +283,7 @@ function MediaPanel() {
   const {
     mediaPath,
     transcript,
+    status,
     importPath,
     overlays,
     addImageOverlay,
@@ -312,10 +313,14 @@ function MediaPanel() {
           <div className="meta">
             <div className="name">{mediaPath.split('/').pop()}</div>
             <div className="sub">
-              {transcript ? `${transcript.order.length} words transcribed` : 'transcribing…'}
+              {transcript
+                ? `자막 어절 ${transcript.order.length}개`
+                : status === 'transcribing' || status === 'extracting'
+                  ? '자막 생성 중…'
+                  : "자막 없음 — '자막 생성' 버튼"}
             </div>
           </div>
-          <span className="badge live">source</span>
+          <span className="badge live">원본</span>
         </div>
       )}
       {imageOverlays.map((o) => (
@@ -346,8 +351,7 @@ function MediaPanel() {
         </button>
       )}
       <p className="muted-note">
-        Drop images or .gif files to attach as composited overlays. Animated GIFs use{' '}
-        <code>-ignore_loop 0</code> for natural looping.
+        이미지·GIF를 끌어다 놓으면 오버레이로 합성됩니다. 움직이는 GIF는 자연스럽게 반복됩니다.
       </p>
     </div>
   );
