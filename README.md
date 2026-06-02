@@ -13,14 +13,17 @@ silence removal, 100% local.** No cloud, no account, no watermark, no subscripti
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
+**English** · [한국어](README.ko.md)
+
 > **Status: v0.1.** The deterministic editing core is real, tested, and ready to use
-> — text-based cut, silence removal, Korean auto-subtitles, color grading, 9:16/1:1
-> reframing, image/sticker/GIF overlays, one-click style packs, TTS, and SRT/chapter
-> export, all 100% local. Natural-language AI editing and the headless **MCP** agent
-> server also work locally, but ship **labeled experimental** — they need a one-time
-> local model download and are still maturing. We label everything honestly:
-> [What works today](#what-works-today) · [Experimental](#experimental-opt-in) ·
-> [Roadmap](#roadmap).
+> — text-based cut, silence removal, Korean auto-subtitles, **1-tap adaptive
+> auto-enhance**, **low-confidence subtitle review & correction**, color grading,
+> 9:16/1:1 reframing, image/sticker/GIF overlays, one-click style packs, TTS, and
+> SRT/chapter export, all 100% local. Natural-language AI editing and the headless
+> **MCP** agent server also work locally, but ship **labeled experimental** — they
+> need a one-time local model download and are still maturing. We label everything
+> honestly: [What works today](#what-works-today) · [Experimental](#experimental-opt-in)
+> · [Roadmap](#roadmap).
 
 ---
 
@@ -84,16 +87,34 @@ and covered by unit/property tests, or wired through the Electron UI.
   configurable padding (`removeSilences`).
 - **Filler-word detection** — conservative Korean filler lexicon, exact-match only
   (`detectFillers`).
+- **Subtitle accuracy review & correction** — surface low-confidence (likely-misheard)
+  *eojeol* from whisper token probabilities (`lowConfidenceWords`), highlight them in the
+  transcript, jump between them, and fix a word inline — corrections flow into cues / SRT /
+  burn-in and are recorded in the audit log (`correctWord` verb).
+- **1-tap adaptive auto-enhance** — analyze the actual footage (FFmpeg `signalstats`:
+  brightness / contrast / saturation) and apply a *computed* color grade — brightens dark
+  clips, pops dull ones — without ever over-correcting (`analyzeVideo` → pure
+  `autoEnhanceParams` → `applyAutoEnhance`; length-invariant, exact numbers recorded in the EDL).
 - **Auto subtitles** — group live words into program-timed cues, break on sentence
-  ends / cuts / word caps, export **SRT** (`transcriptToCues`, `formatSrt`).
+  ends / cuts / word caps, per-word **reveal / karaoke** animation, export **SRT**
+  (`transcriptToCues`, `captionFrames`, `formatSrt`).
 - **Auto chapters** — rule-based YouTube `M:SS title` chapter list from the
   transcript (`extractChapters`, `formatChapters`).
 - **Glossary substitution** — deterministic term replacement across the transcript
   (`applyGlossary`).
+- **Color grading** — 6 presets (warm / cool / punch / cinematic / flat / vivid) with
+  intensity weighting, applied through the command bus and rendered with FFmpeg `eq`/`curves`
+  (`applyColorgrade`, `COLOR_PRESETS`).
+- **9:16 / 1:1 reframing** — turn landscape footage into vertical shorts / square with an
+  overlay-aware center crop (`cropForAspect`, `renderEdl({ reframe })`).
 - **Image / sticker / GIF overlays** — position, scale, opacity, z-order, rotation,
   blend modes, and multi-keyframe motion paths, **composited into the exported video**
   via the FFmpeg overlay filter (`OverlayClip`, [`overlay.ts`](packages/core/src/overlay.ts),
   [`draw.ts`](packages/core/src/draw.ts), `renderEdl`).
+- **One-click style packs** — 6 genre presets (viral-punch, mukbang-sizzle, beauty-glow,
+  golden-hour, city-night, talk-clean) expressed *as plans* (`EditCommand[]` bundles), so the
+  GUI, the LLM planner, and MCP all share them (`STYLE_PACKS`, `templates.ts`).
+- **TTS voiceover** — synthesize narration (macOS `say`) and mix it into the export.
 - **Deterministic EDL export** — the timeline compiles to an Export Decision List
   that the FFmpeg sidecar renders (`timelineToEdl`).
 - **Transcript ↔ timeline sync** — provable two-way mapping between words and
@@ -165,7 +186,7 @@ plans*), and 9:16/1:1 reframing all ship in the core; a local llama.cpp planner 
 language → plan → dry-run → approve) and a headless **MCP server** with a `render` tool
 (external AI drives the same command bus over `.dawn` projects) ship as
 [experimental](#experimental-opt-in). Still open: a live-app↔MCP bridge, MCP subtitle
-burn-in, adaptive auto-enhance, and transitions / beat-sync. See the roadmap below and
+burn-in, transitions / beat-sync, and multitrack. See the roadmap below and
 [`docs/PRODUCTION.md`](docs/PRODUCTION.md).
 
 ---
