@@ -497,7 +497,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   undo: () => {
-    const { past, future, timeline } = get();
+    const { past, future, timeline, auditLog } = get();
     if (past.length === 0 || !timeline) return;
     const prev = past[past.length - 1]!;
     const newPast = past.slice(0, -1);
@@ -509,12 +509,19 @@ export const useEditor = create<EditorState>((set, get) => ({
       status: 'undo',
       canUndo: newPast.length > 0,
       canRedo: true,
+      // 감사로그를 '모든 상태변경 액션'의 완전한 기록으로 — undo도 meta 항목으로 남겨
+      // 로그가 현재 타임라인에 이르는 실제 시퀀스를 충실히 반영(R1 정합성).
+      auditLog: appendAudit(
+        auditLog,
+        { type: 'history', op: 'undo' },
+        timeline.durationProgram - prev.durationProgram,
+      ),
       ...derive(prev),
     });
   },
 
   redo: () => {
-    const { past, future, timeline } = get();
+    const { past, future, timeline, auditLog } = get();
     if (future.length === 0 || !timeline) return;
     const next = future[0]!;
     const newFuture = future.slice(1);
@@ -526,6 +533,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       status: 'redo',
       canUndo: true,
       canRedo: newFuture.length > 0,
+      auditLog: appendAudit(
+        auditLog,
+        { type: 'history', op: 'redo' },
+        timeline.durationProgram - next.durationProgram,
+      ),
       ...derive(next),
     });
   },
