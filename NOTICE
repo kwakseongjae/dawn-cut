@@ -12,8 +12,31 @@ separate processes or referenced as design/library sources):
   Invoked as a subprocess only (no static/dynamic linking, no --enable-gpl).
   License remains LGPL; no GPL components are enabled.
 
+- llama.cpp — MIT License — https://github.com/ggml-org/llama.cpp
+  Used (experimental) for the local natural-language planner. Built under
+  vendor/; invoked as a subprocess / local server.
+
+- Qwen2.5-1.5B-Instruct — Apache License 2.0 —
+  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct
+  Default planner model (experimental). Downloaded on demand by the user via
+  setup-llm.sh; not bundled. (The non-Apache 3B variant is intentionally not used.)
+
+- @napi-rs/canvas — MIT License — https://github.com/Brooooooklyn/canvas
+  Used to rasterize subtitles/overlays headlessly.
+
 - OpenCut — MIT License — https://github.com/OpenCut-app/OpenCut
   Referenced for design/architecture; any borrowed code retains MIT notice.
 
 GPL-licensed editors (Kdenlive, Shotcut, OpenShot) are NOT used as code
 sources — referenced for UX only.
+
+Demo & test assets
+------------------
+The sample photos used only to exercise the image-overlay pipeline
+(demo/photo1.jpg, demo/photo2.jpg, and any demo renders derived from them
+under demo-output/) are fetched from Lorem Picsum (https://picsum.photos,
+seeds dawncut1 / dawncut2), which serves photos under the Unsplash License
+(https://unsplash.com/license) — free to use, including redistribution, with
+attribution appreciated. These are test fixtures only and are regenerable with
+`pnpm demo:assets`; the script falls back to self-generated CC0 color cards
+when offline. No third-party photo is required for dawn-cut to build or run.

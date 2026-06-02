@@ -24,6 +24,7 @@
     "verify:e2e": "pnpm test:e2e",
     "verify": "bash scripts/verify.sh",
     "setup:binaries": "bash scripts/setup-binaries.sh",
+    "setup:llm": "bash scripts/setup-llm.sh",
     "make:fixture": "bash scripts/make-fixture.sh",
     "demo:assets": "bash scripts/make-demo-assets.sh",
     "demo:run": "vitest run --config vitest.demo.config.ts",

@@ -13,11 +13,14 @@ silence removal, 100% local.** No cloud, no account, no watermark, no subscripti
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue">
 </p>
 
-> **Status: PoC (Proof of Concept).** The deterministic editing core is real and
-> tested (text-based cut, silence removal, Korean auto-subtitles, SRT/chapter
-> export). Natural-language AI editing is the **vision** we're building toward — it
-> is *not* shipped yet. We label everything below honestly: what works today vs.
-> what's on the [Roadmap](#roadmap).
+> **Status: v0.1.** The deterministic editing core is real, tested, and ready to use
+> — text-based cut, silence removal, Korean auto-subtitles, color grading, 9:16/1:1
+> reframing, image/sticker/GIF overlays, one-click style packs, TTS, and SRT/chapter
+> export, all 100% local. Natural-language AI editing and the headless **MCP** agent
+> server also work locally, but ship **labeled experimental** — they need a one-time
+> local model download and are still maturing. We label everything honestly:
+> [What works today](#what-works-today) · [Experimental](#experimental-opt-in) ·
+> [Roadmap](#roadmap).
 
 ---
 
@@ -120,6 +123,30 @@ the non-functional requirements an AI editing agent will need.
 
 ---
 
+## Experimental (opt-in)
+
+These work **locally and end-to-end today**, but are labeled experimental because they
+depend on a one-time model download and/or have known gaps. They're real, not mockups —
+just maturing. Enable them deliberately; the core above never depends on them.
+
+- **Natural-language editing (local LLM planner)** — type *"cut the filler words and make
+  it cinematic"* and a local `llama.cpp` planner (default **Qwen2.5-1.5B**, Apache-2.0)
+  emits a **validated `EditCommand` plan** you preview (dry-run diff) before applying.
+  Grammar-constrained decoding keeps output on-schema; if no model is installed it falls
+  back to a deterministic rule planner. Setup: `pnpm setup:llm`.
+  _Caveats:_ requires the model download; planning quality is bounded by the 1.5B model;
+  CI verifies the rule path (the LLM path is exercised manually).
+- **MCP agent server** — a headless [Model Context Protocol](https://modelcontextprotocol.io)
+  server (`@dawn-cut/mcp`) lets an external agent (Claude Desktop / Cursor) drive the
+  **same** command bus over `.dawn` projects: `open_project → command_manifest → plan →
+  dry_run → apply → save_project → render` (incl. 9:16/1:1 reframe). Every edit goes
+  through the same invariants + hash-chained audit log as the GUI.
+  _Caveats:_ `render` does not yet burn in subtitles/overlays (cut + color + zoom +
+  reframe only); run headless via the workspace (the `npx`-installable bin is not yet
+  published). See [`docs/P4-MCP.md`](docs/P4-MCP.md).
+
+---
+
 ## Vision
 
 > **Say what you want; the AI proposes the edit; you review the timeline/EDL; then
@@ -133,11 +160,13 @@ first. Because the core already exposes a reviewable intermediate representation
 auto-checkable rather than opaque.
 
 Much of this is **now built.** The command bus (Zod-derived `EditCommand`s + invariant
-validation + a hash-chained audit log), a local llama.cpp planner (natural language →
-plan → dry-run → approve), one-click style packs (templates expressed *as plans*), and a
-headless **MCP server** (external AI drives the same command bus over `.dawn` projects)
-all work today. Still open: a live-app↔MCP bridge, an MCP render/export tool, adaptive
-auto-enhance, and 9:16 auto-reframing. See the roadmap below and `docs/REVIEW.md`.
+validation + a hash-chained audit log), one-click style packs (templates expressed *as
+plans*), and 9:16/1:1 reframing all ship in the core; a local llama.cpp planner (natural
+language → plan → dry-run → approve) and a headless **MCP server** with a `render` tool
+(external AI drives the same command bus over `.dawn` projects) ship as
+[experimental](#experimental-opt-in). Still open: a live-app↔MCP bridge, MCP subtitle
+burn-in, adaptive auto-enhance, and transitions / beat-sync. See the roadmap below and
+[`docs/PRODUCTION.md`](docs/PRODUCTION.md).
 
 ---
 
