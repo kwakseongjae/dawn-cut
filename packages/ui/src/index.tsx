@@ -46,6 +46,25 @@ function fmt(us: number): string {
 }
 const pickOpen = async () => (await window.dawn?.openFile()) ?? null;
 const pickSave = async () => (await window.dawn?.saveFile()) ?? null;
+// 오버레이별 고유 색(타임라인 블록·목록·미리보기에서 같은 색으로 매칭). id 해시 → 팔레트.
+const OV_COLORS = ['#7c5cff', '#ff6b6b', '#34d399', '#f59e0b', '#22d3ee', '#ec4899', '#a3e635'];
+const OV_ROW_H = 22; // OVERLAY 레인 행 높이(px) — 겹치는 블록을 여러 행으로 쌓을 때 사용
+const ovColor = (id: string) => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return OV_COLORS[h % OV_COLORS.length]!;
+};
+// 비-자막 오버레이 중 몇 번째인지(1-base). 타임라인 블록 번호 ↔ 좌측 목록 번호를 일치시킨다.
+const laneNumber = (overlays: Overlay[], id: string) =>
+  overlays.filter((o) => o.kind !== 'subtitle').findIndex((o) => o.id === id) + 1;
+// 오버레이 번호 배지(타임라인 블록과 같은 색·번호) — 같은 스티커 2개를 구분하기 위함.
+function OvBadge({ n, id }: { n: number; id: string }) {
+  return (
+    <span className="ov-num" style={{ background: ovColor(id) }}>
+      {n}
+    </span>
+  );
+}
 const isVideo = (n: string) => /\.(mp4|mov|m4v|webm|mkv|avi|flv|ts|mpe?g|wmv|3gp)$/i.test(n);
 const isImage = (n: string) => /\.(png|jpe?g|webp|avif|bmp)$/i.test(n);
 const isGif = (n: string) => /\.gif$/i.test(n);
@@ -296,6 +315,8 @@ function MediaPanel() {
     addOverlaySrc,
     removeOverlay,
     clearOverlaysByKind,
+    selectedOverlayId,
+    selectOverlay,
   } = useEditor();
   const imageOverlays = overlays.filter((o) => o.kind === 'image' || o.kind === 'gif');
   const handle = (files: File[]) => {
@@ -342,14 +363,28 @@ function MediaPanel() {
         </div>
       )}
       {imageOverlays.map((o) => (
-        <div className="asset-card" key={o.id}>
+        <div
+          className={`asset-card ov-row${selectedOverlayId === o.id ? ' on' : ''}`}
+          key={o.id}
+          onClick={() => selectOverlay(o.id)}
+        >
+          <OvBadge n={laneNumber(overlays, o.id)} id={o.id} />
           <div className="thumb">{o.kind === 'gif' ? 'GIF' : '🖼'}</div>
           <div className="meta">
             <div className="name">{o.name}</div>
-            <div className="sub">{o.kind} overlay</div>
+            <div className="sub">
+              {o.kind} · {fmt(o.startUs)}~{fmt(o.endUs)} (타임라인 #{laneNumber(overlays, o.id)})
+            </div>
           </div>
-          <span className="badge live">composited</span>
-          <button type="button" className="x" onClick={() => removeOverlay(o.id)}>
+          <button
+            type="button"
+            className="x"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeOverlay(o.id);
+            }}
+            title="삭제 (Delete/Backspace로도 가능)"
+          >
             ✕
           </button>
         </div>
@@ -470,7 +505,7 @@ const rasterizeBadge = (text: string) =>
   rasterizeWith(420, 160, (ctx, w, h) => drawBadge(ctx, w, h, text));
 
 function StickerPanel() {
-  const { overlays, addOverlaySrc, removeOverlay } = useEditor();
+  const { overlays, addOverlaySrc, removeOverlay, selectedOverlayId, selectOverlay } = useEditor();
   const add = async (kind: 'sticker' | 'gif', name: string, dataUrl: string) => {
     const res = await window.dawn?.writeAsset(dataUrl);
     if (res) addOverlaySrc(kind, name, res.path);
@@ -505,12 +540,27 @@ function StickerPanel() {
       {overlays
         .filter((o) => o.kind !== 'image')
         .map((o) => (
-          <div className="list-row" key={o.id}>
+          <div
+            className={`list-row ov-row${selectedOverlayId === o.id ? ' on' : ''}`}
+            key={o.id}
+            onClick={() => selectOverlay(o.id)}
+          >
+            <OvBadge n={laneNumber(overlays, o.id)} id={o.id} />
             <div className="t">
               {o.kind === 'sticker' ? o.name : `GIF · ${o.name}`}
-              <small>{o.kind} · composited</small>
+              <small>
+                {o.kind} · {fmt(o.startUs)}~{fmt(o.endUs)} (타임라인 #{laneNumber(overlays, o.id)})
+              </small>
             </div>
-            <button type="button" className="x" onClick={() => removeOverlay(o.id)}>
+            <button
+              type="button"
+              className="x"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeOverlay(o.id);
+              }}
+              title="삭제 (Delete/Backspace로도 가능)"
+            >
               ✕
             </button>
           </div>
@@ -912,7 +962,12 @@ function Preview() {
       )}
       {selectedOverlay && (
         <div className="ov-props" data-testid="overlay-props">
-          <span className="ov-props-title">{selectedOverlay.name}</span>
+          <span className="ov-props-title">
+            {selectedOverlay.kind !== 'subtitle' && (
+              <OvBadge n={laneNumber(overlays, selectedOverlay.id)} id={selectedOverlay.id} />
+            )}
+            {selectedOverlay.name}
+          </span>
           <span className="ov-props-hint">
             드래그=위치 · {fmt(selectedOverlay.startUs)}~{fmt(selectedOverlay.endUs)} (
             {fmt(selectedOverlay.endUs - selectedOverlay.startUs)} 동안 표시)
@@ -1032,6 +1087,7 @@ function Preview() {
           >
             ✕ 이 오버레이 제거
           </button>
+          <span className="ov-props-hint">키보드 Delete / Backspace 로도 삭제됩니다.</span>
         </div>
       )}
     </div>
@@ -2006,6 +2062,24 @@ function Timeline() {
     ovDrag.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
+  // OVERLAY 레인: 자막 제외. 시간대가 겹치는 블록은 서로 다른 행(서브레인)에 배치해 둘 다 보이게
+  // 한다(그리디 인터벌 분할). 번호(추가 순서)·색(id 해시)으로 같은 스티커도 구분된다.
+  const laneOverlays = overlays.filter((o) => o.kind !== 'subtitle');
+  const ovRowOf = new Map<string, number>();
+  let ovRows = 1;
+  {
+    const rowEnds: number[] = [];
+    for (const o of [...laneOverlays].sort((a, b) => a.startUs - b.startUs)) {
+      let r = rowEnds.findIndex((end) => end <= o.startUs);
+      if (r === -1) {
+        r = rowEnds.length;
+        rowEnds.push(0);
+      }
+      rowEnds[r] = o.endUs;
+      ovRowOf.set(o.id, r);
+    }
+    ovRows = Math.max(1, rowEnds.length);
+  }
   return (
     <div className="timeline">
       <div className="tl-head">
@@ -2037,22 +2111,23 @@ function Timeline() {
         </div>
         <div className="trackrow">
           <span className="lbl">Overlay</span>
-          <div className="track thin ov-lane" ref={ovLaneRef}>
-            {(() => {
-              const lane = overlays.filter((o) => o.kind !== 'subtitle'); // 자막은 '자막' 패널에서 관리
-              if (lane.length === 0)
-                return (
-                  <span className="track empty-track">
-                    스티커·이미지를 추가하면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이
-                  </span>
-                );
-              return lane.map((o) => {
+          <div
+            className="track thin ov-lane"
+            ref={ovLaneRef}
+            style={{ height: `${ovRows * OV_ROW_H + 4}px` }}
+          >
+            {laneOverlays.length === 0 ? (
+              <span className="track empty-track">
+                스티커·이미지를 추가하면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이 · Delete=삭제
+              </span>
+            ) : (
+              laneOverlays.map((o, idx) => {
                 const left = durationProgramUs > 0 ? (o.startUs / durationProgramUs) * 100 : 0;
                 const width =
                   durationProgramUs > 0
                     ? Math.max(2, ((o.endUs - o.startUs) / durationProgramUs) * 100)
                     : 0;
-                const label =
+                const icon =
                   o.kind === 'image'
                     ? '🖼'
                     : o.kind === 'gif'
@@ -2060,16 +2135,25 @@ function Timeline() {
                       : o.kind === 'video'
                         ? '🎞'
                         : o.name;
+                const row = ovRowOf.get(o.id) ?? 0;
+                const sel = selectedOverlayId === o.id;
                 return (
                   <div
                     key={o.id}
-                    className={`ov-block${selectedOverlayId === o.id ? ' on' : ''}`}
+                    className={`ov-block${sel ? ' on' : ''}`}
                     data-testid="ov-block"
-                    style={{ left: `${left}%`, width: `${width}%` }}
+                    style={{
+                      left: `${left}%`,
+                      width: `${width}%`,
+                      top: `${row * OV_ROW_H + 2}px`,
+                      height: `${OV_ROW_H - 4}px`,
+                      background: ovColor(o.id),
+                      borderColor: sel ? 'var(--text)' : ovColor(o.id),
+                    }}
                     onPointerDown={(e) => onOvDown(e, o, 'move')}
                     onPointerMove={onOvMove}
                     onPointerUp={onOvUp}
-                    title={`${fmt(o.startUs)}~${fmt(o.endUs)} · 드래그=이동 · 양끝=길이`}
+                    title={`#${idx + 1} · ${fmt(o.startUs)}~${fmt(o.endUs)} · 드래그=이동 · 양끝=길이 · Delete=삭제`}
                   >
                     <span
                       className="ov-block-h l"
@@ -2077,7 +2161,9 @@ function Timeline() {
                       onPointerMove={onOvMove}
                       onPointerUp={onOvUp}
                     />
-                    <span className="ov-block-label">{label}</span>
+                    <span className="ov-block-label">
+                      {idx + 1} {icon}
+                    </span>
                     <span
                       className="ov-block-h r"
                       onPointerDown={(e) => onOvDown(e, o, 'r')}
@@ -2086,8 +2172,8 @@ function Timeline() {
                     />
                   </div>
                 );
-              });
-            })()}
+              })
+            )}
           </div>
         </div>
         <div className="trackrow">
@@ -2377,10 +2463,13 @@ export function AppShell() {
         return;
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        // 선택한 단어를 즉시 컷(텍스트 기반 편집). 입력창에선 위 가드로 제외됨.
-        if (st.selected.length === 0) return;
         e.preventDefault();
-        st.deleteSelection();
+        // 1순위: 선택된 오버레이(스티커/이미지) 삭제. 2순위: 선택된 어절 컷(텍스트 기반 편집).
+        if (st.selectedOverlayId) {
+          st.removeOverlay(st.selectedOverlayId);
+          return;
+        }
+        if (st.selected.length > 0) st.deleteSelection();
         return;
       }
       if (e.key === 'ArrowRight') {

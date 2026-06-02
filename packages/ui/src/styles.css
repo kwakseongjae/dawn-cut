@@ -1060,15 +1060,16 @@ body {
 .ov-block {
   position: absolute;
   top: 2px;
-  bottom: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 14px;
   border-radius: 5px;
   font-size: 11px;
-  color: #cdb8ff;
-  background: linear-gradient(180deg, #3a2d55, #2d2442);
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  background: #3a2d55;
   border: 1px solid #4a3a6b;
   cursor: grab;
   user-select: none;
@@ -1099,6 +1100,28 @@ body {
 }
 .ov-block-h.r {
   right: 0;
+}
+/* 오버레이 번호 배지 — 타임라인 블록과 같은 색·번호로 같은 스티커 2개를 구분 */
+.ov-num {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  margin-right: 8px;
+}
+.ov-row {
+  cursor: pointer;
+}
+.ov-row.on {
+  box-shadow: 0 0 0 2px var(--accent) inset;
+  border-radius: 8px;
 }
 .track.empty-track {
   color: var(--faint);
@@ -1160,6 +1183,8 @@ body {
   border-top: 1px solid var(--border-soft);
 }
 .ov-props-title {
+  display: inline-flex;
+  align-items: center;
   font-weight: 650;
   font-size: 12px;
   color: var(--accent);
