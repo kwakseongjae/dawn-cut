@@ -9,6 +9,7 @@ import {
   analyzeVideo,
   detectSilences,
   extractAudio,
+  makePreviewProxy,
   probeMedia,
   renderEdl,
   writeSrt,
@@ -58,6 +59,15 @@ ipcMain.handle('subtitle:write', (_e, path: string, content: string) => writeSrt
 
 // 적응형 자동 보정 입력: 영상 통계(signalstats). 계산(autoEnhanceParams)·적용(command bus)은 renderer가 core로.
 ipcMain.handle('analyze:video', (_e, path: string) => analyzeVideo(path));
+
+// 미리보기 프록시 — 고레벨/초고해상도/비-web 코덱이 검은 화면이 될 때, 확실히 재생되는 작은 H.264로
+// 재인코딩해 미리보기에만 쓴다(편집·내보내기는 원본). 임시 폴더에 생성.
+ipcMain.handle('preview:proxy', async (_e, path: string) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dawn-proxy-'));
+  const out = join(dir, 'preview.mp4');
+  await makePreviewProxy(path, out);
+  return { path: out };
+});
 
 // P3 로컬 LLM 플래너(llama.cpp). renderer가 buildPlanPrompt로 만든 프롬프트를 받아 raw 텍스트를
 // 돌려준다(파싱/dryRun은 renderer가 core로). DAWN_DISABLE_LLM이 set이면 가용성 false로 강제해

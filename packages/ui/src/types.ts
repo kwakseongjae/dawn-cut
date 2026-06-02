@@ -7,6 +7,8 @@ export interface ProbeResult {
   hasAudio: boolean;
   width: number;
   height: number;
+  vcodec: string; // 비디오 코덱(h264/hevc/…)
+  level: number; // H.264 level×10 (5.2→52)
 }
 export interface SilenceInterval {
   start: number;
@@ -36,6 +38,7 @@ export interface DawnBridge {
     opts?: { noiseDb?: number; minSilenceUs?: number },
   ) => Promise<SilenceInterval[]>;
   analyzeVideo: (path: string) => Promise<VideoStats>;
+  makePreviewProxy: (path: string) => Promise<{ path: string }>;
   render: (
     edl: Edl,
     outPath: string,

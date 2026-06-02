@@ -639,6 +639,8 @@ function Preview() {
   const {
     timeline,
     mediaPath,
+    previewPath,
+    proxyBusy,
     playheadUs,
     playing,
     setPlayhead,
@@ -663,10 +665,10 @@ function Preview() {
       .join(' ') || undefined;
   const videoRef = useRef<HTMLVideoElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
-  // 미리보기 디코드 실패(코덱 미지원 등) 표시. 새 미디어를 열면 리셋.
+  // 미리보기 디코드 실패 표시. 새 소스(원본→프록시 교체 포함)가 바뀌면 리셋.
   const [videoErr, setVideoErr] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when media changes
-  useEffect(() => setVideoErr(false), [mediaPath]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the preview source changes
+  useEffect(() => setVideoErr(false), [previewPath]);
   const drag = useRef<{
     id: string;
     mode: 'move' | 'resize';
@@ -803,23 +805,34 @@ function Preview() {
       >
         {mediaPath ? (
           <div className="video-frame" ref={frameRef}>
-            <video
-              ref={videoRef}
-              // 한글/공백 파일명도 열리도록 경로를 인코딩(file:// URL). decode 실패(코덱 등)는 onError로.
-              src={`file://${encodeURI(mediaPath)}`}
-              preload="auto"
-              onEnded={() => setPlaying(false)}
-              onError={() => setVideoErr(true)}
-              onLoadedData={() => setVideoErr(false)}
-              style={previewFilter ? { filter: previewFilter } : undefined}
-            />
-            {videoErr && (
+            {previewPath ? (
+              <video
+                ref={videoRef}
+                // 한글/공백 경로도 열리도록 인코딩. 미리보기는 previewPath(원본 또는 변환된 프록시).
+                src={`file://${encodeURI(previewPath)}`}
+                preload="auto"
+                onEnded={() => setPlaying(false)}
+                onError={() => setVideoErr(true)}
+                onLoadedData={() => setVideoErr(false)}
+                style={previewFilter ? { filter: previewFilter } : undefined}
+              />
+            ) : (
+              <div className="video-err" data-testid="proxy-busy">
+                <div className="big">미리보기 준비 중…</div>
+                <div className="sub">
+                  큰/고레벨 영상을 미리보기용으로 변환하고 있어요(몇 초).
+                  <br />
+                  편집·자막·내보내기는 지금도 됩니다.
+                </div>
+              </div>
+            )}
+            {previewPath && videoErr && (
               <div className="video-err" data-testid="video-error">
                 <div className="big">미리보기를 재생할 수 없어요</div>
                 <div className="sub">
-                  이 영상 코덱(예: HEVC/H.265·ProRes)은 미리보기 플레이어가 디코드하지 못합니다.
+                  이 영상은 미리보기 플레이어가 디코드하지 못합니다.
                   <br />
-                  편집·자막·내보내기는 그대로 동작합니다. (H.264 mp4로 두면 미리보기도 됩니다.)
+                  편집·자막·내보내기는 그대로 동작합니다.
                 </div>
               </div>
             )}

@@ -28,6 +28,8 @@ const bridge = {
     opts?: { noiseDb?: number; minSilenceUs?: number },
   ): Promise<SilenceInterval[]> => ipcRenderer.invoke('analyze:silence', path, opts),
   analyzeVideo: (path: string): Promise<VideoStats> => ipcRenderer.invoke('analyze:video', path),
+  makePreviewProxy: (path: string): Promise<{ path: string }> =>
+    ipcRenderer.invoke('preview:proxy', path),
   render: (
     edl: Edl,
     outPath: string,

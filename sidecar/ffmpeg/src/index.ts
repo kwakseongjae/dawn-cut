@@ -15,15 +15,19 @@ export interface ProbeResult {
   hasAudio: boolean;
   width: number;
   height: number;
+  /** 비디오 코덱(예: h264/hevc/prores). 미리보기 재생 가능 여부 판단에 쓴다. */
+  vcodec: string;
+  /** H.264 등의 level×10(예: 5.2→52, 4.0→40). 고레벨은 Electron 미리보기가 못 그릴 수 있다. */
+  level: number;
 }
 
-/** ffprobe → duration (µs), video fps, frame size, audio presence. (IPC `media:probe`) */
+/** ffprobe → duration (µs), video fps, frame size, audio presence, codec/level. (IPC `media:probe`) */
 export async function probeMedia(path: string): Promise<ProbeResult> {
   const { stdout } = await exec(FFPROBE, [
     '-v',
     'error',
     '-show_entries',
-    'format=duration:stream=codec_type,r_frame_rate,width,height',
+    'format=duration:stream=codec_type,codec_name,level,r_frame_rate,width,height',
     '-of',
     'json',
     path,
@@ -32,6 +36,8 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
     format?: { duration?: string };
     streams?: Array<{
       codec_type?: string;
+      codec_name?: string;
+      level?: number;
       r_frame_rate?: string;
       width?: number;
       height?: number;
@@ -50,7 +56,54 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
     hasAudio,
     width: Number(video?.width ?? 0),
     height: Number(video?.height ?? 0),
+    vcodec: String(video?.codec_name ?? ''),
+    level: Number(video?.level ?? 0),
   };
+}
+
+/**
+ * 미리보기 프록시 — 원본을 '확실히 재생되는' 작은 H.264(Main/Level 4.0, ≤1280px, yuv420p,
+ * faststart)로 재인코딩한다. (IPC `preview:proxy`)
+ *
+ * 왜: Electron 미리보기(`<video>`)는 코덱은 넓게 받지만, 고레벨 H.264(level 5.x)·초고해상도·
+ * HEVC/ProRes 등은 시간만 흐르고 프레임을 못 그려(검은 화면) 사용자가 "영상이 안 나온다"고 느낀다.
+ * 편집·내보내기는 원본(FFmpeg)으로 하되, '보는 것'만 이 프록시로 해결한다. 프록시는 원본과 길이가
+ * 동일해 EDL 시킹이 1:1로 맞는다(편집은 원본 좌표 그대로).
+ *
+ * @param src 원본 경로.  @param out 출력 mp4 경로.  @param maxDim 긴 변 상한(기본 1280).
+ */
+export async function makePreviewProxy(src: string, out: string, maxDim = 1280): Promise<string> {
+  const cap = Math.max(160, Math.min(2160, Math.round(maxDim)));
+  await exec(FFMPEG, [
+    '-y',
+    '-loglevel',
+    'error',
+    '-i',
+    src,
+    '-vf',
+    // 긴 변을 cap 이하로 축소(비율 유지) + 짝수 치수 보장(yuv420p).
+    `scale='min(${cap},iw)':'min(${cap},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`,
+    '-c:v',
+    'libx264',
+    '-profile:v',
+    'main',
+    '-level',
+    '4.0',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '24',
+    '-pix_fmt',
+    'yuv420p',
+    '-movflags',
+    '+faststart',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '96k',
+    out,
+  ]);
+  return out;
 }
 
 function parseFps(rate: string | undefined): number {

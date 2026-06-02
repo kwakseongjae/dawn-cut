@@ -36,7 +36,11 @@ import { create } from 'zustand';
 const MEDIA_ID = 'media';
 
 interface EditorState {
-  mediaPath: string | null;
+  mediaPath: string | null; // 원본(편집·내보내기·전사의 단일 진실원천)
+  // 미리보기 <video>가 재생할 경로. 보통 = mediaPath. 단, 고레벨/초고해상도/비-web 코덱이라
+  // Electron이 못 그리는 영상은 백그라운드로 만든 H.264 프록시 경로(편집/내보내기는 원본 그대로).
+  previewPath: string | null;
+  proxyBusy: boolean; // 미리보기 프록시 변환 중
   transcript: TranscriptModel | null;
   timeline: TimelineModel | null;
   selected: string[]; // selected word ids
@@ -240,6 +244,24 @@ function toClips(overlays: Overlay[], durationUs: number): OverlayClip[] {
     });
 }
 
+// Electron <video>가 신뢰성 있게 그리는 비디오 코덱(소문자). 이 외(hevc/prores/mpeg4 등)는 프록시 필요.
+const WEB_VCODECS = new Set(['h264', 'avc1', 'vp8', 'vp9', 'vp09', 'av1', 'av01', 'theora']);
+/**
+ * 미리보기 프록시가 필요한가. 비-web 코덱이거나, 고레벨 H.264(level>4.1 = 5.x; 실측상 검은 화면),
+ * 또는 초고해상도(긴 변>1920)면 true. true면 작은 표준 H.264로 재인코딩해 미리보기에만 쓴다.
+ */
+function needsPreviewProxy(p: {
+  vcodec: string;
+  level: number;
+  width: number;
+  height: number;
+}): boolean {
+  if (!WEB_VCODECS.has((p.vcodec || '').toLowerCase())) return true;
+  if (p.level > 41) return true; // H.264 level 5.x → Electron 미리보기 검정 위험(실측: 당근.mp4 L5.2)
+  if (Math.max(p.width, p.height) > 1920) return true;
+  return false;
+}
+
 /** Derived fields for a timeline (clip count + program duration). */
 function derive(timeline: TimelineModel) {
   return { clipCount: videoClips(timeline).length, durationProgramUs: timeline.durationProgram };
@@ -276,6 +298,8 @@ function deadSet(timeline: TimelineModel | null, transcript: TranscriptModel | n
 
 export const useEditor = create<EditorState>((set, get) => ({
   mediaPath: null,
+  previewPath: null,
+  proxyBusy: false,
   transcript: null,
   timeline: null,
   selected: [],
@@ -491,8 +515,13 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ status: 'probing' });
     const probe = await dawn.probe(path);
     const timeline = createInitialTimeline(MEDIA_ID, probe.durationUs, probe.fps || 30);
+    // 미리보기: 보통은 원본을 그대로 재생. 단 Electron이 못 그리는 영상(고레벨/초고해상도/비-web
+    // 코덱)은 백그라운드로 작은 H.264 프록시를 만들어 그걸로 미리본다(편집·내보내기는 원본).
+    const proxyNeeded = needsPreviewProxy(probe);
     set({
       mediaPath: path,
+      previewPath: proxyNeeded ? null : path,
+      proxyBusy: proxyNeeded,
       transcript: null, // 자막은 'transcribeMedia'를 눌러야 생성된다.
       timeline,
       selected: [],
@@ -514,6 +543,18 @@ export const useEditor = create<EditorState>((set, get) => ({
       autoEnhanceEq: null,
       ...derive(timeline),
     });
+    if (proxyNeeded) {
+      // 가져오기를 막지 않고 백그라운드 변환. 완료 시 미리보기를 프록시로 교체(같은 미디어일 때만).
+      void dawn
+        .makePreviewProxy(path)
+        .then(({ path: proxy }) => {
+          if (get().mediaPath === path) set({ previewPath: proxy, proxyBusy: false });
+        })
+        .catch(() => {
+          // 변환 실패 → 원본으로 폴백(그래도 검으면 <video> onError가 안내).
+          if (get().mediaPath === path) set({ previewPath: path, proxyBusy: false });
+        });
+    }
   },
 
   transcribeMedia: async () => {
@@ -730,6 +771,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     const project = deserializeProject(await dawn.openProject(path));
     set({
       mediaPath: project.mediaPath,
+      previewPath: project.mediaPath, // 열기는 원본 미리보기(검으면 다시 가져오기로 프록시 생성)
+      proxyBusy: false,
       transcript: project.transcript,
       timeline: project.timeline,
       selected: [],
