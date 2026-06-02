@@ -68,6 +68,8 @@ interface EditorState {
 
   importPath: (path: string) => Promise<void>; // 프로브만(즉시) — 자막 자동 생성 안 함
   transcribeMedia: () => Promise<void>; // 명시적 자막 생성(받아쓰기)
+  clearMedia: () => void; // 가져온 영상·자막·편집 비우기(빈 상태로)
+  seekTo: (programUs: number) => void; // 플레이헤드 이동 + 일시정지(스크럽/타임라인 클릭)
   toggleWord: (id: string) => void;
   deleteSelection: () => void;
   removeSilencesAction: () => Promise<void>;
@@ -590,6 +592,47 @@ export const useEditor = create<EditorState>((set, get) => ({
         transcribeError: '자막 생성에 실패했어요. 오디오 트랙이 없거나 형식 문제일 수 있어요.',
       });
     }
+  },
+
+  clearMedia: () =>
+    set({
+      mediaPath: null,
+      previewPath: null,
+      proxyBusy: false,
+      hasAudio: false,
+      transcribeError: null,
+      transcript: null,
+      timeline: null,
+      selected: [],
+      status: 'idle',
+      clipCount: 0,
+      durationProgramUs: 0,
+      past: [],
+      future: [],
+      canUndo: false,
+      canRedo: false,
+      playheadUs: 0,
+      playing: false,
+      overlays: [],
+      selectedOverlayId: null,
+      ttsClips: [],
+      frameW: 0,
+      frameH: 0,
+      sourceDurationUs: 0,
+      lastExport: null,
+      silencePreview: null,
+      auditLog: [],
+      autoEnhanceEq: null,
+      colorPreset: 'none',
+      reframe: 'source',
+      subtitleStyle: {},
+    }),
+
+  seekTo: (programUs) => {
+    // 플레이헤드를 옮기고 일시정지 → Preview의 'paused 시 영상 시킹' 이펙트가 해당 시점으로 이동.
+    const dur = get().durationProgramUs;
+    const us = Math.max(0, Math.min(programUs, dur));
+    set({ playheadUs: us, playing: false });
   },
 
   toggleWord: (id) => {

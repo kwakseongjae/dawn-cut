@@ -29,6 +29,8 @@ export interface LlmStatus {
 export interface DawnBridge {
   /** 고급(전체) UI 노출 여부 — DAWN_ADVANCED=1. false면 쇼케이스용 단순 UI. */
   advanced: boolean;
+  /** 드래그앤드롭 File의 실제 경로(Electron webUtils.getPathForFile). */
+  pathForFile: (file: File) => string;
   ping: () => Promise<string>;
   probe: (path: string) => Promise<ProbeResult>;
   extractAudio: (path: string) => Promise<{ wavPath: string }>;

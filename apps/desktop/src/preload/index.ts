@@ -1,6 +1,6 @@
 import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
 import type { LlmStatus, ProbeResult, SilenceInterval, TranscribeResult } from '@dawn-cut/ui';
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 type RenderOpts = {
   subtitlesPath?: string;
@@ -17,6 +17,14 @@ type RenderOpts = {
 const bridge = {
   // 쇼케이스/프로덕션 페이스 게이트 — DAWN_ADVANCED=1이면 전체(고급) UI, 아니면 단순 와우셋만 노출.
   advanced: process.env.DAWN_ADVANCED === '1',
+  // 드래그앤드롭 파일의 실제 경로. Electron 32+에서 File.path가 제거돼 webUtils.getPathForFile이 유일.
+  pathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
   ping: (): Promise<string> => ipcRenderer.invoke('app:ping'),
   probe: (path: string): Promise<ProbeResult> => ipcRenderer.invoke('media:probe', path),
   extractAudio: (path: string): Promise<{ wavPath: string }> =>

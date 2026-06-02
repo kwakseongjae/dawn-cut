@@ -46,10 +46,13 @@ function fmt(us: number): string {
 }
 const pickOpen = async () => (await window.dawn?.openFile()) ?? null;
 const pickSave = async () => (await window.dawn?.saveFile()) ?? null;
-const isVideo = (n: string) => /\.(mp4|mov|m4v|webm|mkv)$/i.test(n);
-const isImage = (n: string) => /\.(png|jpe?g|webp|avif)$/i.test(n);
+const isVideo = (n: string) => /\.(mp4|mov|m4v|webm|mkv|avi|flv|ts|mpe?g|wmv|3gp)$/i.test(n);
+const isImage = (n: string) => /\.(png|jpe?g|webp|avif|bmp)$/i.test(n);
 const isGif = (n: string) => /\.gif$/i.test(n);
-const filePath = (f: File) => (f as File & { path?: string }).path ?? '';
+// 드래그앤드롭 경로: Electron 32+는 File.path를 제거 → preload의 webUtils.getPathForFile 사용.
+// (구버전/비-Electron 폴백으로 File.path도 본다.)
+const filePath = (f: File) =>
+  window.dawn?.pathForFile?.(f) || (f as File & { path?: string }).path || '';
 
 // ── Toolbar ──────────────────────────────────────────────────────────
 function Toolbar() {
@@ -287,6 +290,7 @@ function MediaPanel() {
     transcript,
     status,
     importPath,
+    clearMedia,
     overlays,
     addImageOverlay,
     addOverlaySrc,
@@ -325,6 +329,16 @@ function MediaPanel() {
           <span className="badge live" data-testid="media-badge">
             {proxyBusy ? '변환 중' : previewPath && previewPath !== mediaPath ? '프록시' : '원본'}
           </span>
+          <button
+            type="button"
+            className="x"
+            data-testid="clear-media"
+            onClick={clearMedia}
+            title="이 영상 치우기 (편집 초기화)"
+            aria-label="영상 제거"
+          >
+            ✕
+          </button>
         </div>
       )}
       {imageOverlays.map((o) => (
@@ -1928,9 +1942,16 @@ function Transcript() {
 
 // ── Multi-track timeline ─────────────────────────────────────────────
 function Timeline() {
-  const { timeline, durationProgramUs, playheadUs, overlays, ttsClips } = useEditor();
+  const { timeline, durationProgramUs, playheadUs, overlays, ttsClips, seekTo } = useEditor();
   const clips = timeline ? videoClips(timeline) : [];
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
+  // 트랙을 클릭하면 그 시점으로 플레이헤드 이동(+일시정지). 클립 자식 클릭도 트랙으로 버블링됨.
+  const seekFromTrack = (e: MouseEvent<HTMLDivElement>) => {
+    if (!timeline || durationProgramUs <= 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const r = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    seekTo(r * durationProgramUs);
+  };
   return (
     <div className="timeline">
       <div className="tl-head">
@@ -1942,7 +1963,12 @@ function Timeline() {
       <div className="tracks">
         <div className="trackrow">
           <span className="lbl">Video</span>
-          <div className="track">
+          <div
+            className="track"
+            data-testid="tl-video-track"
+            onClick={seekFromTrack}
+            style={{ cursor: timeline ? 'pointer' : 'default' }}
+          >
             {clips.map((c) => {
               const len = c.sourceEnd - c.sourceStart;
               const pct = durationProgramUs > 0 ? (len / durationProgramUs) * 100 : 0;
