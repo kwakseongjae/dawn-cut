@@ -78,7 +78,7 @@
 ### P2 — 위생/거버넌스 (블로커 아님)
 7. **e2e 플레이크 완화** — `playwright.config.ts:11` `trace: 'on'` + `retries` 미설정 → 트레이스 zip 레이스(ENOENT)로 그린 빌드가 빨강 뒤집힘(whisper 설치된 풀환경에서). `trace: 'on-first-retry'` + `retries: process.env.CI ? 1 : 0`. 5분.
 8. **거버넌스 파일** — `CONTRIBUTING.md`/`CODE_OF_CONDUCT.md`/`SECURITY.md`/`.github/ISSUE_TEMPLATE`/`PULL_REQUEST_TEMPLATE.md` 전부 없음(`.github/`엔 workflows만). 공개 협업 받으려면 추가.
-9. **개인경로 주석 제거** — `packages/core/src/planner.ts:3`에 `/Users/kwakseongjae/...` 절대경로 박힘. 기능무관·개인정보 노출, 정리.
+9. **개인경로 정리** — ✅ 완료. `packages/core/src/planner.ts:3`의 개인 절대경로 주석 제거(커밋 `9e56baa`) + `docs/REVIEW.md`·`demo-output/project.dawn`의 절대경로를 repo-relative로 치환(공개 위생).
 10. **버전 태그** — 루트 `package.json:3` `version: 0.0.0`, git tag 0건. 출시 시 `0.1.0` 세팅 + `v0.1.0` 태그 + 릴리스노트.
 
 ---

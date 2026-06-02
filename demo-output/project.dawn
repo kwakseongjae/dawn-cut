@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "mediaPath": "/Users/kwakseongjae/Desktop/projects/dawn-cut/demo/talk.mp4",
+  "mediaPath": "demo/talk.mp4",
   "transcript": {
     "schemaVersion": 1,
     "mediaId": "demo",
