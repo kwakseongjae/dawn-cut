@@ -48,8 +48,12 @@ const bridge = {
     ipcRenderer.invoke('subtitle:write', path, content),
   writeAsset: (dataUrl: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('asset:writeImage', dataUrl),
-  synthesizeTts: (text: string, voice: string): Promise<{ wavPath: string; engine: string }> =>
+  synthesizeTts: (
+    text: string,
+    voice: string,
+  ): Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }> =>
     ipcRenderer.invoke('tts:synthesize', text, voice),
+  listTtsVoices: (): Promise<{ name: string; lang: string }[]> => ipcRenderer.invoke('tts:voices'),
   saveProject: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('project:save', path, content),
   openProject: (path: string): Promise<string> => ipcRenderer.invoke('project:open', path),

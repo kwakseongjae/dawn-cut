@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@dawn-cut/core": "workspace:*",
+    "lucide-react": "^1.17.0",
     "zustand": "^5.0.2"
   },
   "peerDependencies": {

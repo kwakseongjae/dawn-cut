@@ -16,7 +16,7 @@ import {
 } from '@dawn-cut/sidecar-ffmpeg';
 import { isLlmAvailable, llmComplete, shutdownLlm, warmupLlm } from '@dawn-cut/sidecar-llm';
 import { transcribe } from '@dawn-cut/sidecar-stt';
-import { synthesizeTts } from '@dawn-cut/sidecar-tts';
+import { listVoices, synthesizeTts } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -102,8 +102,19 @@ ipcMain.handle('llm:plan', (_e, prompt: string) => {
 ipcMain.handle('tts:synthesize', async (_e, text: string, voice: string) => {
   const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
   const out = join(dir, 'voice.wav');
-  return synthesizeTts(text, out, { voice });
+  const res = await synthesizeTts(text, out, { voice });
+  // 생성된 음성 길이를 함께 돌려준다 → 타임라인 보이스 블록의 폭/길이로 사용.
+  let durationUs = 0;
+  try {
+    durationUs = (await probeMedia(res.wavPath)).durationUs;
+  } catch {
+    /* probe 실패 시 0 → UI가 기본 길이로 대체 */
+  }
+  return { ...res, durationUs };
 });
+
+// 설치된 macOS 보이스 목록(언어 태그 포함) — UI 보이스 선택을 동적으로 채운다.
+ipcMain.handle('tts:voices', async () => listVoices());
 
 // Rasterized sticker/asset PNG (data URL → temp file) for real compositing.
 ipcMain.handle('asset:writeImage', async (_e, dataUrl: string) => {

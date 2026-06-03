@@ -62,6 +62,7 @@ interface EditorState {
   frameW: number;
   frameH: number;
   selectedOverlayId: string | null;
+  selectedVoiceId: string | null; // 선택된 보이스 클립(Delete·하이라이트용)
   subtitlePos: { x: number; y: number; scale: number };
   subtitleStyle: SubtitleStyle;
   advanced: boolean; // 고급(전체) UI 노출 — DAWN_ADVANCED=1(preload). false=쇼케이스 단순 UI.
@@ -91,6 +92,9 @@ interface EditorState {
   selectOverlay: (id: string | null) => void;
   updateOverlay: (id: string, patch: Partial<Overlay>) => void;
   generateVoiceover: (voice: string, text: string) => Promise<void>;
+  updateTts: (id: string, patch: Partial<TtsClip>) => void;
+  removeTts: (id: string) => void;
+  selectVoice: (id: string | null) => void;
   removeOverlay: (id: string) => void;
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
@@ -204,7 +208,10 @@ export interface TtsClip {
   voice: string;
   text: string;
   wavPath?: string;
+  startUs: number; // 타임라인 시작(µs) — 오버레이처럼 드래그로 이동
+  endUs: number; // 타임라인 끝(µs) — 음성 길이. 드래그 양끝으로 조절
 }
+const DEFAULT_TTS_LEN_US = 2_000_000; // 길이 모를 때(probe 실패) 기본 2초
 const uid = () => Math.random().toString(36).slice(2, 9);
 const baseName = (p: string) => p.split('/').pop() ?? p;
 
@@ -330,6 +337,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   frameW: 0,
   frameH: 0,
   selectedOverlayId: null,
+  selectedVoiceId: null,
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
   // preload가 노출한 DAWN_ADVANCED 플래그(모듈 로드 시 1회 평가; 비-electron/테스트=false).
@@ -461,9 +469,18 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  selectOverlay: (id) => set({ selectedOverlayId: id }),
+  // 오버레이/보이스 선택은 상호 배타 — Delete 키가 어느 쪽을 지울지 모호하지 않게.
+  selectOverlay: (id) => set({ selectedOverlayId: id, selectedVoiceId: null }),
+  selectVoice: (id) => set({ selectedVoiceId: id, selectedOverlayId: null }),
   updateOverlay: (id, patch) =>
     set({ overlays: get().overlays.map((o) => (o.id === id ? { ...o, ...patch } : o)) }),
+  updateTts: (id, patch) =>
+    set({ ttsClips: get().ttsClips.map((c) => (c.id === id ? { ...c, ...patch } : c)) }),
+  removeTts: (id) =>
+    set({
+      ttsClips: get().ttsClips.filter((c) => c.id !== id),
+      selectedVoiceId: get().selectedVoiceId === id ? null : get().selectedVoiceId,
+    }),
 
   setPlayhead: (us) => set({ playheadUs: us }),
   setPlaying: (p) => set({ playing: p }),
@@ -520,8 +537,27 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!dawn) return;
     set({ status: 'synthesizing voice' });
     const res = await dawn.synthesizeTts(text, voice);
+    // 플레이헤드에서 시작, 길이는 실제 음성 길이(probe). 프로그램 끝을 넘지 않게 클램프.
+    const { playheadUs, durationProgramUs } = get();
+    const len = res.durationUs > 0 ? res.durationUs : DEFAULT_TTS_LEN_US;
+    const startUs = durationProgramUs
+      ? Math.min(playheadUs, Math.max(0, durationProgramUs - len))
+      : playheadUs;
+    const id = uid();
     set({
-      ttsClips: [...get().ttsClips, { id: uid(), voice, text, wavPath: res.wavPath }],
+      ttsClips: [
+        ...get().ttsClips,
+        {
+          id,
+          voice: res.voice || voice,
+          text,
+          wavPath: res.wavPath,
+          startUs,
+          endUs: startUs + len,
+        },
+      ],
+      selectedVoiceId: id,
+      selectedOverlayId: null,
       status: 'voice ready',
     });
   },
@@ -559,7 +595,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       playheadUs: 0,
       playing: false,
       overlays: [],
+      ttsClips: [],
       selectedOverlayId: null,
+      selectedVoiceId: null,
       frameW: probe.width,
       frameH: probe.height,
       sourceDurationUs: probe.durationUs,
@@ -633,6 +671,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       playing: false,
       overlays: [],
       selectedOverlayId: null,
+      selectedVoiceId: null,
       ttsClips: [],
       frameW: 0,
       frameH: 0,
@@ -770,11 +809,14 @@ export const useEditor = create<EditorState>((set, get) => ({
         subtitlesPath = srtPath;
       }
     }
+    const voiceClip = ttsClips.find((c) => c.wavPath);
     const res = await dawn.render(edl, path, {
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
-      voicePath: ttsClips.find((c) => c.wavPath)?.wavPath,
+      ...(voiceClip
+        ? { voicePath: voiceClip.wavPath, voiceStartUs: Math.max(0, voiceClip.startUs) }
+        : {}),
       ...(subtitlesPath ? { subtitlesPath } : {}),
       ...(reframe !== 'source' ? { reframe } : {}),
     });
@@ -795,12 +837,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!timeline || !mediaPath || !dawn) return;
     set({ status: format === 'gif' ? 'exporting gif' : 'exporting' });
     const edl = timelineToEdl(gradeTimeline(timeline, transcript, get().colorPreset), mediaPath);
+    const voiceClip = format === 'gif' ? undefined : ttsClips.find((c) => c.wavPath);
     const res = await dawn.render(edl, path, {
       format,
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
-      voicePath: format === 'gif' ? undefined : ttsClips.find((c) => c.wavPath)?.wavPath,
+      ...(voiceClip
+        ? { voicePath: voiceClip.wavPath, voiceStartUs: Math.max(0, voiceClip.startUs) }
+        : {}),
       ...(reframe !== 'source' ? { reframe } : {}),
     });
     set({

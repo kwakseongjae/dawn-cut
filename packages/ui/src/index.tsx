@@ -23,6 +23,37 @@ import {
 } from '@dawn-cut/core';
 import type { Chapter, ColorEq, Edl, SubtitleStyle } from '@dawn-cut/core';
 import {
+  ArrowUpToLine,
+  Bot,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Clipboard,
+  CornerDownRight,
+  Eraser,
+  Film,
+  ListTree,
+  Lock,
+  type LucideIcon,
+  Mic,
+  NotebookText,
+  Palette,
+  Pause,
+  Pencil,
+  Play,
+  Redo2,
+  RotateCcw,
+  Scissors,
+  Search,
+  Settings,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  Undo2,
+  Volume2,
+  Wand2,
+} from 'lucide-react';
+import {
   type DragEvent,
   type MouseEvent,
   type PointerEvent,
@@ -33,7 +64,7 @@ import {
 } from 'react';
 import './styles.css';
 import { deadSet, useEditor } from './store.js';
-import type { ColorPreset, Overlay, PanelId } from './store.js';
+import type { ColorPreset, Overlay, PanelId, TtsClip } from './store.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -93,7 +124,7 @@ function Toolbar() {
         data-testid="privacy-badge"
         title="모든 처리(자막 생성·인코딩)가 이 기기 안에서만 일어납니다. 영상은 업로드되지 않습니다."
       >
-        🔒 로컬 전용
+        <Lock size={12} strokeWidth={2} /> 로컬 전용
       </span>
       <div className="sep" />
       <div className="group">
@@ -141,7 +172,7 @@ function Toolbar() {
           disabled={!s.canUndo}
           onClick={() => s.undo()}
         >
-          ↶ 되돌리기
+          <Undo2 size={14} /> 되돌리기
         </button>
         <button
           type="button"
@@ -150,7 +181,7 @@ function Toolbar() {
           disabled={!s.canRedo}
           onClick={() => s.redo()}
         >
-          ↷ 다시하기
+          <Redo2 size={14} /> 다시하기
         </button>
       </div>
       <div className="spacer" />
@@ -162,7 +193,7 @@ function Toolbar() {
           disabled={!s.timeline}
           onClick={() => s.removeSilencesAction()}
         >
-          ✂ 무음 제거
+          <Scissors size={14} /> 무음 제거
         </button>
         <SilenceMenu />
         <button
@@ -182,7 +213,7 @@ function Toolbar() {
             disabled={!s.timeline}
             onClick={() => setMenu((v) => !v)}
           >
-            내보내기 ▾
+            내보내기 <ChevronDown size={14} />
           </button>
           {menu && (
             <div className="menu">
@@ -237,11 +268,11 @@ function PingDot() {
 }
 
 // ── Left rail + dock panels ──────────────────────────────────────────
-const RAIL: { id: PanelId; ico: string; label: string; short: string }[] = [
-  { id: 'media', ico: '🎬', label: '미디어', short: '미디어' },
-  { id: 'text', ico: '🗣', label: '음성 · TTS', short: '음성' },
-  { id: 'sticker', ico: '✨', label: '스티커 · GIF', short: '스티커' },
-  { id: 'effect', ico: '🎚', label: '효과 · 색보정', short: '효과' },
+const RAIL: { id: PanelId; ico: LucideIcon; label: string; short: string }[] = [
+  { id: 'media', ico: Film, label: '미디어', short: '미디어' },
+  { id: 'text', ico: Mic, label: '음성 · TTS', short: '음성' },
+  { id: 'sticker', ico: Sparkles, label: '스티커 · GIF', short: '스티커' },
+  { id: 'effect', ico: SlidersHorizontal, label: '효과 · 색보정', short: '효과' },
 ];
 
 function Rail() {
@@ -259,7 +290,9 @@ function Rail() {
           onClick={() => setPanel(r.id)}
           title={r.label}
         >
-          <span className="ico">{r.ico}</span>
+          <span className="ico">
+            <r.ico size={19} strokeWidth={1.75} />
+          </span>
           {r.short}
         </button>
       ))}
@@ -288,7 +321,9 @@ function Dropzone({ onFiles, hint }: { onFiles: (f: File[]) => void; hint: strin
         onDrop={drop}
         onClick={() => ref.current?.click()}
       >
-        <span className="dz-icon">⬆</span>
+        <span className="dz-icon">
+          <ArrowUpToLine size={22} strokeWidth={1.75} />
+        </span>
         {hint}
       </div>
       <input
@@ -410,20 +445,61 @@ function MediaPanel() {
   );
 }
 
-const VOICES = ['Samantha', 'Alex', 'Daniel', 'Aria', 'Nova', 'Echo'];
+// 비-macOS/테스트 등 보이스 목록을 못 받을 때의 폴백(한국어 우선).
+const FALLBACK_VOICES = [
+  { name: 'Yuna', lang: 'ko_KR' },
+  { name: 'Samantha', lang: 'en_US' },
+];
+const VOICE_LANG_KO: Record<string, string> = {
+  ko: '한국어',
+  en: '영어',
+  ja: '일본어',
+  zh: '중국어',
+  es: '스페인어',
+  fr: '프랑스어',
+  de: '독일어',
+  it: '이탈리아어',
+  pt: '포르투갈어',
+  ru: '러시아어',
+};
+const isKoLang = (lang: string) => lang.toLowerCase().startsWith('ko');
+const langLabel = (lang: string) => VOICE_LANG_KO[lang.slice(0, 2).toLowerCase()] ?? lang;
+
 function TextPanel() {
-  const { ttsClips, generateVoiceover } = useEditor();
-  const [voice, setVoice] = useState(VOICES[0]!);
+  const { ttsClips, generateVoiceover, selectedVoiceId, selectVoice, removeTts } = useEditor();
+  const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
+  const [voice, setVoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
+  // 설치된 보이스를 동적으로 채운다(이전엔 Aria/Nova 같은 미설치 가짜 이름이라 무음이었음).
+  // 한국어 보이스를 맨 위 + 기본 선택으로 둬서 한국어가 바로 된다.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const list = (await window.dawn?.listTtsVoices?.()) ?? [];
+      const vs = (list.length ? list : FALLBACK_VOICES)
+        .slice()
+        .sort(
+          (a, b) =>
+            (isKoLang(b.lang) ? 1 : 0) - (isKoLang(a.lang) ? 1 : 0) || a.name.localeCompare(b.name),
+        );
+      if (!alive) return;
+      setVoices(vs);
+      setVoice((vs.find((v) => isKoLang(v.lang)) ?? vs[0])?.name ?? '');
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const koAvailable = voices.some((v) => isKoLang(v.lang));
   return (
     <div className="dock-body">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>AI Voiceover (TTS)</strong>
-        <span className="badge live">mixes on export</span>
+        <strong style={{ fontSize: 13 }}>AI 보이스 (TTS)</strong>
+        <span className="badge live">내보낼 때 합쳐짐</span>
       </div>
       <label className="field" htmlFor="tts-voice">
-        Voice
+        보이스
       </label>
       <select
         id="tts-voice"
@@ -431,19 +507,19 @@ function TextPanel() {
         value={voice}
         onChange={(e) => setVoice(e.target.value)}
       >
-        {VOICES.map((v) => (
-          <option key={v} value={v}>
-            {v}
+        {voices.map((v) => (
+          <option key={v.name} value={v.name}>
+            {v.name} · {langLabel(v.lang)}
           </option>
         ))}
       </select>
       <label className="field" htmlFor="tts-text">
-        Script
+        대본
       </label>
       <textarea
         id="tts-text"
         className="textarea"
-        placeholder="Type what the AI voice should say…"
+        placeholder="AI 보이스가 읽을 내용을 입력하세요 — 한국어 지원"
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
@@ -452,6 +528,7 @@ function TextPanel() {
         className="btn primary full"
         data-testid="generate-voiceover"
         disabled={!text.trim() || busy}
+        style={{ justifyContent: 'center' }}
         onClick={async () => {
           setBusy(true);
           try {
@@ -462,23 +539,51 @@ function TextPanel() {
           }
         }}
       >
-        {busy ? '… synthesizing' : '🗣 Generate voiceover'}
+        {busy ? (
+          '… 합성 중'
+        ) : (
+          <>
+            <Mic size={14} /> 보이스 생성
+          </>
+        )}
       </button>
+      {!koAvailable && (
+        <p className="muted-note" data-testid="tts-no-korean" style={{ color: '#ffb86b' }}>
+          한국어 보이스가 설치돼 있지 않아요. 시스템 설정 ▸ 손쉬운 사용 ▸ 음성 콘텐츠 ▸ 시스템 음성
+          ▸ 음성 관리에서 <b>한국어(유나)</b>를 받으면 한국어 음성이 됩니다.
+        </p>
+      )}
       {ttsClips.map((c) => (
-        <div className="list-row" key={c.id}>
+        <div
+          className={`list-row ov-row${selectedVoiceId === c.id ? ' on' : ''}`}
+          key={c.id}
+          onClick={() => selectVoice(c.id)}
+        >
+          <Volume2 size={15} style={{ flex: '0 0 auto', color: 'var(--ok)' }} />
           <div className="t">
             {c.voice}
             <small>
-              {c.text.slice(0, 42)}
-              {c.text.length > 42 ? '…' : ''}
+              {fmt(c.startUs)} · {c.text.slice(0, 34)}
+              {c.text.length > 34 ? '…' : ''}
             </small>
           </div>
-          <span className="badge live">ready</span>
+          <button
+            type="button"
+            className="x"
+            data-testid="tts-remove"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeTts(c.id);
+            }}
+            title="삭제 (Delete/Backspace로도 가능)"
+          >
+            ✕
+          </button>
         </div>
       ))}
       <p className="muted-note">
-        Synthesizes a real voice track from text (macOS <code>say</code> by default; Piper if{' '}
-        <code>DAWN_PIPER_BIN</code> is set) and <b>mixes it into the export</b>.
+        텍스트를 실제 음성으로 합성해 <b>내보낼 때 영상에 믹스</b>합니다. 한글이면 한국어 보이스로
+        자동 전환돼요. 타임라인에서 위치·길이를 드래그로 맞출 수 있습니다.
       </p>
     </div>
   );
@@ -630,9 +735,9 @@ function EffectPanel() {
         disabled={!timeline || !mediaPath}
         onClick={() => void autoEnhance()}
         title="영상을 분석해 밝기·대비·채도를 자동으로 보정합니다 (1탭)"
-        style={{ marginTop: 8, width: '100%' }}
+        style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
       >
-        ✨ 자동 보정 (1탭)
+        <Wand2 size={14} /> 자동 보정 (1탭)
       </button>
       {autoEnhanceEq && (
         <p className="muted-note" data-testid="auto-enhance-applied" style={{ marginTop: 6 }}>
@@ -950,7 +1055,11 @@ function Preview() {
       {mediaPath && (
         <div className="controls">
           <button type="button" className="play-btn" data-testid="play" onClick={toggle}>
-            {playing ? '❚❚' : '▶'}
+            {playing ? (
+              <Pause size={17} fill="currentColor" strokeWidth={0} />
+            ) : (
+              <Play size={17} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
+            )}
           </button>
           <span className="time">
             {fmt(playheadUs)} / {fmt(durationProgramUs)}
@@ -1074,7 +1183,7 @@ function Preview() {
               updateOverlay(selectedOverlay.id, { to: undefined, rotation: undefined })
             }
           >
-            ⟲ 애니 초기화
+            <RotateCcw size={13} /> 애니 초기화
           </button>
           {selectedOverlay.kind === 'subtitle' && selectedOverlay.text && (
             <CueEditor overlay={selectedOverlay} onUpdate={updateOverlay} />
@@ -1162,39 +1271,58 @@ const EMPH_STRIP = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu;
 const emphasisFor = (cueText: string, on: boolean): ReadonlySet<string> | undefined =>
   on ? new Set(pickKeywords(cueText).map((w) => w.replace(EMPH_STRIP, ''))) : undefined;
 
+// 자막 미리보기 = 실제 영상 프레임(16:9 무대) 위에 '내보내기와 동일한' 자막 밴드를 놓은 것.
+// 밴드는 export 래스터(1000×150, 20:3)와 같은 비율·위치(subtitlePos)로 그려져 WYSIWYG다.
+// 위치(x/y)·크기(scale)가 무대 위 밴드에 그대로 반영돼 앵커 그리드가 직관적으로 연결된다.
 function SubtitlePreview({
   style,
   text,
   emphasis,
-}: { style: SubtitleStyle; text?: string; emphasis?: ReadonlySet<string> }) {
+  pos,
+}: {
+  style: SubtitleStyle;
+  text?: string;
+  emphasis?: ReadonlySet<string>;
+  pos: { x: number; y: number; scale: number };
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    const stage = stageRef.current;
     const c = ref.current;
-    if (!c) return;
+    if (!stage || !c) return;
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, c.width, c.height);
-    // soft frame backdrop so transparent bgs are visible
-    const grad = ctx.createLinearGradient(0, 0, 0, c.height);
-    grad.addColorStop(0, '#2a3a55');
-    grad.addColorStop(1, '#16213a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, c.width, c.height);
-    // 전사가 있으면 현재 재생 위치의 자막(어절 줄바꿈됨)을 라이브로 보여준다.
-    drawSubtitle(ctx, c.width, c.height, text?.trim() ? text : '자막 미리보기', style, emphasis);
-  }, [style, text, emphasis]);
+    // 무대 실측치로 그린다. 최초 마운트 땐 레이아웃(aspect-ratio)이 잡히기 전이라 clientW/H가
+    // 0일 수 있으므로 ResizeObserver로 크기 확정 후 다시 그린다(밴드 위치가 어긋나지 않게).
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const stageW = stage.clientWidth;
+      const stageH = stage.clientHeight;
+      if (stageW < 8 || stageH < 8) return; // 레이아웃 전 — observer가 다시 부른다
+      const bandW = Math.max(48, Math.round(stageW * pos.scale));
+      const bandH = Math.max(14, Math.round(bandW * 0.15)); // export raster 1000:150 비율
+      // 레티나 선명도: 백킹 캔버스를 dpr배로, CSS 크기는 논리 픽셀로.
+      c.width = Math.round(bandW * dpr);
+      c.height = Math.round(bandH * dpr);
+      c.style.width = `${bandW}px`;
+      c.style.height = `${bandH}px`;
+      c.style.left = `${Math.round(Math.min(Math.max(0, pos.x), Math.max(0, 1 - pos.scale)) * stageW)}px`;
+      c.style.top = `${Math.round(Math.min(Math.max(0, pos.y), 1) * Math.max(0, stageH - bandH))}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, bandW, bandH);
+      drawSubtitle(ctx, bandW, bandH, text?.trim() ? text : '자막 미리보기', style, emphasis);
+    };
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [style, text, emphasis, pos.x, pos.y, pos.scale]);
   return (
-    <canvas
-      ref={ref}
-      width={320}
-      height={60}
-      data-testid="sub-preview"
-      style={{
-        borderRadius: 6,
-        border: '1px solid var(--border)',
-        display: 'block',
-      }}
-    />
+    <div className="sub-stage" ref={stageRef}>
+      <span className="sub-stage-tag">미리보기</span>
+      <canvas className="sub-band" ref={ref} data-testid="sub-preview" />
+    </div>
   );
 }
 
@@ -1504,7 +1632,13 @@ function Transcript() {
           onClick={burnSubtitles}
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
-          {burnt ? '✓ 자막 입힘' : '자막 입히기'}
+          {burnt ? (
+            <>
+              <Check size={13} /> 자막 입힘
+            </>
+          ) : (
+            '자막 입히기'
+          )}
         </button>
         <button
           type="button"
@@ -1514,12 +1648,14 @@ function Transcript() {
           title="Reset subtitle position + style to defaults"
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
-          ⟲ 초기화
+          <RotateCcw size={13} /> 초기화
         </button>
       </div>
       {advanced && transcript && (
         <div className="nl-bar" data-testid="nl-bar">
-          <span className="nl-ico">🤖</span>
+          <span className="nl-ico">
+            <Bot size={15} />
+          </span>
           <input
             className="input"
             data-testid="nl-input"
@@ -1547,12 +1683,14 @@ function Transcript() {
           title="핵심만 남겨 ~60초 하이라이트로 컷합니다 (롱폼→쇼츠)"
           style={{ fontSize: 11, padding: '4px 8px', margin: '0 8px 8px' }}
         >
-          ✂️ 자동 하이라이트 (60초)
+          <Scissors size={13} /> 자동 하이라이트 (60초)
         </button>
       )}
       {transcript && (
         <div className="nl-bar" data-testid="style-pack-bar">
-          <span className="nl-ico">🎨</span>
+          <span className="nl-ico">
+            <Palette size={15} />
+          </span>
           <select
             className="select"
             data-testid="style-pack"
@@ -1582,7 +1720,15 @@ function Transcript() {
           <div className="plan-head">
             <span>제안: “{pendingPlan.input}”</span>
             <span className="plan-engine" data-testid="plan-engine">
-              {pendingPlan.engine === 'llm' ? '🤖 AI' : '⚙︎ 룰'}
+              {pendingPlan.engine === 'llm' ? (
+                <>
+                  <Bot size={12} /> AI
+                </>
+              ) : (
+                <>
+                  <Settings size={12} /> 룰
+                </>
+              )}
             </span>
           </div>
           {pendingPlan.commands.length > 0 ? (
@@ -1627,60 +1773,40 @@ function Transcript() {
         </div>
       )}
       {advanced && (
-        <div className="sub-pos" data-testid="subtitle-pos">
-          <SubtitlePreview style={subtitleStyle} text={currentCaption} emphasis={currentEmphasis} />
-          <div className="sub-pos-grid">
-            {ANCHORS.map((a) => {
-              const sel =
-                Math.abs(subtitlePos.y - a.y) < 0.05 &&
-                Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={sel ? 'on' : ''}
-                  data-testid={`sub-anchor-${a.id}`}
-                  title={`anchor ${a.id}`}
-                  onClick={() => applyAnchor(a.x, a.y)}
-                >
-                  {a.label}
-                </button>
-              );
-            })}
+        <div className="sub-pos card" data-testid="subtitle-pos">
+          <div className="sub-pos-head">
+            <span className="sub-pos-title">자막 미리보기</span>
+            <span className="sub-pos-sub">영상에서 보일 모습 그대로</span>
           </div>
-          <div className="sub-pos-sliders">
-            <label className="ov-field">
-              x
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(subtitlePos.x * 100)}
-                data-testid="sub-x"
-                onChange={async (e) => {
-                  const x = Number(e.target.value) / 100;
-                  setSubtitlePos({ x });
-                  scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
-                }}
-              />
-            </label>
-            <label className="ov-field">
-              y
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(subtitlePos.y * 100)}
-                data-testid="sub-y"
-                onChange={async (e) => {
-                  const y = Number(e.target.value) / 100;
-                  setSubtitlePos({ y });
-                  scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
-                }}
-              />
-            </label>
-            <label className="ov-field">
-              size
+          <SubtitlePreview
+            style={subtitleStyle}
+            text={currentCaption}
+            emphasis={currentEmphasis}
+            pos={subtitlePos}
+          />
+          <div className="sub-group">
+            <span className="sub-group-label">위치</span>
+            <div className="sub-pos-grid">
+              {ANCHORS.map((a) => {
+                const sel =
+                  Math.abs(subtitlePos.y - a.y) < 0.05 &&
+                  Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className={sel ? 'on' : ''}
+                    data-testid={`sub-anchor-${a.id}`}
+                    title={`anchor ${a.id}`}
+                    onClick={() => applyAnchor(a.x, a.y)}
+                  >
+                    {a.label}
+                  </button>
+                );
+              })}
+            </div>
+            <label className="sub-slider">
+              <span>크기 {Math.round(subtitlePos.scale * 100)}%</span>
               <input
                 type="range"
                 min={20}
@@ -1695,98 +1821,133 @@ function Transcript() {
               />
             </label>
           </div>
-          <div className="sub-pos-sliders">
-            <label className="ov-field">
-              preset
-              <select
-                className="select"
-                data-testid="sub-preset"
-                defaultValue="default"
-                onChange={(e) => applyPreset(e.target.value)}
-                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-              >
-                {Object.keys(SUBTITLE_PRESETS).map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="ov-field">
-              color
-              <input
-                type="color"
-                value={subtitleStyle.color ?? '#ffffff'}
-                data-testid="sub-color"
-                onChange={(e) => applyStyle({ color: e.target.value })}
-              />
-            </label>
-            <label className="ov-field">
-              outline
-              <input
-                type="color"
-                value={(subtitleStyle.stroke as string) || '#000000'}
-                data-testid="sub-stroke"
-                onChange={(e) => applyStyle({ stroke: e.target.value })}
-              />
-            </label>
-            <label className="ov-field">
-              bg
-              <select
-                className="select"
-                value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
-                data-testid="sub-bg"
-                onChange={(e) => applyStyle({ bg: e.target.value })}
-                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-              >
-                <option value="rgba(0,0,0,0.55)">dark 55%</option>
-                <option value="rgba(0,0,0,0.85)">dark 85%</option>
-                <option value="rgba(255,255,255,0.7)">light</option>
-                <option value="transparent">none</option>
-              </select>
-            </label>
-            <label className="ov-field">
-              font
-              <select
-                className="select"
-                value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
-                data-testid="sub-font"
-                onChange={(e) => applyStyle({ fontFamily: e.target.value })}
-                style={{ height: 24, fontSize: 11, padding: '0 4px' }}
-              >
-                <option value="system-ui, sans-serif">system</option>
-                <option value="Georgia, serif">serif</option>
-                <option value="'Courier New', monospace">mono</option>
-                <option value="Impact, sans-serif">impact</option>
-                <option
-                  value={
-                    '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
-                  }
+          <details className="sub-style-adv">
+            <summary>세부 스타일 (색·외곽선·배경·폰트·강조)</summary>
+            <div className="sub-style-body">
+              <label className="sub-ctl">
+                <span>프리셋</span>
+                <select
+                  className="select"
+                  data-testid="sub-preset"
+                  defaultValue="default"
+                  onChange={(e) => applyPreset(e.target.value)}
                 >
-                  CJK (Korean)
-                </option>
-              </select>
-            </label>
-            <label className="ov-field">
-              강조
-              <input
-                type="checkbox"
-                data-testid="sub-emphasis"
-                checked={emphasizeKeywords}
-                onChange={(e) => applyEmphasis(e.target.checked)}
-              />
-            </label>
-            <label className="ov-field">
-              강조색
-              <input
-                type="color"
-                data-testid="sub-emphasis-color"
-                value={subtitleStyle.emphasisColor ?? '#ffd54f'}
-                disabled={!emphasizeKeywords}
-                onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
-              />
-            </label>
-          </div>
+                  {Object.keys(SUBTITLE_PRESETS).map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="sub-ctl">
+                <span>글자색</span>
+                <input
+                  type="color"
+                  className="swatch"
+                  value={subtitleStyle.color ?? '#ffffff'}
+                  data-testid="sub-color"
+                  onChange={(e) => applyStyle({ color: e.target.value })}
+                />
+              </label>
+              <label className="sub-ctl">
+                <span>외곽선</span>
+                <input
+                  type="color"
+                  className="swatch"
+                  value={(subtitleStyle.stroke as string) || '#000000'}
+                  data-testid="sub-stroke"
+                  onChange={(e) => applyStyle({ stroke: e.target.value })}
+                />
+              </label>
+              <label className="sub-ctl">
+                <span>배경</span>
+                <select
+                  className="select"
+                  value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
+                  data-testid="sub-bg"
+                  onChange={(e) => applyStyle({ bg: e.target.value })}
+                >
+                  <option value="rgba(0,0,0,0.55)">어둡게 55%</option>
+                  <option value="rgba(0,0,0,0.85)">어둡게 85%</option>
+                  <option value="rgba(255,255,255,0.7)">밝게</option>
+                  <option value="transparent">없음</option>
+                </select>
+              </label>
+              <label className="sub-ctl">
+                <span>폰트</span>
+                <select
+                  className="select"
+                  value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
+                  data-testid="sub-font"
+                  onChange={(e) => applyStyle({ fontFamily: e.target.value })}
+                >
+                  <option value="system-ui, sans-serif">시스템</option>
+                  <option value="Georgia, serif">세리프</option>
+                  <option value="'Courier New', monospace">고정폭</option>
+                  <option value="Impact, sans-serif">임팩트</option>
+                  <option
+                    value={
+                      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
+                    }
+                  >
+                    한글(CJK)
+                  </option>
+                </select>
+              </label>
+              <label className="sub-ctl checkbox">
+                <span>키워드 강조</span>
+                <input
+                  type="checkbox"
+                  data-testid="sub-emphasis"
+                  checked={emphasizeKeywords}
+                  onChange={(e) => applyEmphasis(e.target.checked)}
+                />
+              </label>
+              <label className="sub-ctl">
+                <span>강조색</span>
+                <input
+                  type="color"
+                  className="swatch"
+                  data-testid="sub-emphasis-color"
+                  value={subtitleStyle.emphasisColor ?? '#ffd54f'}
+                  disabled={!emphasizeKeywords}
+                  onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
+                />
+              </label>
+              <div className="sub-xy">
+                <label className="sub-slider">
+                  <span>가로 {Math.round(subtitlePos.x * 100)}%</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(subtitlePos.x * 100)}
+                    data-testid="sub-x"
+                    onChange={async (e) => {
+                      const x = Number(e.target.value) / 100;
+                      setSubtitlePos({ x });
+                      scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
+                    }}
+                  />
+                </label>
+                <label className="sub-slider">
+                  <span>세로 {Math.round(subtitlePos.y * 100)}%</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(subtitlePos.y * 100)}
+                    data-testid="sub-y"
+                    onChange={async (e) => {
+                      const y = Number(e.target.value) / 100;
+                      setSubtitlePos({ y });
+                      scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          </details>
         </div>
       )}
       <div className="review-tools" data-testid="review-tools">
@@ -1798,7 +1959,8 @@ function Transcript() {
           onClick={() => removeFillers()}
           title="음/어/흠 같은 말버릇 어절을 한 번에 컷합니다"
         >
-          🧹 말버릇 {fillerIds.size}개 제거{fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
+          <Eraser size={13} /> 말버릇 {fillerIds.size}개 제거
+          {fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
         </button>
         <label
           className="ov-field"
@@ -1812,7 +1974,8 @@ function Transcript() {
             disabled={!transcript}
             onChange={(e) => setReviewMode(e.target.checked)}
           />
-          🔎 검수 {reviewMode && uncertainIds.size > 0 ? `(${uncertainIds.size})` : ''}
+          <Search size={13} /> 검수{' '}
+          {reviewMode && uncertainIds.size > 0 ? `(${uncertainIds.size})` : ''}
         </label>
         {reviewMode && uncertainIds.size > 0 && (
           <button
@@ -1822,13 +1985,15 @@ function Transcript() {
             onClick={jumpNextUncertain}
             title="다음 검수 대상 어절로 이동"
           >
-            ↪ 다음 의심 어절
+            <CornerDownRight size={13} /> 다음 의심 어절
           </button>
         )}
         {advanced && (
           <>
             <details className="glossary">
-              <summary>📒 내 사전 ({glossary.length})</summary>
+              <summary>
+                <NotebookText size={13} /> 내 사전 ({glossary.length})
+              </summary>
               <div className="glossary-body">
                 {glossary.length === 0 && (
                   <div className="glossary-hint">
@@ -1855,7 +2020,9 @@ function Transcript() {
               </div>
             </details>
             <details className="chapters">
-              <summary>📑 챕터 / 타임스탬프</summary>
+              <summary>
+                <ListTree size={13} /> 챕터 / 타임스탬프
+              </summary>
               <div className="chapters-body">
                 <div className="chapters-actions">
                   <button
@@ -1875,7 +2042,7 @@ function Transcript() {
                       data-testid="copy-chapters"
                       onClick={copyChapters}
                     >
-                      📋 복사
+                      <Clipboard size={13} /> 복사
                     </button>
                   )}
                 </div>
@@ -1906,7 +2073,7 @@ function Transcript() {
               disabled={!hasAudio || status === 'extracting' || status === 'transcribing'}
               onClick={() => void transcribeMedia()}
             >
-              🎙 자막 생성 (받아쓰기)
+              <Mic size={14} /> 자막 생성 (받아쓰기)
             </button>
             {transcribeError ? (
               <div
@@ -2013,6 +2180,9 @@ function Timeline() {
     selectOverlay,
     selectedOverlayId,
     updateOverlay,
+    selectVoice,
+    selectedVoiceId,
+    updateTts,
   } = useEditor();
   const clips = timeline ? videoClips(timeline) : [];
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
@@ -2060,6 +2230,43 @@ function Timeline() {
   };
   const onOvUp = (e: PointerEvent<HTMLElement>) => {
     ovDrag.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  };
+  // VOICE 레인: 오버레이와 동일한 드래그(이동)/가장자리(길이) 로직. 보이스 클립을 시간 위에 배치.
+  const voiceLaneRef = useRef<HTMLDivElement>(null);
+  const voiceDrag = useRef<{
+    id: string;
+    mode: 'move' | 'l' | 'r';
+    px: number;
+    start: number;
+    end: number;
+  } | null>(null);
+  const onVoiceDown = (e: PointerEvent<HTMLElement>, c: TtsClip, mode: 'move' | 'l' | 'r') => {
+    e.stopPropagation();
+    e.preventDefault();
+    selectVoice(c.id);
+    voiceDrag.current = { id: c.id, mode, px: e.clientX, start: c.startUs, end: c.endUs };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onVoiceMove = (e: PointerEvent<HTMLElement>) => {
+    const d = voiceDrag.current;
+    const rect = voiceLaneRef.current?.getBoundingClientRect();
+    if (!d || !rect || durationProgramUs <= 0) return;
+    const deltaUs = ((e.clientX - d.px) / rect.width) * durationProgramUs;
+    const len = d.end - d.start;
+    if (d.mode === 'move') {
+      const s = Math.round(ovClamp(d.start + deltaUs, 0, durationProgramUs - len));
+      updateTts(d.id, { startUs: s, endUs: s + len });
+    } else if (d.mode === 'l') {
+      updateTts(d.id, { startUs: Math.round(ovClamp(d.start + deltaUs, 0, d.end - OV_MIN)) });
+    } else {
+      updateTts(d.id, {
+        endUs: Math.round(ovClamp(d.end + deltaUs, d.start + OV_MIN, durationProgramUs)),
+      });
+    }
+  };
+  const onVoiceUp = (e: PointerEvent<HTMLElement>) => {
+    voiceDrag.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
   // OVERLAY 레인: 자막 제외. 시간대가 겹치는 블록은 서로 다른 행(서브레인)에 배치해 둘 다 보이게
@@ -2178,15 +2385,48 @@ function Timeline() {
         </div>
         <div className="trackrow">
           <span className="lbl">Voice</span>
-          <div className="track thin">
+          <div className="track thin ov-lane voice-lane" ref={voiceLaneRef}>
             {ttsClips.length === 0 ? (
-              <span className="track empty-track">AI voiceover · preview</span>
+              <span className="track empty-track">
+                AI 보이스를 만들면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이 · Delete=삭제
+              </span>
             ) : (
-              ttsClips.map((c, i) => (
-                <div className="chip audio" key={c.id} style={{ width: 96, marginLeft: i ? 4 : 0 }}>
-                  🗣 {c.voice}
-                </div>
-              ))
+              ttsClips.map((c) => {
+                const left = durationProgramUs > 0 ? (c.startUs / durationProgramUs) * 100 : 0;
+                const width =
+                  durationProgramUs > 0
+                    ? Math.max(2, ((c.endUs - c.startUs) / durationProgramUs) * 100)
+                    : 0;
+                const sel = selectedVoiceId === c.id;
+                return (
+                  <div
+                    key={c.id}
+                    className={`ov-block voice-block${sel ? ' on' : ''}`}
+                    data-testid="voice-block"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                    onPointerDown={(e) => onVoiceDown(e, c, 'move')}
+                    onPointerMove={onVoiceMove}
+                    onPointerUp={onVoiceUp}
+                    title={`${c.voice} · ${fmt(c.startUs)}~${fmt(c.endUs)} · 드래그=이동 · 양끝=길이 · Delete=삭제`}
+                  >
+                    <span
+                      className="ov-block-h l"
+                      onPointerDown={(e) => onVoiceDown(e, c, 'l')}
+                      onPointerMove={onVoiceMove}
+                      onPointerUp={onVoiceUp}
+                    />
+                    <span className="ov-block-label">
+                      <Volume2 size={11} /> {c.voice}
+                    </span>
+                    <span
+                      className="ov-block-h r"
+                      onPointerDown={(e) => onVoiceDown(e, c, 'r')}
+                      onPointerMove={onVoiceMove}
+                      onPointerUp={onVoiceUp}
+                    />
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -2217,13 +2457,13 @@ function StatusBar() {
       <span>
         program <b data-testid="duration">{durationProgramUs}</b>µs · {fmt(durationProgramUs)}
       </span>
-      <span title="기록된 편집 명령 수 (결정적 replay/검증 토대)">
-        ✎ <b data-testid="audit-count">{auditLog.length}</b>
+      <span title="기록된 편집 명령 수 (결정적 replay/검증 토대)" className="audit">
+        <Pencil size={12} /> <b data-testid="audit-count">{auditLog.length}</b>
       </span>
       <span className="spacer" />
       {lastExport ? (
         <span className="export-done" data-testid="export-done">
-          ✅ 내보냄 · 원본 {fmt(lastExport.originalUs)} →{' '}
+          <CheckCircle2 size={13} /> 내보냄 · 원본 {fmt(lastExport.originalUs)} →{' '}
           {lastExport.format === 'srt' ? '자막(.srt)' : fmt(lastExport.finalUs)}
           <button
             type="button"
@@ -2317,7 +2557,7 @@ function SilenceMenu() {
         title="무음 감지 민감도"
         onClick={() => setOpen((v) => !v)}
       >
-        ⚙
+        <Settings size={15} />
       </button>
       {open && (
         <div className="menu silence-pop">
@@ -2464,9 +2704,13 @@ export function AppShell() {
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
-        // 1순위: 선택된 오버레이(스티커/이미지) 삭제. 2순위: 선택된 어절 컷(텍스트 기반 편집).
+        // 1순위: 선택된 오버레이(스티커/이미지). 2순위: 선택된 보이스 클립. 3순위: 어절 컷.
         if (st.selectedOverlayId) {
           st.removeOverlay(st.selectedOverlayId);
+          return;
+        }
+        if (st.selectedVoiceId) {
+          st.removeTts(st.selectedVoiceId);
           return;
         }
         if (st.selected.length > 0) st.deleteSelection();
