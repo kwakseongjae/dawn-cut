@@ -808,9 +808,30 @@ const rasterizeBadge = (text: string) =>
 
 function StickerPanel() {
   const { overlays, addOverlaySrc, removeOverlay, selectedOverlayId, selectOverlay } = useEditor();
+  const [motion, setMotion] = useState<{ name: string; path: string }[]>([]);
+  // 번들된 모션 스티커(로컬 생성 애니 GIF) 로드. 클라우드 의존 없음.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const list = (await window.dawn?.motionStickers?.()) ?? [];
+      if (alive) setMotion(list);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const add = async (kind: 'sticker' | 'gif', name: string, dataUrl: string) => {
     const res = await window.dawn?.writeAsset(dataUrl);
     if (res) addOverlaySrc(kind, name, res.path);
+  };
+  // 내 GIF/이미지 불러오기 — 기존 오버레이 경로 재사용(드래그앤드롭과 동일).
+  const addFiles = (files: File[]) => {
+    for (const f of files) {
+      const p = filePath(f);
+      if (!p) continue;
+      if (isGif(f.name)) addOverlaySrc('gif', f.name, p);
+      else if (isImage(f.name)) addOverlaySrc('image', f.name, p);
+    }
   };
   return (
     <div className="dock-body">
@@ -826,6 +847,30 @@ function StickerPanel() {
           </button>
         ))}
       </div>
+      {motion.length > 0 && (
+        <>
+          <div className="field">모션 스티커 (움직이는 GIF)</div>
+          <div className="motion-grid" data-testid="motion-grid">
+            {motion.map((m) => (
+              <button
+                key={m.name}
+                type="button"
+                className="motion-card"
+                data-testid={`motion-${m.name}`}
+                title={m.name}
+                onClick={() => addOverlaySrc('gif', m.name, m.path)}
+              >
+                <img src={`file://${encodeURI(m.path)}`} alt={m.name} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="field">내 GIF / 이미지</div>
+      <Dropzone
+        onFiles={addFiles}
+        hint="GIF·이미지를 끌어다 놓거나 클릭 — 오버레이로 합성됩니다."
+      />
       <div className="field">텍스트 GIF 배지</div>
       <div className="sticker-grid">
         {['LOL', 'WOW', 'OMG', 'YES', 'NICE', 'WTF', 'BRB', 'GG'].map((g) => (
@@ -869,8 +914,8 @@ function StickerPanel() {
           </div>
         ))}
       <p className="muted-note">
-        스티커와 텍스트 배지는 PNG로 변환되어 <b>미리보기·내보내기에서 실제 영상에 합성</b>됩니다.
-        움직이는 GIF 합성은 준비 중이에요.
+        스티커·배지·모션 GIF 모두 <b>미리보기·내보내기에서 실제 영상에 합성</b>됩니다. 움직이는
+        GIF도 끌어다 놓으면 그대로 반복 재생돼요. 타임라인에서 위치·길이를 조절할 수 있습니다.
       </p>
     </div>
   );

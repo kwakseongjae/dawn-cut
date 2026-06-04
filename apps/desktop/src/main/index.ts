@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -122,6 +122,23 @@ ipcMain.handle(
 
 // 설치된 macOS 보이스 목록(언어 태그 포함) — UI 보이스 선택을 동적으로 채운다.
 ipcMain.handle('tts:voices', async () => listVoices());
+
+// 번들된 '모션 스티커'(애니 GIF) 목록 — 로컬 생성·번들, 클라우드 의존 없음. 절대경로를 반환해
+// 오버레이로 바로 끼운다(파일이 디스크에 있어 writeAsset 불필요). 패키징: extraResources/gif.
+ipcMain.handle('assets:motionStickers', () => {
+  // dev(electron-vite preview)=레포 assets/gif, 패키지=resourcesPath/gif.
+  const dir = app.isPackaged
+    ? join(process.resourcesPath, 'gif')
+    : resolve(__dirname, '../../../../assets/gif');
+  try {
+    return readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith('.gif'))
+      .sort()
+      .map((f) => ({ name: f.replace(/\.gif$/i, ''), path: join(dir, f) }));
+  } catch {
+    return [];
+  }
+});
 
 // Rasterized sticker/asset PNG (data URL → temp file) for real compositing.
 ipcMain.handle('asset:writeImage', async (_e, dataUrl: string) => {

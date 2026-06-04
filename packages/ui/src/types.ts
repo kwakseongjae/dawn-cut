@@ -64,6 +64,8 @@ export interface DawnBridge {
   ) => Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }>;
   /** 설치된 TTS 보이스 목록(언어 태그 포함). macOS `say -v '?'`. */
   listTtsVoices: () => Promise<{ name: string; lang: string }[]>;
+  /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
+  motionStickers: () => Promise<{ name: string; path: string }[]>;
   saveProject: (path: string, content: string) => Promise<{ path: string }>;
   openProject: (path: string) => Promise<string>;
   openFile: () => Promise<string | null>;

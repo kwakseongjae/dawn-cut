@@ -1053,6 +1053,33 @@ body {
   gap: 8px;
   margin-top: 8px;
 }
+/* 모션 스티커(애니 GIF) 썸네일 그리드 */
+.motion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+}
+.motion-card {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: repeating-conic-gradient(#1a1d24 0% 25%, #14161c 0% 50%) 0 0 / 12px 12px;
+  cursor: pointer;
+  padding: 4px;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.12s;
+}
+.motion-card:hover {
+  border-color: var(--accent);
+}
+.motion-card img {
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+}
 /* 커스텀 드롭다운(KSelect) — 네이티브 select 한글 깨짐 회피 + 다크 톤 통일 */
 .kselect {
   position: relative;

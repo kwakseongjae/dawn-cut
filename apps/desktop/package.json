@@ -34,6 +34,7 @@
     "productName": "dawn-cut",
     "asar": true,
     "files": ["out/**/*", "package.json"],
+    "extraResources": [{ "from": "../../assets/gif", "to": "gif" }],
     "directories": {
       "output": "release"
     },

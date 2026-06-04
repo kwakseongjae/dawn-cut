@@ -319,6 +319,20 @@ test('F5 overlays', async () => {
     c.note('stickers', JSON.stringify(await c.state()));
     await c.shot('sticker-panel');
 
+    // 모션 스티커(번들 애니 GIF) — 클릭 시 gif 오버레이 추가
+    const motionN = await c.win.locator('[data-testid="motion-grid"] .motion-card').count();
+    c.note('motion-count', String(motionN));
+    if (motionN > 0) {
+      const before = (await c.state()).overlays as number;
+      await c.win
+        .getByTestId('motion-spinner')
+        .click()
+        .catch(() => {});
+      await settle(c.win, 400);
+      c.note('motion-add', `overlays ${before}→${(await c.state()).overlays}`);
+      await c.shot('motion-stickers');
+    }
+
     // 이미지 2장 — 같은 시점 → 겹침(2행)
     await c.editor('addImageOverlay', MEDIA.photo1);
     await c.editor('addImageOverlay', MEDIA.photo2);

@@ -28,7 +28,8 @@
     "make:fixture": "bash scripts/make-fixture.sh",
     "demo:assets": "bash scripts/make-demo-assets.sh",
     "demo:run": "vitest run --config vitest.demo.config.ts",
-    "demo:ui": "pnpm --filter @dawn-cut/desktop build && playwright test --config playwright.demo.config.ts"
+    "demo:ui": "pnpm --filter @dawn-cut/desktop build && playwright test --config playwright.demo.config.ts",
+    "assets:gif": "tsx scripts/make-gif-stickers.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
