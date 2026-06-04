@@ -106,6 +106,14 @@ interface EditorState {
   autoEnhance: () => Promise<void>;
   correctWord: (wordId: string, text: string) => void; // STT 오인식 어절 교정(검수)
   autoHighlight: (targetSeconds: number) => void; // 롱폼→쇼츠: 핵심만 남겨 ~targetSeconds로 컷
+  // 자동 하이라이트 결과 알림(컷됨/이미 짧음). 사용자가 닫을 때까지 유지.
+  highlightNotice: {
+    cut: number;
+    originalUs: number;
+    finalUs: number;
+    targetSeconds: number;
+  } | null;
+  dismissHighlightNotice: () => void;
   reframe: Reframe; // 익스포트 종횡비(원본/세로 9:16/정사각 1:1) — 자동 중앙 크롭
   setReframe: (r: Reframe) => void;
   // ── 한글 검수 자동화 (어절 위) ──
@@ -344,6 +352,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   advanced: typeof window !== 'undefined' ? (window.dawn?.advanced ?? false) : false,
   colorPreset: 'none',
   autoEnhanceEq: null,
+  highlightNotice: null,
   reframe: 'source',
   glossary: loadGlossary(),
   auditLog: [],
@@ -412,13 +421,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     // 사람 GUI가 AI 에이전트와 똑같은 verb를 구동한다(에이전트도 같은 흐름으로 자동 보정 가능).
     const { mediaPath, timeline, transcript } = get();
     const dawn = window.dawn;
-    if (!mediaPath || !timeline || !transcript || !dawn) return;
+    // 색/노출 보정은 자막과 무관 — transcript 없이도(무음·미전사 영상) 동작해야 한다.
+    // applyCommand 컨텍스트 타입만 채우면 되므로 없으면 빈 TranscriptModel을 합성한다.
+    if (!mediaPath || !timeline || !dawn) return;
     set({ status: 'analyzing' });
     try {
       const stats = await dawn.analyzeVideo(mediaPath);
       const eq = autoEnhanceParams(stats);
       const cmd = { type: 'applyAutoEnhance', eq } as const;
-      const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
+      const tx = transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+      const { after, removedProgramUs } = applyCommand({ timeline, transcript: tx }, cmd);
       set({
         timeline: after.timeline,
         autoEnhanceEq: eq,
@@ -453,9 +465,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     // AI 에이전트와 동일한 verb를 구동한다(NL "60초 하이라이트로"도 같은 verb로 흐른다).
     const { transcript, timeline } = get();
     if (!transcript || !timeline) return;
+    const originalUs = timeline.durationProgram;
     const cmd = { type: 'autoHighlight', targetSeconds } as const;
     const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
-    if (removedProgramUs <= 0) return; // 이미 짧으면 변화 없음.
+    if (removedProgramUs <= 0) {
+      // 컷할 게 없음(원본이 이미 목표보다 짧음) — 침묵하지 않고 그 사실을 알린다.
+      set({
+        highlightNotice: { cut: 0, originalUs, finalUs: originalUs, targetSeconds },
+        status: 'ready',
+      });
+      return;
+    }
     set({
       timeline: after.timeline,
       past: [...get().past, timeline],
@@ -464,10 +484,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       canRedo: false,
       selected: [],
       status: 'ready',
+      highlightNotice: {
+        cut: removedProgramUs,
+        originalUs,
+        finalUs: after.timeline.durationProgram,
+        targetSeconds,
+      },
       auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
       ...derive(after.timeline),
     });
   },
+  dismissHighlightNotice: () => set({ highlightNotice: null }),
 
   // 오버레이/보이스 선택은 상호 배타 — Delete 키가 어느 쪽을 지울지 모호하지 않게.
   selectOverlay: (id) => set({ selectedOverlayId: id, selectedVoiceId: null }),
@@ -880,12 +907,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   saveProject: async (path) => {
     const { timeline, transcript, mediaPath, subtitlePos, subtitleStyle } = get();
     const dawn = window.dawn;
-    if (!timeline || !transcript || !mediaPath || !dawn) return;
+    if (!timeline || !mediaPath || !dawn) return;
+    // 자막 없이도(무음/미전사 영상) 저장 가능 — 빈 TranscriptModel을 합성한다(스키마는 transcript
+    // 필수 유지 → 역직렬화 가드/하위호환 무손상). core 모델/검증은 빈 transcript를 이미 허용.
+    const tx = transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
     await dawn.saveProject(
       path,
-      serializeProject(
-        makeProject(mediaPath, transcript, timeline, { subtitlePos, subtitleStyle }),
-      ),
+      serializeProject(makeProject(mediaPath, tx, timeline, { subtitlePos, subtitleStyle })),
     );
     set({ status: 'saved' });
   },

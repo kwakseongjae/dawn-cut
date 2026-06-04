@@ -32,6 +32,7 @@ import {
   CornerDownRight,
   Eraser,
   Film,
+  Info,
   ListTree,
   Lock,
   type LucideIcon,
@@ -54,6 +55,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import {
+  type CSSProperties,
   type DragEvent,
   type MouseEvent,
   type PointerEvent,
@@ -181,6 +183,13 @@ const isGif = (n: string) => /\.gif$/i.test(n);
 const filePath = (f: File) =>
   window.dawn?.pathForFile?.(f) || (f as File & { path?: string }).path || '';
 
+// 자막 cue 분절 옵션 — 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 쪼갠다. 미리보기와 번인이
+// 반드시 같은 함수를 써야 동일한 자막 텍스트가 나온다(드리프트 방지). 'none'이면 기본(cue당 1프레임).
+const cueOptsForAnim = (
+  anim: string,
+): { maxWordsPerCue?: number; maxCharsPerCue?: number; maxGapUs?: number } =>
+  anim === 'none' ? {} : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
+
 // ── Toolbar ──────────────────────────────────────────────────────────
 function Toolbar() {
   const s = useEditor();
@@ -231,14 +240,8 @@ function Toolbar() {
           type="button"
           className="btn"
           data-testid="save-project"
-          disabled={!s.timeline || !s.transcript}
-          title={
-            !s.timeline
-              ? '먼저 영상을 가져오세요'
-              : !s.transcript
-                ? '자막 생성 후 프로젝트(.dawn)로 저장할 수 있어요'
-                : '프로젝트(.dawn) 저장'
-          }
+          disabled={!s.timeline}
+          title={!s.timeline ? '먼저 영상을 가져오세요' : '프로젝트(.dawn) 저장 (자막 없어도 가능)'}
           onClick={async () => {
             const p = await pickSave();
             if (p) await s.saveProject(p);
@@ -472,8 +475,25 @@ function MediaPanel() {
                   : "자막 없음 — '자막 생성' 버튼"}
             </div>
           </div>
-          <span className="badge live" data-testid="media-badge">
-            {proxyBusy ? '변환 중' : previewPath && previewPath !== mediaPath ? '프록시' : '원본'}
+          <span
+            className="badge live"
+            data-testid="media-badge"
+            data-state={
+              proxyBusy ? 'busy' : previewPath && previewPath !== mediaPath ? 'proxy' : 'src'
+            }
+            title={
+              proxyBusy
+                ? '미리보기용 프록시를 만드는 중입니다 (편집·내보내기는 원본 품질).'
+                : previewPath && previewPath !== mediaPath
+                  ? '미리보기는 가벼운 프록시로 재생됩니다. 편집·내보내기는 항상 원본 품질입니다.'
+                  : '원본을 그대로 미리봅니다.'
+            }
+          >
+            {proxyBusy
+              ? '변환 중'
+              : previewPath && previewPath !== mediaPath
+                ? '프록시(미리보기용)'
+                : '원본'}
           </span>
           <button
             type="button"
@@ -808,7 +828,15 @@ function EffectPanel() {
     mediaPath,
     autoEnhance,
     autoEnhanceEq,
+    status,
   } = useEditor();
+  const analyzing = status === 'analyzing';
+  // eq가 사실상 중립(±변화 거의 0)이면 '이미 잘 노출됨' — 시각 변화가 작은 게 정상임을 알린다.
+  const eqNeutral =
+    !!autoEnhanceEq &&
+    Math.abs(autoEnhanceEq.brightness ?? 0) < 0.02 &&
+    Math.abs((autoEnhanceEq.contrast ?? 1) - 1) < 0.02 &&
+    Math.abs((autoEnhanceEq.saturation ?? 1) - 1) < 0.02;
   return (
     <div className="dock-body">
       <strong style={{ fontSize: 13 }}>자동 보정 (Auto)</strong>
@@ -816,18 +844,31 @@ function EffectPanel() {
         type="button"
         className="btn primary"
         data-testid="auto-enhance"
-        disabled={!timeline || !mediaPath}
+        disabled={!timeline || !mediaPath || analyzing}
         onClick={() => void autoEnhance()}
         title="영상을 분석해 밝기·대비·채도를 자동으로 보정합니다 (1탭)"
         style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
       >
-        <Wand2 size={14} /> 자동 보정 (1탭)
+        {analyzing ? (
+          <>
+            <span className="spinner sm" /> 분석 중…
+          </>
+        ) : autoEnhanceEq ? (
+          <>
+            <Check size={14} /> 자동 보정 적용됨
+          </>
+        ) : (
+          <>
+            <Wand2 size={14} /> 자동 보정 (1탭)
+          </>
+        )}
       </button>
       {autoEnhanceEq && (
         <p className="muted-note" data-testid="auto-enhance-applied" style={{ marginTop: 6 }}>
           적용됨 · 채도 ×{autoEnhanceEq.saturation?.toFixed(2)} · 대비 ×
           {autoEnhanceEq.contrast?.toFixed(2)} · 밝기 {autoEnhanceEq.brightness! >= 0 ? '+' : ''}
           {autoEnhanceEq.brightness?.toFixed(2)} (⌘Z로 되돌리기)
+          {eqNeutral && ' · 이미 노출이 좋아 변화가 작아요'}
         </p>
       )}
       <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>색보정 (Color)</strong>
@@ -882,6 +923,41 @@ function Dock() {
 }
 
 // ── Preview ──────────────────────────────────────────────────────────
+// 리프레임(9:16·1:1) 중앙 크롭 가이드. export의 cropForAspect와 동일 공식으로 잘릴 영역을
+// 반투명 마스크 + 세이프프레임 테두리로 프리뷰에 그린다(미리보기 비율은 원본 그대로 두고 오버레이만).
+function ReframeMask({
+  reframe,
+  srcW,
+  srcH,
+}: { reframe: '9:16' | '1:1'; srcW: number; srcH: number }) {
+  const target = reframe === '9:16' ? 9 / 16 : 1; // 목표 가로/세로 비
+  const src = srcW / srcH;
+  // src가 더 넓으면 좌우가 잘리고, 더 좁으면(세로 영상) 상하가 잘린다.
+  const cutsSides = src > target;
+  const keepFrac = cutsSides ? target / src : src / target; // 유지되는 가로(또는 세로) 비율
+  const bandPct = `${((1 - keepFrac) / 2) * 100}%`;
+  const safe: CSSProperties = cutsSides
+    ? { top: 0, bottom: 0, left: bandPct, right: bandPct }
+    : { left: 0, right: 0, top: bandPct, bottom: bandPct };
+  return (
+    <div className="reframe-mask" data-testid="reframe-mask" data-aspect={reframe}>
+      {cutsSides ? (
+        <>
+          <div className="reframe-band" style={{ top: 0, bottom: 0, left: 0, width: bandPct }} />
+          <div className="reframe-band" style={{ top: 0, bottom: 0, right: 0, width: bandPct }} />
+        </>
+      ) : (
+        <>
+          <div className="reframe-band" style={{ left: 0, right: 0, top: 0, height: bandPct }} />
+          <div className="reframe-band" style={{ left: 0, right: 0, bottom: 0, height: bandPct }} />
+        </>
+      )}
+      <div className="reframe-safe" style={safe} />
+      <span className="reframe-tag">{reframe} 영역</span>
+    </div>
+  );
+}
+
 function Preview() {
   const {
     timeline,
@@ -903,6 +979,9 @@ function Preview() {
     removeOverlay,
     colorPreset,
     autoEnhanceEq,
+    reframe,
+    frameW,
+    frameH,
   } = useEditor();
   const selectedOverlay = overlays.find((o) => o.id === selectedOverlayId) ?? null;
   // 프리뷰 필터 = 색보정 프리셋 근사 + 자동 보정 eq 근사(둘 다 CSS, 익스포트는 ffmpeg 정확).
@@ -1086,6 +1165,9 @@ function Preview() {
                   편집·자막·내보내기는 그대로 동작합니다.
                 </div>
               </div>
+            )}
+            {reframe !== 'source' && frameW > 0 && frameH > 0 && (
+              <ReframeMask reframe={reframe} srcW={frameW} srcH={frameH} />
             )}
             {visibleOverlays.map((o) => (
               <div
@@ -1545,23 +1627,35 @@ function Transcript() {
       ),
     [transcript, dead],
   );
-  // 현재 재생 위치의 cue(원문) — 프리뷰 자막/키워드강조의 단일 출처.
+  // 키워드 강조 on/off는 subtitleStyle.emphasizeKeywords(EditorState, command bus·MCP 구동)에서.
+  const emphasizeKeywords = subtitleStyle.emphasizeKeywords ?? false;
+  // 미리보기 자막은 '번인과 동일한' 파라미터(cueOpts·captionFrames·강조)를 써야 텍스트가 일치한다
+  // (예전엔 미리보기가 기본 cueOpts라 애니/스타일팩에서 번인과 다른 문장이 떴음).
+  const subAnim = subtitleStyle.animation ?? 'none';
   const currentCue = useMemo(() => {
     if (!transcript || !timeline) return null;
-    const cues = transcriptToCues(transcript, timeline);
+    const cues = transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim));
     return cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0] ?? null;
-  }, [transcript, timeline, playheadUs]);
+  }, [transcript, timeline, playheadUs, subAnim]);
+  // 현재 playhead가 속한 애니 서브프레임(번인과 동일: captionFrames). 'none'이면 cue 전체 1프레임.
+  const currentFrame = useMemo(() => {
+    if (!currentCue) return null;
+    const frames = captionFrames(currentCue, subAnim);
+    return frames.find((f) => playheadUs >= f.startUs && playheadUs < f.endUs) ?? frames[0] ?? null;
+  }, [currentCue, subAnim, playheadUs]);
   const currentCaption = useMemo(
-    () => (currentCue ? wrapCaption(currentCue.text, { maxCharsPerLine: 16, maxLines: 2 }) : ''),
-    [currentCue],
+    () =>
+      currentFrame ? wrapCaption(currentFrame.text, { maxCharsPerLine: 16, maxLines: 2 }) : '',
+    [currentFrame],
   );
-  // 키워드 강조 on/off는 이제 subtitleStyle.emphasizeKeywords(EditorState, command bus·MCP 구동)에서.
-  const emphasizeKeywords = subtitleStyle.emphasizeKeywords ?? false;
   // emphasis Set은 메모이즈(안정 참조)해야 SubtitlePreview useEffect 무한재그림 방지.
-  const currentEmphasis = useMemo(
-    () => emphasisFor(currentCue?.text ?? '', emphasizeKeywords),
-    [currentCue, emphasizeKeywords],
-  );
+  // karaoke는 활성 어절만 강조(번인 doBurn과 동형), 그 외엔 키워드 강조.
+  const currentEmphasis = useMemo(() => {
+    if (!currentCue) return undefined;
+    if (subAnim === 'karaoke' && currentFrame?.activeWord)
+      return new Set([currentFrame.activeWord]);
+    return emphasisFor(currentCue.text, emphasizeKeywords);
+  }, [currentCue, currentFrame, subAnim, emphasizeKeywords]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const genChapters = () => {
     if (transcript && timeline) setChapters(extractChapters(transcript, timeline));
@@ -1582,9 +1676,7 @@ function Transcript() {
     // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
     // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
     const anim = style.animation ?? 'none';
-    const cueOpts =
-      anim === 'none' ? {} : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
-    for (const c of transcriptToCues(tr, tl, cueOpts)) {
+    for (const c of transcriptToCues(tr, tl, cueOptsForAnim(anim))) {
       // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
       const cueKeys = emphasisFor(c.text, emphOn);
       // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
@@ -2510,6 +2602,8 @@ function StatusBar() {
     dismissExport,
     auditLog,
     proxyBusy,
+    highlightNotice,
+    dismissHighlightNotice,
   } = useEditor();
   // 프록시 변환 중이면 전역 신호를 '변환 중'으로(끝나면 원래 상태). 그 외엔 한국어 라벨 맵.
   const statusLabel = proxyBusy ? '미리보기 변환 중' : (STATUS_KO[status] ?? status);
@@ -2537,6 +2631,34 @@ function StatusBar() {
         <Pencil size={12} /> <b data-testid="audit-count">{auditLog.length}</b>
       </span>
       <span className="spacer" />
+      {highlightNotice && (
+        <span className="export-done" data-testid="highlight-notice">
+          {highlightNotice.cut > 0 ? (
+            <>
+              <CheckCircle2 size={13} /> 핵심만 남겨 {fmt(highlightNotice.originalUs)} →{' '}
+              {fmt(highlightNotice.finalUs)}
+            </>
+          ) : highlightNotice.originalUs <= highlightNotice.targetSeconds * 1_000_000 ? (
+            <>
+              <Info size={13} /> 이미 ~{fmt(highlightNotice.originalUs)}라{' '}
+              {highlightNotice.targetSeconds}초보다 짧아 컷할 게 없어요
+            </>
+          ) : (
+            <>
+              <Info size={13} /> 대부분이 핵심이라 {highlightNotice.targetSeconds}초로는 더 줄이지
+              못했어요
+            </>
+          )}
+          <button
+            type="button"
+            className="x"
+            onClick={() => dismissHighlightNotice()}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </span>
+      )}
       {lastExport ? (
         <span className="export-done" data-testid="export-done">
           <CheckCircle2 size={13} /> 내보냄 · 원본 {fmt(lastExport.originalUs)} →{' '}
