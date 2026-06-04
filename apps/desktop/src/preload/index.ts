@@ -51,8 +51,9 @@ const bridge = {
   synthesizeTts: (
     text: string,
     voice: string,
+    opts?: { rate?: number; pitch?: number; volume?: number },
   ): Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }> =>
-    ipcRenderer.invoke('tts:synthesize', text, voice),
+    ipcRenderer.invoke('tts:synthesize', text, voice, opts),
   listTtsVoices: (): Promise<{ name: string; lang: string }[]> => ipcRenderer.invoke('tts:voices'),
   saveProject: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('project:save', path, content),

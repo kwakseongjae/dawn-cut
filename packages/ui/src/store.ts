@@ -91,7 +91,7 @@ interface EditorState {
   addAssetStub: (kind: Overlay['kind'], name: string) => void;
   selectOverlay: (id: string | null) => void;
   updateOverlay: (id: string, patch: Partial<Overlay>) => void;
-  generateVoiceover: (voice: string, text: string) => Promise<void>;
+  generateVoiceover: (voice: string, text: string, opts?: TtsVoiceOpts) => Promise<void>;
   updateTts: (id: string, patch: Partial<TtsClip>) => void;
   removeTts: (id: string) => void;
   selectVoice: (id: string | null) => void;
@@ -211,6 +211,12 @@ function placement(
     z: index,
   };
 }
+export interface TtsVoiceOpts {
+  rate?: number; // 속도(wpm)
+  pitch?: number; // 톤(pbas 0~100)
+  volume?: number; // 음량(volm)
+  style?: string; // 적용된 스타일 프리셋 id(차분/보통/활기찬 등) — UI 표시·재합성용
+}
 export interface TtsClip {
   id: string;
   voice: string;
@@ -218,6 +224,7 @@ export interface TtsClip {
   wavPath?: string;
   startUs: number; // 타임라인 시작(µs) — 오버레이처럼 드래그로 이동
   endUs: number; // 타임라인 끝(µs) — 음성 길이. 드래그 양끝으로 조절
+  opts?: TtsVoiceOpts; // 합성에 쓴 속도/톤/스타일(프로젝트 저장·재합성 대비)
 }
 const DEFAULT_TTS_LEN_US = 2_000_000; // 길이 모를 때(probe 실패) 기본 2초
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -559,11 +566,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedOverlayId: id,
     });
   },
-  generateVoiceover: async (voice, text) => {
+  generateVoiceover: async (voice, text, opts) => {
     const dawn = window.dawn;
     if (!dawn) return;
     set({ status: 'synthesizing voice' });
-    const res = await dawn.synthesizeTts(text, voice);
+    const res = await dawn.synthesizeTts(text, voice, opts);
     // 플레이헤드에서 시작, 길이는 실제 음성 길이(probe). 프로그램 끝을 넘지 않게 클램프.
     const { playheadUs, durationProgramUs } = get();
     const len = res.durationUs > 0 ? res.durationUs : DEFAULT_TTS_LEN_US;
@@ -581,6 +588,7 @@ export const useEditor = create<EditorState>((set, get) => ({
           wavPath: res.wavPath,
           startUs,
           endUs: startUs + len,
+          ...(opts ? { opts } : {}),
         },
       ],
       selectedVoiceId: id,

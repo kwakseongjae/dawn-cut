@@ -99,19 +99,26 @@ ipcMain.handle('llm:plan', (_e, prompt: string) => {
   return llmComplete(prompt);
 });
 
-ipcMain.handle('tts:synthesize', async (_e, text: string, voice: string) => {
-  const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
-  const out = join(dir, 'voice.wav');
-  const res = await synthesizeTts(text, out, { voice });
-  // 생성된 음성 길이를 함께 돌려준다 → 타임라인 보이스 블록의 폭/길이로 사용.
-  let durationUs = 0;
-  try {
-    durationUs = (await probeMedia(res.wavPath)).durationUs;
-  } catch {
-    /* probe 실패 시 0 → UI가 기본 길이로 대체 */
-  }
-  return { ...res, durationUs };
-});
+ipcMain.handle(
+  'tts:synthesize',
+  async (
+    _e,
+    text: string,
+    voice: string,
+    opts?: { rate?: number; pitch?: number; volume?: number },
+  ) => {
+    const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
+    const out = join(dir, 'voice.wav');
+    const res = await synthesizeTts(text, out, { voice, ...opts });
+    let durationUs = 0;
+    try {
+      durationUs = (await probeMedia(res.wavPath)).durationUs;
+    } catch {
+      /* probe 실패 시 0 → UI가 기본 길이로 대체 */
+    }
+    return { ...res, durationUs };
+  },
+);
 
 // 설치된 macOS 보이스 목록(언어 태그 포함) — UI 보이스 선택을 동적으로 채운다.
 ipcMain.handle('tts:voices', async () => listVoices());

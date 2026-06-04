@@ -367,6 +367,20 @@ test('F6 tts-voice', async () => {
     c.note('voice-options', opts.join(' | '));
     await c.shot('tts-panel');
 
+    // 스타일 칩(활기참) + 톤 슬라이더 조작 → 미리듣기 → 생성 (opts가 클립에 실리는지)
+    await c.win
+      .getByTestId('tts-style-lively')
+      .click()
+      .catch(() => {});
+    await settle(c.win, 200);
+    await c.shot('tts-style-lively');
+    await c.win
+      .getByTestId('tts-preview')
+      .click()
+      .catch(() => {});
+    await settle(c.win, 1500); // 짧은 샘플 합성+재생
+    c.note('preview', 'clicked');
+
     await c.win.locator('#tts-text').fill('안녕하세요. 던컷으로 만든 한국어 음성입니다.');
     await c.win
       .getByTestId('generate-voiceover')

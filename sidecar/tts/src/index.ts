@@ -76,16 +76,39 @@ export function pickVoice(text: string, requested: string | undefined, voices: S
  * DAWN_PIPER_MODEL are set, uses Piper (neural TTS) instead.
  * 한글 텍스트는 한국어 보이스로 자동 전환된다(영어 보이스 = 무음 방지).
  */
+export interface TtsOpts {
+  voice?: string;
+  rate?: number; // 말하기 속도(wpm). 느리게≈120 · 보통≈180 · 빠르게≈260. 미지정 시 say 기본.
+  pitch?: number; // 톤(피치). say [[pbas N]] 0~100, 기본 50. 낮게≈30 · 높게≈70.
+  volume?: number; // 음량. say [[volm N]] 0~1+, 기본 1.
+}
+
+// `say` 인자 — 속도(-r)는 인자로, 보이스는 자동전환 결과를 쓴다(순수함수: 단위테스트 용이).
+export function buildSayArgs(voice: string, aiff: string, rate?: number): string[] {
+  const args = ['-v', voice];
+  if (rate && rate > 0) args.push('-r', String(Math.round(rate)));
+  args.push('-o', aiff);
+  return args;
+}
+// 톤/음량은 텍스트 선두 인라인 명령으로(say는 [[pbas N]] [[volm N]] 지원). 둘 다 없으면 빈 문자열.
+export function buildInlinePrefix(pitch?: number, volume?: number): string {
+  const parts: string[] = [];
+  if (pitch != null) parts.push(`[[pbas ${Math.round(Math.max(0, Math.min(100, pitch)))}]]`);
+  if (volume != null) parts.push(`[[volm ${Math.max(0, volume).toFixed(2)}]]`);
+  return parts.length ? `${parts.join(' ')} ` : '';
+}
+
 export async function synthesizeTts(
   text: string,
   outWav: string,
-  opts: { voice?: string } = {},
+  opts: TtsOpts = {},
 ): Promise<TtsResult> {
   const piperBin = process.env.DAWN_PIPER_BIN;
   const piperModel = process.env.DAWN_PIPER_MODEL;
 
   if (piperBin && piperModel) {
     // Piper reads text on stdin, writes a wav. (neural, cross-platform)
+    // 속도/톤(rate/pitch)은 say 전용 — Piper 분기에선 무시(기존 동작 보존).
     await exec(piperBin, ['--model', piperModel, '--output_file', outWav], {
       input: text,
     } as never);
@@ -93,10 +116,12 @@ export async function synthesizeTts(
   }
 
   // macOS `say` → aiff → 16kHz mono wav. 한글이면 한국어 보이스로 자동 보정.
+  // 속도=`-r`, 톤/음량=텍스트 선두 인라인 명령([[pbas]]/[[volm]]).
   const voice = pickVoice(text, opts.voice, await listVoices());
   const dir = mkdtempSync(join(tmpdir(), 'dawn-tts-'));
   const aiff = join(dir, 'voice.aiff');
-  await exec('say', ['-v', voice, '-o', aiff, text]);
+  const sayText = buildInlinePrefix(opts.pitch, opts.volume) + text;
+  await exec('say', [...buildSayArgs(voice, aiff, opts.rate), sayText]);
   await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', aiff, '-ar', '16000', '-ac', '1', outWav]);
   return { wavPath: outWav, engine: 'say', voice };
 }

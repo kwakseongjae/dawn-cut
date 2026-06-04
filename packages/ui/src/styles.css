@@ -1020,6 +1020,39 @@ body {
   min-height: 64px;
   line-height: 1.5;
 }
+/* TTS 스타일 칩 + 액션 행 */
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tchip {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.tchip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tchip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.tts-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
 /* 커스텀 드롭다운(KSelect) — 네이티브 select 한글 깨짐 회피 + 다크 톤 통일 */
 .kselect {
   position: relative;

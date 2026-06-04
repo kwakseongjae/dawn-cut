@@ -60,6 +60,7 @@ export interface DawnBridge {
   synthesizeTts: (
     text: string,
     voice: string,
+    opts?: { rate?: number; pitch?: number; volume?: number },
   ) => Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }>;
   /** 설치된 TTS 보이스 목록(언어 태그 포함). macOS `say -v '?'`. */
   listTtsVoices: () => Promise<{ name: string; lang: string }[]>;

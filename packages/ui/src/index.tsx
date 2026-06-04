@@ -575,12 +575,46 @@ const VOICE_LANG_KO: Record<string, string> = {
 const isKoLang = (lang: string) => lang.toLowerCase().startsWith('ko');
 const langLabel = (lang: string) => VOICE_LANG_KO[lang.slice(0, 2).toLowerCase()] ?? lang;
 
+// 보이스 스타일 = say의 속도(wpm)·톤(pbas) 조합 프리셋. 진짜 감정형은 아니지만 '느낌'을 바꾼다.
+const VOICE_STYLES: { id: string; label: string; rate: number; pitch: number }[] = [
+  { id: 'calm', label: '차분', rate: 145, pitch: 38 },
+  { id: 'normal', label: '보통', rate: 180, pitch: 50 },
+  { id: 'lively', label: '활기참', rate: 235, pitch: 64 },
+];
 function TextPanel() {
   const { ttsClips, generateVoiceover, selectedVoiceId, selectVoice, removeTts } = useEditor();
   const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
   const [voice, setVoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
+  const [rate, setRate] = useState(180); // wpm
+  const [pitch, setPitch] = useState(50); // pbas 0~100
+  const [style, setStyle] = useState('normal'); // 선택된 스타일 칩 id('custom'=슬라이더 수동)
+  const [previewing, setPreviewing] = useState(false);
+  const previewAudio = useRef<HTMLAudioElement | null>(null);
+  const pickStyle = (s: (typeof VOICE_STYLES)[number]) => {
+    setStyle(s.id);
+    setRate(s.rate);
+    setPitch(s.pitch);
+  };
+  const previewVoice = async () => {
+    if (previewing) return;
+    setPreviewing(true);
+    try {
+      const res = await window.dawn?.synthesizeTts('안녕하세요, 미리듣기입니다.', voice, {
+        rate,
+        pitch,
+      });
+      if (res?.wavPath) {
+        previewAudio.current?.pause();
+        const a = new Audio(`file://${encodeURI(res.wavPath)}`);
+        previewAudio.current = a;
+        await a.play().catch(() => {});
+      }
+    } finally {
+      setPreviewing(false);
+    }
+  };
   // 설치된 보이스를 동적으로 채운다(이전엔 Aria/Nova 같은 미설치 가짜 이름이라 무음이었음).
   // 한국어 보이스를 맨 위 + 기본 선택으로 둬서 한국어가 바로 된다.
   useEffect(() => {
@@ -616,6 +650,48 @@ function TextPanel() {
         onChange={setVoice}
         options={voices.map((v) => ({ value: v.name, label: `${v.name} · ${langLabel(v.lang)}` }))}
       />
+      <div className="field">스타일</div>
+      <div className="chip-row" data-testid="tts-styles">
+        {VOICE_STYLES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            data-testid={`tts-style-${s.id}`}
+            className={`tchip${style === s.id ? ' on' : ''}`}
+            onClick={() => pickStyle(s)}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <label className="sub-slider">
+        <span>속도 · {rate <= 150 ? '느리게' : rate >= 220 ? '빠르게' : '보통'}</span>
+        <input
+          type="range"
+          min={120}
+          max={260}
+          value={rate}
+          data-testid="tts-rate"
+          onChange={(e) => {
+            setRate(Number(e.target.value));
+            setStyle('custom');
+          }}
+        />
+      </label>
+      <label className="sub-slider">
+        <span>톤 · {pitch <= 40 ? '낮게' : pitch >= 62 ? '높게' : '보통'}</span>
+        <input
+          type="range"
+          min={30}
+          max={70}
+          value={pitch}
+          data-testid="tts-pitch"
+          onChange={(e) => {
+            setPitch(Number(e.target.value));
+            setStyle('custom');
+          }}
+        />
+      </label>
       <label className="field" htmlFor="tts-text">
         대본
       </label>
@@ -626,30 +702,47 @@ function TextPanel() {
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
-      <button
-        type="button"
-        className="btn primary full"
-        data-testid="generate-voiceover"
-        disabled={!text.trim() || busy}
-        style={{ justifyContent: 'center' }}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await generateVoiceover(voice, text.trim());
-            setText('');
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        {busy ? (
-          '… 합성 중'
-        ) : (
-          <>
-            <Mic size={14} /> 보이스 생성
-          </>
-        )}
-      </button>
+      <div className="tts-actions">
+        <button
+          type="button"
+          className="btn"
+          data-testid="tts-preview"
+          disabled={previewing}
+          onClick={previewVoice}
+          title="현재 보이스·속도·톤으로 짧게 들어보기"
+        >
+          {previewing ? (
+            <span className="spinner sm" />
+          ) : (
+            <Play size={13} fill="currentColor" strokeWidth={0} />
+          )}{' '}
+          미리듣기
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          data-testid="generate-voiceover"
+          disabled={!text.trim() || busy}
+          style={{ flex: 1, justifyContent: 'center' }}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await generateVoiceover(voice, text.trim(), { rate, pitch, style });
+              setText('');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? (
+            '… 합성 중'
+          ) : (
+            <>
+              <Mic size={14} /> 보이스 생성
+            </>
+          )}
+        </button>
+      </div>
       {!koAvailable && (
         <p className="muted-note" data-testid="tts-no-korean" style={{ color: '#ffb86b' }}>
           한국어 보이스가 설치돼 있지 않아요. 시스템 설정 ▸ 손쉬운 사용 ▸ 음성 콘텐츠 ▸ 시스템 음성

@@ -2,7 +2,14 @@ import { existsSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { probeMedia } from '@dawn-cut/sidecar-ffmpeg';
-import { listVoices, parseVoices, pickVoice, synthesizeTts } from '@dawn-cut/sidecar-tts';
+import {
+  buildInlinePrefix,
+  buildSayArgs,
+  listVoices,
+  parseVoices,
+  pickVoice,
+  synthesizeTts,
+} from '@dawn-cut/sidecar-tts';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(process.cwd());
@@ -42,6 +49,46 @@ describe('TTS voice selection (pure)', () => {
 
   it('empty voice list (non-macOS/test) returns the request or Samantha', () => {
     expect(pickVoice(KO, 'Samantha', [])).toBe('Samantha');
+  });
+});
+
+// ── 순수 로직: 속도/톤 인자 구성 (say -r + 인라인 [[pbas]]/[[volm]]) ──
+describe('TTS speed/tone args (pure)', () => {
+  it('buildSayArgs: rate를 -r로 추가, 미지정 시 생략', () => {
+    expect(buildSayArgs('Yuna', '/tmp/a.aiff')).toEqual(['-v', 'Yuna', '-o', '/tmp/a.aiff']);
+    expect(buildSayArgs('Yuna', '/tmp/a.aiff', 235)).toEqual([
+      '-v',
+      'Yuna',
+      '-r',
+      '235',
+      '-o',
+      '/tmp/a.aiff',
+    ]);
+  });
+  it('buildInlinePrefix: pitch/volume를 인라인 명령으로, 없으면 빈 문자열', () => {
+    expect(buildInlinePrefix()).toBe('');
+    expect(buildInlinePrefix(38)).toBe('[[pbas 38]] ');
+    expect(buildInlinePrefix(64, 0.9)).toBe('[[pbas 64]] [[volm 0.90]] ');
+    expect(buildInlinePrefix(200)).toBe('[[pbas 100]] '); // 0~100 클램프
+  });
+});
+
+describe('G17d TTS speed — slower voice is longer (real say)', () => {
+  it.skipIf(process.platform !== 'darwin')('rate 130 wav > rate 240 wav', async () => {
+    if (koVoices.length === 0) return;
+    const v = koVoices[0]!;
+    const dir = mkdtempSync(join(tmpdir(), 'dawn-g17d-'));
+    const slow = join(dir, 'slow.wav');
+    const fast = join(dir, 'fast.wav');
+    await synthesizeTts(KO, slow, { voice: v, rate: 130 });
+    await synthesizeTts(KO, fast, { voice: v, rate: 240 });
+    const ds = (await probeMedia(slow)).durationUs;
+    const df = (await probeMedia(fast)).durationUs;
+    writeFileSync(
+      resolve(ROOT, 'artifacts/g17d-rate.txt'),
+      `voice=${v} slow(130)=${ds}us fast(240)=${df}us ratio=${(ds / df).toFixed(2)}\n`,
+    );
+    expect(ds).toBeGreaterThan(df * 1.25); // 느린 쪽이 확실히 더 길다
   });
 });
 
