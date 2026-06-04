@@ -58,7 +58,9 @@ test('UX overhaul: icons, subtitle card, Korean TTS, draggable voice', async () 
     // 4) 음성·TTS 패널 — 한국어 보이스가 목록에 있는지
     await win.getByTestId('rail-text').click();
     await win.waitForTimeout(400);
-    const voiceOpts = await win.locator('#tts-voice option').allInnerTexts();
+    await win.getByTestId('tts-voice').click();
+    const voiceOpts = await win.locator('.kselect-pop .kselect-opt').allInnerTexts();
+    await win.getByTestId('tts-voice').click(); // 닫기
     const hasKorean = voiceOpts.some((t) => t.includes('한국어'));
     expect(hasKorean, `voice list should include a Korean voice: ${voiceOpts.join(' | ')}`).toBe(
       true,

@@ -34,7 +34,9 @@ test('스타일 팩 1클릭(UI) → command bus 적용(감사 3) + 자막 자동
 
     // 진짜 1클릭: UI 선택기로 팩 적용. viral-punch = 3 commands(replaceSubtitleStyle +
     // applyColorgrade + removeFillers) → 감사 3건 + 자막 자동 번인.
-    await win.getByTestId('style-pack').selectOption('viral-punch');
+    // (커스텀 드롭다운: 버튼 열고 옵션 클릭 — 네이티브 select 한글 깨짐 회피)
+    await win.getByTestId('style-pack').click();
+    await win.locator('.kselect-opt[data-value="viral-punch"]').click();
     expect(await num(win.getByTestId('audit-count'))).toBe(3);
     // applyPackAndBurn이 doBurn까지 호출 → 자막 번인 상태('입힘')가 된다(D1 해소).
     await expect(win.getByTestId('burn-subtitles')).toHaveText(/입힘/, { timeout: 30_000 });

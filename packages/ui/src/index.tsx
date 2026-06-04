@@ -96,6 +96,83 @@ function OvBadge({ n, id }: { n: number; id: string }) {
     </span>
   );
 }
+
+// 커스텀 드롭다운. 네이티브 <select>는 이 Electron/Chromium 빌드에서 닫힌 표시 텍스트의 한글이
+// 자모 분리로 깨진다(같은 화면의 일반 DOM 텍스트는 정상). 옵션·표시값을 모두 일반 DOM으로 그려
+// 한글을 정상 렌더하고, 톤앤매너도 통일한다. data-testid는 버튼에, 옵션엔 data-value를 둔다.
+interface KOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+function KSelect({
+  value,
+  onChange,
+  options,
+  testId,
+  disabled,
+  title,
+  placeholder,
+  flex,
+}: {
+  value?: string;
+  onChange: (v: string) => void;
+  options: KOption[];
+  testId?: string;
+  disabled?: boolean;
+  title?: string;
+  placeholder?: string;
+  flex?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: globalThis.MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', onDoc);
+    return () => window.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  const sel = options.find((o) => o.value === value);
+  return (
+    <div className={`kselect${disabled ? ' disabled' : ''}${flex ? ' flex' : ''}`} ref={ref}>
+      <button
+        type="button"
+        className="kselect-btn"
+        data-testid={testId}
+        disabled={disabled}
+        title={title}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => !disabled && setOpen((v) => !v)}
+      >
+        <span className="kselect-val">{sel ? sel.label : (placeholder ?? '')}</span>
+        <ChevronDown size={13} className="kselect-arrow" />
+      </button>
+      {open && (
+        <div className="kselect-pop">
+          {options.map((o) => (
+            <button
+              type="button"
+              key={o.value}
+              data-value={o.value}
+              className={`kselect-opt${o.value === value ? ' on' : ''}`}
+              disabled={o.disabled}
+              onClick={() => {
+                if (o.disabled) return;
+                onChange(o.value);
+                setOpen(false);
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 const isVideo = (n: string) => /\.(mp4|mov|m4v|webm|mkv|avi|flv|ts|mpe?g|wmv|3gp)$/i.test(n);
 const isImage = (n: string) => /\.(png|jpe?g|webp|avif|bmp)$/i.test(n);
 const isGif = (n: string) => /\.gif$/i.test(n);
@@ -154,7 +231,14 @@ function Toolbar() {
           type="button"
           className="btn"
           data-testid="save-project"
-          disabled={!s.timeline}
+          disabled={!s.timeline || !s.transcript}
+          title={
+            !s.timeline
+              ? '먼저 영상을 가져오세요'
+              : !s.transcript
+                ? '자막 생성 후 프로젝트(.dawn)로 저장할 수 있어요'
+                : '프로젝트(.dawn) 저장'
+          }
           onClick={async () => {
             const p = await pickSave();
             if (p) await s.saveProject(p);
@@ -233,8 +317,14 @@ function Toolbar() {
                 <span>움짤 GIF</span>
                 <span className="k badge live">바로</span>
               </button>
-              <button type="button" data-testid="export-srt" onClick={() => exportAs(s.exportSrt)}>
-                <span>자막 — .srt</span>
+              <button
+                type="button"
+                data-testid="export-srt"
+                disabled={!s.transcript}
+                title={!s.transcript ? '자막 생성 후 .srt로 내보낼 수 있어요' : '자막 파일(.srt)'}
+                onClick={() => exportAs(s.exportSrt)}
+              >
+                <span>자막 — .srt {!s.transcript ? '(자막 생성 필요)' : ''}</span>
                 <span className="k badge live">바로</span>
               </button>
             </div>
@@ -498,21 +588,14 @@ function TextPanel() {
         <strong style={{ fontSize: 13 }}>AI 보이스 (TTS)</strong>
         <span className="badge live">내보낼 때 합쳐짐</span>
       </div>
-      <label className="field" htmlFor="tts-voice">
-        보이스
-      </label>
-      <select
-        id="tts-voice"
-        className="select"
+      <div className="field">보이스</div>
+      <KSelect
+        testId="tts-voice"
+        flex
         value={voice}
-        onChange={(e) => setVoice(e.target.value)}
-      >
-        {voices.map((v) => (
-          <option key={v.name} value={v.name}>
-            {v.name} · {langLabel(v.lang)}
-          </option>
-        ))}
-      </select>
+        onChange={setVoice}
+        options={voices.map((v) => ({ value: v.name, label: `${v.name} · ${langLabel(v.lang)}` }))}
+      />
       <label className="field" htmlFor="tts-text">
         대본
       </label>
@@ -618,10 +701,10 @@ function StickerPanel() {
   return (
     <div className="dock-body">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <strong style={{ fontSize: 13 }}>Stickers & GIF</strong>
-        <span className="badge live">composites</span>
+        <strong style={{ fontSize: 13 }}>스티커 · GIF</strong>
+        <span className="badge live">영상에 합성</span>
       </div>
-      <div className="field">Stickers</div>
+      <div className="field">스티커</div>
       <div className="sticker-grid">
         {STICKERS.map((e) => (
           <button key={e} type="button" onClick={() => add('sticker', e, rasterizeEmoji(e))}>
@@ -629,7 +712,7 @@ function StickerPanel() {
           </button>
         ))}
       </div>
-      <div className="field">Trending GIF (text badge)</div>
+      <div className="field">텍스트 GIF 배지</div>
       <div className="sticker-grid">
         {['LOL', 'WOW', 'OMG', 'YES', 'NICE', 'WTF', 'BRB', 'GG'].map((g) => (
           <button
@@ -654,7 +737,8 @@ function StickerPanel() {
             <div className="t">
               {o.kind === 'sticker' ? o.name : `GIF · ${o.name}`}
               <small>
-                {o.kind} · {fmt(o.startUs)}~{fmt(o.endUs)} (타임라인 #{laneNumber(overlays, o.id)})
+                {o.kind === 'sticker' ? '스티커' : 'GIF'} · {fmt(o.startUs)}~{fmt(o.endUs)}{' '}
+                (타임라인 #{laneNumber(overlays, o.id)})
               </small>
             </div>
             <button
@@ -671,8 +755,8 @@ function StickerPanel() {
           </div>
         ))}
       <p className="muted-note">
-        Stickers & text badges rasterize to PNG and composite onto the video for real (preview +
-        export). Animated GIF overlays are still on the roadmap.
+        스티커와 텍스트 배지는 PNG로 변환되어 <b>미리보기·내보내기에서 실제 영상에 합성</b>됩니다.
+        움직이는 GIF 합성은 준비 중이에요.
       </p>
     </div>
   );
@@ -747,42 +831,32 @@ function EffectPanel() {
         </p>
       )}
       <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>색보정 (Color)</strong>
-      <label className="ov-field" style={{ marginTop: 8 }}>
+      <div className="ov-field" style={{ marginTop: 8 }}>
         프리셋
-        <select
-          className="select"
-          data-testid="color-preset"
+        <KSelect
+          testId="color-preset"
+          flex
           value={colorPreset}
           disabled={!timeline}
-          onChange={(e) => setColorPreset(e.target.value as ColorPreset)}
-        >
-          {COLOR_PRESET_OPTS.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          onChange={(v) => setColorPreset(v as ColorPreset)}
+          options={COLOR_PRESET_OPTS.map((o) => ({ value: o.id, label: o.label }))}
+        />
+      </div>
       <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>비율 (Reframe)</strong>
-      <label className="ov-field" style={{ marginTop: 8 }}>
+      <div className="ov-field" style={{ marginTop: 8 }}>
         익스포트 비율
-        <select
-          className="select"
-          data-testid="reframe"
+        <KSelect
+          testId="reframe"
+          flex
           value={reframe}
           disabled={!timeline}
-          onChange={(e) => setReframe(e.target.value as 'source' | '9:16' | '1:1')}
-        >
-          {REFRAME_OPTS.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="muted-note">
-        프리뷰는 <b>CSS 근사</b>, 익스포트는 FFmpeg(eq/curves)로 정확히 적용됩니다. 9:16/1:1은
-        익스포트 시 중앙 크롭됩니다.
+          onChange={(v) => setReframe(v as 'source' | '9:16' | '1:1')}
+          options={REFRAME_OPTS.map((o) => ({ value: o.id, label: o.label }))}
+        />
+      </div>
+      <p className="note-strong">
+        미리보기는 분위기만 보여줘요. 실제 색·비율은 <b>내보낼 때 정확히 적용</b>됩니다.{' '}
+        <b>9:16·1:1은 화면 가운데를 기준으로 잘립니다.</b>
       </p>
     </div>
   );
@@ -791,10 +865,10 @@ function EffectPanel() {
 function Dock() {
   const { panel } = useEditor();
   const titles: Record<PanelId, string> = {
-    media: 'Media',
-    text: 'Text · TTS',
-    sticker: 'Sticker · GIF',
-    effect: 'Effects',
+    media: '미디어',
+    text: '음성 · TTS',
+    sticker: '스티커 · GIF',
+    effect: '효과 · 색보정',
   };
   return (
     <div className="dock">
@@ -978,7 +1052,7 @@ function Preview() {
       >
         {mediaPath ? (
           <div className="video-frame" ref={frameRef}>
-            {previewPath ? (
+            {previewPath && (
               <video
                 ref={videoRef}
                 // 한글/공백 경로도 열리도록 인코딩. 미리보기는 previewPath(원본 또는 변환된 프록시).
@@ -989,11 +1063,15 @@ function Preview() {
                 onLoadedData={() => setVideoErr(false)}
                 style={previewFilter ? { filter: previewFilter } : undefined}
               />
-            ) : (
+            )}
+            {/* 변환 중(proxyBusy)이거나 아직 미리보기 경로가 없으면 안내 오버레이를 영상 위에 덮어
+                검은 화면 오해를 막는다. (프록시가 previewPath를 먼저 세팅하는 레이스에도 견고) */}
+            {(proxyBusy || !previewPath) && (
               <div className="video-err" data-testid="proxy-busy">
-                <div className="big">미리보기 준비 중…</div>
+                <span className="spinner" />
+                <div className="big">미리보기 변환 중…</div>
                 <div className="sub">
-                  큰/고레벨 영상을 미리보기용으로 변환하고 있어요(몇 초).
+                  큰/고해상도·비표준 코덱(AV1 등) 영상을 미리보기용으로 변환하고 있어요(몇 초).
                   <br />
                   편집·자막·내보내기는 지금도 됩니다.
                 </div>
@@ -1047,8 +1125,8 @@ function Preview() {
           </div>
         ) : (
           <div className="empty-stage">
-            <div className="big">Drop a video here</div>
-            <div>or click “Import” — dawn-cut transcribes it automatically.</div>
+            <div className="big">여기에 영상을 끌어다 놓으세요</div>
+            <div>또는 상단 “가져오기”를 누르세요 — 자막은 “자막 생성” 버튼으로 만듭니다.</div>
           </div>
         )}
       </div>
@@ -1455,6 +1533,7 @@ function Transcript() {
   // 자막 정확도 검수: STT 신뢰도가 낮은(오인식 의심) 어절을 표시(opt-in '검수 모드').
   const [reviewMode, setReviewMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [presetSel, setPresetSel] = useState('default'); // 자막 프리셋 드롭다운 표시값
   const uncertainIds = useMemo(
     () =>
       new Set(
@@ -1691,28 +1770,16 @@ function Transcript() {
           <span className="nl-ico">
             <Palette size={15} />
           </span>
-          <select
-            className="select"
-            data-testid="style-pack"
-            defaultValue=""
-            style={{ flex: 1, height: 26, fontSize: 12 }}
-            onChange={(e) => {
-              const id = e.target.value;
-              if (id) {
-                e.target.value = '';
-                void applyPackAndBurn(id);
-              }
+          <KSelect
+            testId="style-pack"
+            flex
+            placeholder="스타일 팩 1클릭 — 색·자막·말버릇 한 번에"
+            value=""
+            onChange={(id) => {
+              if (id) void applyPackAndBurn(id);
             }}
-          >
-            <option value="" disabled>
-              스타일 팩 1클릭 — 색·자막·말버릇 한 번에
-            </option>
-            {STYLE_PACKS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label} · {p.genre}
-              </option>
-            ))}
-          </select>
+            options={STYLE_PACKS.map((p) => ({ value: p.id, label: `${p.label} · ${p.genre}` }))}
+          />
         </div>
       )}
       {pendingPlan && (
@@ -1824,21 +1891,19 @@ function Transcript() {
           <details className="sub-style-adv">
             <summary>세부 스타일 (색·외곽선·배경·폰트·강조)</summary>
             <div className="sub-style-body">
-              <label className="sub-ctl">
+              <div className="sub-ctl">
                 <span>프리셋</span>
-                <select
-                  className="select"
-                  data-testid="sub-preset"
-                  defaultValue="default"
-                  onChange={(e) => applyPreset(e.target.value)}
-                >
-                  {Object.keys(SUBTITLE_PRESETS).map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <KSelect
+                  testId="sub-preset"
+                  flex
+                  value={presetSel}
+                  onChange={(v) => {
+                    setPresetSel(v);
+                    void applyPreset(v);
+                  }}
+                  options={Object.keys(SUBTITLE_PRESETS).map((id) => ({ value: id, label: id }))}
+                />
+              </div>
               <label className="sub-ctl">
                 <span>글자색</span>
                 <input
@@ -1859,41 +1924,41 @@ function Transcript() {
                   onChange={(e) => applyStyle({ stroke: e.target.value })}
                 />
               </label>
-              <label className="sub-ctl">
+              <div className="sub-ctl">
                 <span>배경</span>
-                <select
-                  className="select"
+                <KSelect
+                  testId="sub-bg"
+                  flex
                   value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
-                  data-testid="sub-bg"
-                  onChange={(e) => applyStyle({ bg: e.target.value })}
-                >
-                  <option value="rgba(0,0,0,0.55)">어둡게 55%</option>
-                  <option value="rgba(0,0,0,0.85)">어둡게 85%</option>
-                  <option value="rgba(255,255,255,0.7)">밝게</option>
-                  <option value="transparent">없음</option>
-                </select>
-              </label>
-              <label className="sub-ctl">
+                  onChange={(v) => applyStyle({ bg: v })}
+                  options={[
+                    { value: 'rgba(0,0,0,0.55)', label: '어둡게 55%' },
+                    { value: 'rgba(0,0,0,0.85)', label: '어둡게 85%' },
+                    { value: 'rgba(255,255,255,0.7)', label: '밝게' },
+                    { value: 'transparent', label: '없음' },
+                  ]}
+                />
+              </div>
+              <div className="sub-ctl">
                 <span>폰트</span>
-                <select
-                  className="select"
+                <KSelect
+                  testId="sub-font"
+                  flex
                   value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
-                  data-testid="sub-font"
-                  onChange={(e) => applyStyle({ fontFamily: e.target.value })}
-                >
-                  <option value="system-ui, sans-serif">시스템</option>
-                  <option value="Georgia, serif">세리프</option>
-                  <option value="'Courier New', monospace">고정폭</option>
-                  <option value="Impact, sans-serif">임팩트</option>
-                  <option
-                    value={
-                      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif'
-                    }
-                  >
-                    한글(CJK)
-                  </option>
-                </select>
-              </label>
+                  onChange={(v) => applyStyle({ fontFamily: v })}
+                  options={[
+                    { value: 'system-ui, sans-serif', label: '시스템' },
+                    { value: 'Georgia, serif', label: '세리프' },
+                    { value: "'Courier New', monospace", label: '고정폭' },
+                    { value: 'Impact, sans-serif', label: '임팩트' },
+                    {
+                      value:
+                        '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+                      label: '한글(CJK)',
+                    },
+                  ]}
+                />
+              </div>
               <label className="sub-ctl checkbox">
                 <span>키워드 강조</span>
                 <input
@@ -2444,18 +2509,29 @@ function StatusBar() {
     revealExport,
     dismissExport,
     auditLog,
+    proxyBusy,
   } = useEditor();
+  // 프록시 변환 중이면 전역 신호를 '변환 중'으로(끝나면 원래 상태). 그 외엔 한국어 라벨 맵.
+  const statusLabel = proxyBusy ? '미리보기 변환 중' : (STATUS_KO[status] ?? status);
   return (
     <div className="statusbar">
-      <span className="pill">
+      <span className={`pill${proxyBusy ? ' busy' : ''}`}>
         <span className="led" />
-        <span data-testid="status">{status}</span>
+        {/* 기계 상태값은 sr-only로 DOM에 보존(e2e의 toHaveText 호환), 화면엔 한국어 라벨. */}
+        <span className="sr-only" data-testid="status">
+          {status}
+        </span>
+        <span aria-hidden="true">{statusLabel}</span>
       </span>
       <span>
-        clips <b data-testid="clip-count">{clipCount}</b>
+        클립 <b data-testid="clip-count">{clipCount}</b>
       </span>
       <span>
-        program <b data-testid="duration">{durationProgramUs}</b>µs · {fmt(durationProgramUs)}
+        길이 <b>{fmt(durationProgramUs)}</b>
+        {/* 원시 µs는 숨겨 테스트 호환 유지(화면엔 사람이 읽는 시:분만). */}
+        <b className="sr-only" data-testid="duration">
+          {durationProgramUs}
+        </b>
       </span>
       <span title="기록된 편집 명령 수 (결정적 replay/검증 토대)" className="audit">
         <Pencil size={12} /> <b data-testid="audit-count">{auditLog.length}</b>
@@ -2496,6 +2572,18 @@ const BUSY_LABEL: Record<string, string> = {
   exporting: '내보내는 중',
   'exporting gif': 'GIF 내보내는 중',
   'exporting srt': '자막 파일 저장 중',
+};
+// 상태 알약(좌하단)용 한국어 라벨. 기계 상태값(영문)을 사람이 읽는 말로. BUSY_LABEL을 포함한다.
+const STATUS_KO: Record<string, string> = {
+  idle: '대기',
+  ready: '준비됨',
+  exported: '내보냄 완료',
+  'gif exported': 'GIF 내보냄 완료',
+  'srt exported': '자막 저장 완료',
+  saved: '저장됨',
+  opened: '불러옴',
+  'voice ready': '음성 준비됨',
+  ...BUSY_LABEL,
 };
 function ProgressOverlay() {
   const status = useEditor((s) => s.status);
@@ -2588,19 +2676,24 @@ function SilenceMenu() {
           </label>
           <div className="silence-preview" data-testid="silence-preview">
             {silencePreview
-              ? `감지 ${silencePreview.count}곳 · −${fmt(silencePreview.savedUs)}`
+              ? silencePreview.count > 0
+                ? `감지 ${silencePreview.count}곳 · −${fmt(silencePreview.savedUs)}`
+                : '제거할 무음 없음 — 민감도/최소 무음을 조절해 보세요'
               : '감지 중…'}
           </div>
           <button
             type="button"
             className="btn primary"
             data-testid="silence-apply"
+            disabled={!silencePreview || silencePreview.count === 0}
             onClick={async () => {
               setOpen(false);
               await removeSilencesAction();
             }}
           >
-            이 설정으로 무음 제거
+            {silencePreview && silencePreview.count === 0
+              ? '제거할 무음 없음'
+              : '이 설정으로 무음 제거'}
           </button>
         </div>
       )}
@@ -2636,6 +2729,25 @@ export function AppShell() {
       correctWord: (wordId: string, text: string) => useEditor.getState().correctWord(wordId, text),
       autoHighlight: (targetSeconds: number) => useEditor.getState().autoHighlight(targetSeconds),
       detectLlm: () => useEditor.getState().detectLlm(),
+    };
+    // QA/검증용 읽기 스냅샷(상태 단언). __editor와 동일하게 무해한 자동화 표면.
+    window.__dawnState = () => {
+      const st = useEditor.getState();
+      return {
+        status: st.status,
+        clipCount: st.clipCount,
+        durationProgramUs: st.durationProgramUs,
+        overlays: st.overlays.length,
+        subtitleOverlays: st.overlays.filter((o) => o.kind === 'subtitle').length,
+        ttsClips: st.ttsClips.length,
+        words: st.transcript?.order.length ?? 0,
+        selectedOverlayId: st.selectedOverlayId,
+        selectedVoiceId: st.selectedVoiceId,
+        previewIsProxy: Boolean(st.previewPath && st.previewPath !== st.mediaPath),
+        proxyBusy: st.proxyBusy,
+        hasAudio: st.hasAudio,
+        auditLog: st.auditLog.length,
+      };
     };
     // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).
     void useEditor.getState().detectLlm();

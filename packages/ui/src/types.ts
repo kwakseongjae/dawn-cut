@@ -97,5 +97,7 @@ declare global {
       autoHighlight: (targetSeconds: number) => void;
       detectLlm: () => Promise<void>;
     };
+    // QA/검증용 읽기 스냅샷(상태 단언). 무해한 자동화 표면.
+    __dawnState?: () => Record<string, unknown>;
   }
 }
