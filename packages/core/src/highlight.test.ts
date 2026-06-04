@@ -88,6 +88,18 @@ describe('selectHighlightWordIds', () => {
     const keep = selectHighlightWordIds(transcript, timeline, 999_000_000);
     expect(keep.size).toBe(transcript.order.length);
   });
+
+  it('원본이 목표보다 길면 실제로 컷한다(드롭 기준 — 말 적은 영상에서도)', () => {
+    // 10문장×1초 = 프로그램 10초. 목표 4초 → ~6초를 드롭해야 한다(컷 0이면 안 됨).
+    const { transcript, timeline } = richPoorScene(10);
+    const keep = selectHighlightWordIds(transcript, timeline, 4_000_000);
+    expect(keep.size).toBeLessThan(transcript.order.length); // 전부 KEEP이 아님(=실제 컷)
+    const cuts = highlightCutSpans([...transcript.order], keep);
+    expect(cuts.length).toBeGreaterThan(0);
+    // 남은 어절 길이 합이 대략 목표 근처(±2문장). 군더더기부터 잘렸으니 과트림/무트림 아님.
+    expect(keep.size).toBeLessThanOrEqual(6);
+    expect(keep.size).toBeGreaterThanOrEqual(2);
+  });
 });
 
 describe('highlightCutSpans', () => {

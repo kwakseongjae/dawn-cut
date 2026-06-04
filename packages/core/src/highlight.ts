@@ -67,8 +67,15 @@ export function highlightSentences(
 }
 
 /**
- * 하이라이트로 KEEP할 어절 id 집합을 고른다(결정적). 키워드 밀도로 문장을 점수화해 점수 높은
- * 순서(동점=시간 순)로 누적 길이가 targetUs에 도달할 때까지 채택. 최소 1문장은 보장한다.
+ * 하이라이트로 KEEP할 어절 id 집합을 고른다(결정적, 프로그램 길이 기준).
+ *
+ * 결과 클립이 목표(targetUs)에 가깝게 '실제로' 짧아지도록 **드롭 기준**으로 고른다: 기본은 전부
+ * KEEP, 원본 프로그램이 목표보다 길면 점수(키워드 밀도) 낮은 문장부터 누적 드롭이 (총길이−목표)에
+ * 도달할 때까지 잘라낸다. 군더더기(키워드 적은 구간)가 먼저 제거되고 최소 1문장은 항상 남는다.
+ *
+ * 예전엔 '말(speech) 길이 합'이 target에 도달할 때까지 KEEP했는데, 문장 사이 공백(무음)이 합산에서
+ * 빠져 말이 적은 영상에선 전부 KEEP→컷 0이 되곤 했다. 이제 timeline.durationProgram(공백 포함)을
+ * 기준으로 삼아 원본이 목표보다 길면 반드시 의미 있게 컷한다.
  */
 export function selectHighlightWordIds(
   transcript: TranscriptModel,
@@ -81,21 +88,25 @@ export function selectHighlightWordIds(
 
   const scored = sentences.map((s, i) => ({
     i,
+    durUs: s.durUs,
     // 키워드 수 + 가벼운 길이 가중(최대 +2). 결정적.
     score: pickKeywords(s.text).length + Math.min(2, s.text.length / 40),
   }));
-  // 점수 내림차순, 동점은 원래(시간) 순서로 — 안정적·결정적.
-  scored.sort((a, b) => b.score - a.score || a.i - b.i);
 
+  const total = timeline.durationProgram;
   const target = Math.max(0, targetUs);
-  const keep = new Set<number>();
-  let acc = 0;
-  for (const { i } of scored) {
-    if (acc >= target && keep.size > 0) break;
-    keep.add(i);
-    acc += sentences[i]!.durUs;
+  const keep = new Set<number>(scored.map((s) => s.i)); // 기본: 전부 KEEP
+  if (total > target) {
+    // 잘라낼 프로그램 시간 ≈ (총길이 − 목표). 점수 오름차순(동점=시간 순)으로 드롭.
+    const dropBudget = total - target;
+    const byScoreAsc = [...scored].sort((a, b) => a.score - b.score || a.i - b.i);
+    let dropped = 0;
+    for (const s of byScoreAsc) {
+      if (dropped >= dropBudget || keep.size <= 1) break; // 목표 달성 또는 최소 1문장
+      keep.delete(s.i);
+      dropped += s.durUs;
+    }
   }
-  if (!keep.size) keep.add(scored[0]!.i); // 항상 최소 1문장.
 
   for (const i of keep) for (const id of sentences[i]!.ids) ids.add(id);
   return ids;
