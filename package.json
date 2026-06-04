@@ -25,11 +25,12 @@
     "verify": "bash scripts/verify.sh",
     "setup:binaries": "bash scripts/setup-binaries.sh",
     "setup:llm": "bash scripts/setup-llm.sh",
+    "setup:tts-neural": "bash scripts/setup-tts-neural.sh",
     "make:fixture": "bash scripts/make-fixture.sh",
     "demo:assets": "bash scripts/make-demo-assets.sh",
     "demo:run": "vitest run --config vitest.demo.config.ts",
     "demo:ui": "pnpm --filter @dawn-cut/desktop build && playwright test --config playwright.demo.config.ts",
-    "assets:gif": "tsx scripts/make-gif-stickers.ts"
+    "assets:gif": "npx --yes tsx scripts/make-gif-stickers.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -1,11 +1,37 @@
 import { execFile } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 const FFMPEG = process.env.DAWN_FFMPEG ?? 'ffmpeg';
+
+export interface PiperStatus {
+  available: boolean; // Piper 뉴럴 엔진(바이너리+모델)이 설치돼 쓸 수 있는가
+  binPath: string;
+  modelPath: string;
+  reason?: string; // 사람이 읽을 사유(미설치/모델없음 등)
+}
+
+/**
+ * Piper 뉴럴 TTS 가용성 — DAWN_PIPER_BIN + DAWN_PIPER_MODEL 환경변수가 가리키는 파일이 실제로
+ * 존재하고 모델이 충분히 큰지(>1MB)로 판정. throw 금지(앱 기동 시 안전 조회). 미설치면 say로 폴백.
+ * (참고: 공식 piper-voices에 한국어 보이스가 없어 한국어 뉴럴은 별도 트랙 — scripts/setup-tts-neural.sh)
+ */
+export function isPiperAvailable(): PiperStatus {
+  const binPath = process.env.DAWN_PIPER_BIN ?? '';
+  const modelPath = process.env.DAWN_PIPER_MODEL ?? '';
+  if (!binPath || !modelPath)
+    return { available: false, binPath, modelPath, reason: 'DAWN_PIPER_BIN/MODEL 미설정' };
+  try {
+    if (statSync(binPath).size <= 0) throw new Error('bin');
+    if (statSync(modelPath).size <= 1_000_000) throw new Error('model too small');
+    return { available: true, binPath, modelPath };
+  } catch {
+    return { available: false, binPath, modelPath, reason: '바이너리/모델 파일을 찾을 수 없음' };
+  }
+}
 
 // 한글(자모·완성형·확장)·한국어 문장부호 검출. 영어 보이스(Samantha 등)는 한글을 발음하지
 // 못하고 거의 무음 파일을 내므로, 한글이 섞이면 한국어 보이스로 자동 전환한다.
@@ -108,10 +134,13 @@ export async function synthesizeTts(
 
   if (piperBin && piperModel) {
     // Piper reads text on stdin, writes a wav. (neural, cross-platform)
-    // 속도/톤(rate/pitch)은 say 전용 — Piper 분기에선 무시(기존 동작 보존).
-    await exec(piperBin, ['--model', piperModel, '--output_file', outWav], {
-      input: text,
-    } as never);
+    // 속도(rate)는 length_scale(역상관: 느릴수록 큼)로 매핑. 톤(pitch)은 Piper 직접 대응이 없어 생략.
+    const piperArgs = ['--model', piperModel, '--output_file', outWav];
+    if (opts.rate && opts.rate > 0) {
+      const lengthScale = Math.max(0.5, Math.min(2.0, 180 / opts.rate));
+      piperArgs.push('--length_scale', lengthScale.toFixed(2));
+    }
+    await exec(piperBin, piperArgs, { input: text } as never);
     return { wavPath: outWav, engine: 'piper', voice: 'piper' };
   }
 

@@ -170,7 +170,7 @@ export interface SubtitleStyle {
   // 자막 애니메이션(어절 단위). none=정적, reveal=누적 등장, karaoke=현재 어절 강조.
   // drawSubtitle 자체는 정적 1프레임을 그린다; 애니메이션은 subtitles.captionFrames가 cue를
   // 다중 프레임으로 펼치고 렌더러가 각 프레임을 이 함수로 래스터화해 합성한다.
-  animation?: 'none' | 'reveal' | 'karaoke';
+  animation?: 'none' | 'reveal' | 'karaoke' | 'typewriter' | 'pop';
 }
 
 const STRIP_PUNCT_RE = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu;

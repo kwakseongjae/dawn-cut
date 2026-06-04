@@ -84,8 +84,12 @@ export function transcriptToCues(
   return cues;
 }
 
-/** 자막 애니메이션 모드. none=정적(1프레임), reveal=어절 누적 등장, karaoke=전체 표시+현재 어절 강조. */
-export type CaptionAnimation = 'none' | 'reveal' | 'karaoke';
+/** 자막 애니메이션 모드. none=정적, reveal=어절 누적, karaoke=현재 어절 강조,
+ *  typewriter=글자 누적(타자기), pop=정적 텍스트 + 등장 스케일-인(오버레이 키프레임이 담당). */
+export type CaptionAnimation = 'none' | 'reveal' | 'karaoke' | 'typewriter' | 'pop';
+
+// 타자기 프레임 상한 — 글자수가 많아도 PNG/IPC 폭증을 막는다(긴 cue는 글자를 묶어 ≤24프레임).
+const MAX_TYPEWRITER_FRAMES = 24;
 
 /** 한 cue를 시간에 따라 그릴 '서브프레임'. 각 프레임은 [startUs,endUs) 동안 보이는 정적 자막. */
 export interface CaptionFrame {
@@ -110,7 +114,31 @@ export interface CaptionFrame {
  */
 export function captionFrames(cue: SubtitleCue, mode: CaptionAnimation = 'none'): CaptionFrame[] {
   const words = cue.words ?? [];
-  if (mode === 'none' || words.length <= 1) {
+  // pop은 '등장 모션'(텍스트 진행 아님)이라 none처럼 cue 전체 1프레임. 스케일-인은 오버레이 키프레임.
+  if (mode === 'none' || mode === 'pop') {
+    return [{ text: cue.text, startUs: cue.startUs, endUs: cue.endUs }];
+  }
+  // 타자기: 글자(코드포인트=한글 음절 1자) 누적 substring을 cue 구간에 균등분할. 상한으로 묶음.
+  if (mode === 'typewriter') {
+    const chars = [...cue.text];
+    if (chars.length <= 1) {
+      return [{ text: cue.text, startUs: cue.startUs, endUs: cue.endUs }];
+    }
+    const step = Math.max(1, Math.ceil(chars.length / MAX_TYPEWRITER_FRAMES));
+    const cuts: number[] = [];
+    for (let k = step; k < chars.length; k += step) cuts.push(k);
+    cuts.push(chars.length); // 마지막은 항상 전체
+    const span = Math.max(1, cue.endUs - cue.startUs);
+    return cuts.map((k, i) => {
+      const startUs = Math.round(cue.startUs + (span * i) / cuts.length);
+      const rawEnd =
+        i === cuts.length - 1
+          ? cue.endUs
+          : Math.round(cue.startUs + (span * (i + 1)) / cuts.length);
+      return { text: chars.slice(0, k).join(''), startUs, endUs: Math.max(startUs + 1, rawEnd) };
+    });
+  }
+  if (words.length <= 1) {
     return [{ text: cue.text, startUs: cue.startUs, endUs: cue.endUs }];
   }
   return words.map((w, i) => {

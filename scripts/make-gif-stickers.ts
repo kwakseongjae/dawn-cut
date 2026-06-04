@@ -64,11 +64,100 @@ const floatHeart: DrawFrame = (ctx, t) => {
   ctx.fillText('❤️', 0, 0);
 };
 
+const emojiFont = (frac: number) => `${Math.round(SIZE * frac)}px "Apple Color Emoji"`;
+// 이모지 위아래 통통 바운스.
+const bounce =
+  (emoji: string): DrawFrame =>
+  (ctx, t) => {
+    const c = SIZE / 2;
+    ctx.translate(c, c - SIZE * 0.18 * Math.abs(Math.sin(t * Math.PI)));
+    ctx.font = emojiFont(0.58);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, 0, SIZE * 0.04);
+  };
+// 화살표가 좌→우로 흐름.
+const slideArrow: DrawFrame = (ctx, t) => {
+  ctx.translate(SIZE * (-0.2 + 1.2 * t), SIZE / 2);
+  ctx.font = emojiFont(0.6);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('➡️', 0, 0);
+};
+// 'NEW' 배지 깜빡임(브랜드 보라).
+const blinkNew: DrawFrame = (ctx, t) => {
+  const c = SIZE / 2;
+  ctx.globalAlpha = Math.sin(t * Math.PI * 2) > 0 ? 1 : 0.2;
+  ctx.fillStyle = 'rgba(124,92,255,1)';
+  ctx.fillRect(SIZE * 0.15, SIZE * 0.3, SIZE * 0.7, SIZE * 0.4);
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${Math.round(SIZE * 0.2)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('NEW', c, c);
+};
+// 중앙에서 하트가 방사형으로 터지며 사라짐.
+const heartBurst: DrawFrame = (ctx, t) => {
+  const c = SIZE / 2;
+  ctx.translate(c, c);
+  ctx.globalAlpha = 1 - t;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = emojiFont(0.22 * (0.4 + 0.6 * (1 - t)));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const r = SIZE * 0.32 * t;
+    ctx.fillText('❤️', Math.cos(a) * r, Math.sin(a) * r);
+  }
+};
+// ✅ 팝인(0→풀크기, 살짝 오버슈트).
+const checkPop: DrawFrame = (ctx, t) => {
+  const c = SIZE / 2;
+  const s = t < 0.5 ? t / 0.5 : 1 + 0.12 * Math.sin((t - 0.5) * Math.PI * 4);
+  ctx.globalAlpha = Math.min(1, t * 3);
+  ctx.translate(c, c);
+  ctx.scale(s, s);
+  ctx.font = emojiFont(0.62);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('✅', 0, SIZE * 0.04);
+};
+// '구독' 텍스트가 작게→크게 줌(CJK은 sans-serif로 두부 방지).
+const zoomSubscribe: DrawFrame = (ctx, t) => {
+  const c = SIZE / 2;
+  ctx.globalAlpha = 1 - t * 0.5;
+  ctx.translate(c, c);
+  ctx.scale(0.4 + 1.0 * t, 0.4 + 1.0 * t);
+  ctx.fillStyle = 'rgba(124,92,255,1)';
+  ctx.font = `700 ${Math.round(SIZE * 0.26)}px "Apple SD Gothic Neo", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('구독', 0, 0);
+};
+// 👋 손 흔들기(빠른 좌우 회전).
+const wave: DrawFrame = (ctx, t) => {
+  const c = SIZE / 2;
+  ctx.translate(c, c);
+  ctx.rotate(0.4 * Math.sin(t * Math.PI * 4));
+  ctx.font = emojiFont(0.6);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👋', 0, SIZE * 0.04);
+};
+
 const STICKERS: { name: string; draw: DrawFrame }[] = [
   { name: 'spinner', draw: spinner },
   { name: 'pulse-fire', draw: pulse('🔥') },
   { name: 'pulse-star', draw: pulse('⭐') },
   { name: 'float-heart', draw: floatHeart },
+  { name: 'bounce-tada', draw: bounce('🎉') },
+  { name: 'slide-arrow', draw: slideArrow },
+  { name: 'blink-new', draw: blinkNew },
+  { name: 'heart-burst', draw: heartBurst },
+  { name: 'thumbs-up', draw: bounce('👍') },
+  { name: 'check-pop', draw: checkPop },
+  { name: 'zoom-subscribe', draw: zoomSubscribe },
+  { name: 'wave', draw: wave },
 ];
 
 function renderGif(name: string, draw: DrawFrame): void {

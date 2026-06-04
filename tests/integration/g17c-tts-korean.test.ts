@@ -5,6 +5,7 @@ import { probeMedia } from '@dawn-cut/sidecar-ffmpeg';
 import {
   buildInlinePrefix,
   buildSayArgs,
+  isPiperAvailable,
   listVoices,
   parseVoices,
   pickVoice,
@@ -70,6 +71,23 @@ describe('TTS speed/tone args (pure)', () => {
     expect(buildInlinePrefix(38)).toBe('[[pbas 38]] ');
     expect(buildInlinePrefix(64, 0.9)).toBe('[[pbas 64]] [[volm 0.90]] ');
     expect(buildInlinePrefix(200)).toBe('[[pbas 100]] '); // 0~100 클램프
+  });
+
+  it('isPiperAvailable: env 미설정/가짜 경로면 available=false(throw 금지, say 폴백)', () => {
+    const prevBin = process.env.DAWN_PIPER_BIN;
+    const prevModel = process.env.DAWN_PIPER_MODEL;
+    // 빈 문자열 = 미설정(falsy)로 취급된다(isPiperAvailable의 !binPath 가드). delete 회피(noDelete).
+    process.env.DAWN_PIPER_BIN = '';
+    process.env.DAWN_PIPER_MODEL = '';
+    const noEnv = isPiperAvailable();
+    expect(noEnv.available).toBe(false);
+    expect(noEnv.reason).toBeTruthy();
+    process.env.DAWN_PIPER_BIN = '/nope/piper';
+    process.env.DAWN_PIPER_MODEL = '/nope/model.onnx';
+    expect(isPiperAvailable().available).toBe(false); // 파일 없음 → false(throw 안 함)
+    // 원복(다른 테스트가 say 폴백을 쓰도록 — 빈 문자열이면 say 분기로 안전).
+    process.env.DAWN_PIPER_BIN = prevBin ?? '';
+    process.env.DAWN_PIPER_MODEL = prevModel ?? '';
   });
 });
 

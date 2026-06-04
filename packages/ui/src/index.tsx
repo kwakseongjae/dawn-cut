@@ -189,7 +189,13 @@ const filePath = (f: File) =>
 const cueOptsForAnim = (
   anim: string,
 ): { maxWordsPerCue?: number; maxCharsPerCue?: number; maxGapUs?: number } =>
-  anim === 'none' ? {} : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
+  // 'none'·'pop'은 cue 전체 유지(pop=등장 모션이라 쇼츠 분절 불필요). 나머지는 짧게 쪼갠다.
+  anim === 'none' || anim === 'pop'
+    ? {}
+    : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
+// 자막 'pop' 등장 키프레임 — 시작 60% 크기에서 22% 구간 동안 풀크기로 커진다(easeOut).
+const POP_FROM = 0.6;
+const POP_U = 0.22;
 
 // ── Toolbar ──────────────────────────────────────────────────────────
 function Toolbar() {
@@ -636,12 +642,35 @@ function TextPanel() {
       alive = false;
     };
   }, []);
+  // TTS 엔진 상태 — 뉴럴(Piper) 설치 시 배지 표시, 아니면 macOS say(기본).
+  const [neural, setNeural] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const st = await window.dawn?.ttsEngineStatus?.();
+      if (alive) setNeural(Boolean(st?.available));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const koAvailable = voices.some((v) => isKoLang(v.lang));
   return (
     <div className="dock-body">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <strong style={{ fontSize: 13 }}>AI 보이스 (TTS)</strong>
         <span className="badge live">내보낼 때 합쳐짐</span>
+        <span
+          className="badge"
+          data-testid="tts-engine"
+          title={
+            neural
+              ? '뉴럴(Piper) 엔진 사용 중'
+              : 'macOS say 엔진. 뉴럴은 pnpm setup:tts-neural 로 설치(영어 위주 — 한국어 뉴럴은 준비 중)'
+          }
+        >
+          {neural ? '뉴럴(Piper)' : 'macOS say'}
+        </span>
       </div>
       <div className="field">보이스</div>
       <KSelect
@@ -1873,7 +1902,11 @@ function Transcript() {
             src: res.path,
             x: pos.x,
             y: pos.y,
-            scale: pos.scale,
+            // pop: 작은 크기에서 시작 → 초반 구간 동안 풀크기로 커지는 키프레임 주입(스케일-인).
+            scale: anim === 'pop' ? pos.scale * POP_FROM : pos.scale,
+            ...(anim === 'pop'
+              ? { keyframes: [{ u: POP_U, scale: pos.scale, easing: 'easeOut' as const }] }
+              : {}),
             opacity: 1,
             startUs: fr.startUs,
             endUs: fr.endUs,
@@ -2151,7 +2184,9 @@ function Transcript() {
               onChange={(v) => applyStyle({ animation: v as SubtitleStyle['animation'] })}
               options={[
                 { value: 'none', label: '없음 (한 번에)' },
+                { value: 'pop', label: '팝 (커지며 등장)' },
                 { value: 'reveal', label: '한 어절씩 등장' },
+                { value: 'typewriter', label: '타자기 (글자씩)' },
                 { value: 'karaoke', label: '가라오케(노래방)' },
               ]}
             />

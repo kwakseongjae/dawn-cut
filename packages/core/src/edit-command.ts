@@ -48,7 +48,7 @@ const SubtitleStyleZ = z.object({
   fontScale: z.number().optional(),
   emphasisColor: z.string().optional(),
   emphasizeKeywords: z.boolean().optional(),
-  animation: z.enum(['none', 'reveal', 'karaoke']).optional(),
+  animation: z.enum(['none', 'reveal', 'karaoke', 'typewriter', 'pop']).optional(),
 });
 
 const CommandSchemas = {

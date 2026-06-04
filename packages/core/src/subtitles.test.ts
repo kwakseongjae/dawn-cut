@@ -152,5 +152,29 @@ describe('subtitles (SUB-INV)', () => {
       };
       expect(captionFrames(one, 'reveal')).toHaveLength(1);
     });
+
+    it("'pop'은 등장 모션이라 cue 전체 1프레임(텍스트 진행 없음)", () => {
+      expect(captionFrames(cue, 'pop')).toEqual([{ text: '물 한 컵', startUs: 0, endUs: 900_000 }]);
+    });
+
+    it("'typewriter'는 글자(음절)를 누적하며 등장 — 마지막=전체, 단조 증가", () => {
+      const c = { index: 1, startUs: 0, endUs: 1_000_000, text: '안녕하세요', words: [] };
+      const f = captionFrames(c, 'typewriter');
+      expect(f.length).toBe(5); // 5음절 < 상한 → step=1 → 5프레임
+      expect(f.map((x) => x.text)).toEqual(['안', '안녕', '안녕하', '안녕하세', '안녕하세요']);
+      expect(f.at(-1)!.text).toBe('안녕하세요');
+      expect(f.at(-1)!.endUs).toBe(1_000_000);
+      for (const fr of f) expect(fr.endUs).toBeGreaterThan(fr.startUs);
+      for (let i = 1; i < f.length; i++)
+        expect(f[i]!.startUs).toBeGreaterThanOrEqual(f[i - 1]!.startUs);
+    });
+
+    it("'typewriter' 긴 텍스트는 프레임 상한(24)으로 글자를 묶는다", () => {
+      const long = 'x'.repeat(100);
+      const c = { index: 1, startUs: 0, endUs: 2_000_000, text: long, words: [] };
+      const f = captionFrames(c, 'typewriter');
+      expect(f.length).toBeLessThanOrEqual(24);
+      expect(f.at(-1)!.text).toBe(long); // 마지막은 항상 전체
+    });
   });
 });

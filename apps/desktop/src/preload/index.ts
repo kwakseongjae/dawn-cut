@@ -57,6 +57,12 @@ const bridge = {
   listTtsVoices: (): Promise<{ name: string; lang: string }[]> => ipcRenderer.invoke('tts:voices'),
   motionStickers: (): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('assets:motionStickers'),
+  ttsEngineStatus: (): Promise<{
+    available: boolean;
+    binPath: string;
+    modelPath: string;
+    reason?: string;
+  }> => ipcRenderer.invoke('tts:engineStatus'),
   saveProject: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('project:save', path, content),
   openProject: (path: string): Promise<string> => ipcRenderer.invoke('project:open', path),

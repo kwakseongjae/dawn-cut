@@ -66,6 +66,13 @@ export interface DawnBridge {
   listTtsVoices: () => Promise<{ name: string; lang: string }[]>;
   /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
   motionStickers: () => Promise<{ name: string; path: string }[]>;
+  /** TTS 엔진 상태 — 뉴럴(Piper) 사용 가능 여부. 미설치면 macOS say 폴백. */
+  ttsEngineStatus: () => Promise<{
+    available: boolean;
+    binPath: string;
+    modelPath: string;
+    reason?: string;
+  }>;
   saveProject: (path: string, content: string) => Promise<{ path: string }>;
   openProject: (path: string) => Promise<string>;
   openFile: () => Promise<string | null>;

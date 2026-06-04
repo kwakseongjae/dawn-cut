@@ -16,7 +16,7 @@ import {
 } from '@dawn-cut/sidecar-ffmpeg';
 import { isLlmAvailable, llmComplete, shutdownLlm, warmupLlm } from '@dawn-cut/sidecar-llm';
 import { transcribe } from '@dawn-cut/sidecar-stt';
-import { listVoices, synthesizeTts } from '@dawn-cut/sidecar-tts';
+import { isPiperAvailable, listVoices, synthesizeTts } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -122,6 +122,9 @@ ipcMain.handle(
 
 // 설치된 macOS 보이스 목록(언어 태그 포함) — UI 보이스 선택을 동적으로 채운다.
 ipcMain.handle('tts:voices', async () => listVoices());
+
+// TTS 엔진 상태(뉴럴 Piper 사용 가능 여부) — UI 배지/안내용. 미설치면 say 폴백.
+ipcMain.handle('tts:engineStatus', () => isPiperAvailable());
 
 // 번들된 '모션 스티커'(애니 GIF) 목록 — 로컬 생성·번들, 클라우드 의존 없음. 절대경로를 반환해
 // 오버레이로 바로 끼운다(파일이 디스크에 있어 writeAsset 불필요). 패키징: extraResources/gif.
