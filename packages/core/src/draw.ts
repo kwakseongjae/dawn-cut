@@ -79,8 +79,79 @@ export const SUBTITLE_PRESETS: Record<string, SubtitleStyle> = {
     fontScale: 0.46,
     emphasisColor: '#ffe14d',
   },
+  // ── 추가 룩(데이터만; drawSubtitle 파라미터 조합). 모두 CJK 폰트 체인으로 한글 두부 방지. ──
+  // 유튜브식 굵은 흰 글씨 + 아주 두꺼운 검정 외곽선, 배경 없음.
+  youtubeBold: {
+    color: '#ffffff',
+    bg: 'transparent',
+    stroke: 'rgba(0,0,0,0.95)',
+    strokeWidth: 14,
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: '800',
+    fontScale: 0.5,
+  },
+  // 예능 자막: 불투명 노란 바 + 검정 굵은 글씨.
+  varietyYellow: {
+    color: '#111111',
+    bg: 'rgba(255,225,77,0.96)',
+    stroke: '',
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: '800',
+    fontScale: 0.4,
+  },
+  // 미니멀: 배경 없음, 가는 글씨, 얇은 외곽선만.
+  minimal: {
+    color: '#ffffff',
+    bg: 'transparent',
+    stroke: 'rgba(0,0,0,0.6)',
+    strokeWidth: 3,
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: 'normal',
+    fontScale: 0.34,
+  },
+  // 네온: 밝은 시안 글씨 + 굵은 어두운 외곽선으로 글로우 '근사'(진짜 glow 아님) + 형광 강조.
+  neon: {
+    color: '#39f3ff',
+    bg: 'transparent',
+    stroke: 'rgba(8,20,40,0.95)',
+    strokeWidth: 11,
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: '800',
+    fontScale: 0.44,
+    emphasisColor: '#ff4df0',
+  },
+  // 자막바: 불투명 어두운 바 + 흰 글씨(다큐/뉴스식 하단바).
+  captionBar: {
+    color: '#ffffff',
+    bg: 'rgba(0,0,0,0.82)',
+    stroke: '',
+    fontFamily:
+      '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+    fontWeight: '600',
+    fontScale: 0.32,
+  },
 };
 export type SubtitlePresetId = keyof typeof SUBTITLE_PRESETS;
+
+/** 자막 프리셋 갤러리용 메타(한국어 라벨 + 대표 미리보기 텍스트). 순서 = 갤러리 표시 순서. */
+export const PRESET_META: { id: SubtitlePresetId; label: string; sample: string }[] = [
+  { id: 'default', label: '기본', sample: '기본 자막' },
+  { id: 'koreanShorts', label: '쇼츠', sample: '핵심 강조!' },
+  { id: 'youtubeBold', label: '유튜브', sample: '굵은 자막' },
+  { id: 'varietyYellow', label: '예능', sample: '리액션 자막' },
+  { id: 'captionBar', label: '자막바', sample: '하단 자막바' },
+  { id: 'neon', label: '네온', sample: '네온 강조' },
+  { id: 'minimal', label: '미니멀', sample: '미니멀 자막' },
+  { id: 'cinematic', label: '시네마', sample: '시네마틱' },
+  { id: 'highlight', label: '형광펜', sample: '하이라이트' },
+  { id: 'podcast', label: '팟캐스트', sample: '팟캐스트 자막' },
+  { id: 'tiktok', label: '틱톡', sample: 'CAPTION' },
+  { id: 'korean', label: '한국어', sample: '한국어 자막' },
+];
 
 /** Subtitle styling — defaults reproduce the original translucent-bar look. */
 export interface SubtitleStyle {

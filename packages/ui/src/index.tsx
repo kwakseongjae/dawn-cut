@@ -1,4 +1,5 @@
 import {
+  PRESET_META,
   STYLE_PACKS,
   SUBTITLE_PRESETS,
   captionFrames,
@@ -1524,6 +1525,48 @@ const EMPH_STRIP = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu;
 const emphasisFor = (cueText: string, on: boolean): ReadonlySet<string> | undefined =>
   on ? new Set(pickKeywords(cueText).map((w) => w.replace(EMPH_STRIP, ''))) : undefined;
 
+// 자막 프리셋 갤러리 썸네일 — 각 프리셋 룩을 대표 텍스트로 작게 미리 그려 한눈에 고르게 한다
+// (드롭다운의 id 텍스트보다 직관적). 클릭 시 applyPreset. drawSubtitle 동일 경로 = WYSIWYG.
+function PresetThumb({
+  id,
+  label,
+  sample,
+  active,
+  onPick,
+}: { id: string; label: string; sample: string; active: boolean; onPick: () => void }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = 128;
+    const H = 44;
+    c.width = Math.round(W * dpr);
+    c.height = Math.round(H * dpr);
+    c.style.width = `${W}px`;
+    c.style.height = `${H}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0b0c10';
+    ctx.fillRect(0, 0, W, H);
+    drawSubtitle(ctx, W, H, sample, SUBTITLE_PRESETS[id] ?? {});
+  }, [id, sample]);
+  return (
+    <button
+      type="button"
+      className={`preset-card${active ? ' on' : ''}`}
+      data-testid={`sub-preset-card-${id}`}
+      onClick={onPick}
+      title={label}
+    >
+      <canvas ref={ref} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 // 자막 미리보기 = 실제 영상 프레임(16:9 무대) 위에 '내보내기와 동일한' 자막 밴드를 놓은 것.
 // 밴드는 export 래스터(1000×150, 20:3)와 같은 비율·위치(subtitlePos)로 그려져 WYSIWYG다.
 // 위치(x/y)·크기(scale)가 무대 위 밴드에 그대로 반영돼 앵커 그리드가 직관적으로 연결된다.
@@ -2036,6 +2079,38 @@ function Transcript() {
             emphasis={currentEmphasis}
             pos={subtitlePos}
           />
+          <div className="sub-group sub-gallery-group">
+            <span className="sub-group-label">스타일</span>
+            <div className="preset-gallery" data-testid="preset-gallery">
+              {PRESET_META.map((m) => (
+                <PresetThumb
+                  key={m.id}
+                  id={m.id}
+                  label={m.label}
+                  sample={m.sample}
+                  active={presetSel === m.id}
+                  onPick={() => {
+                    setPresetSel(m.id);
+                    void applyPreset(m.id);
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="sub-group">
+            <span className="sub-group-label">애니메이션</span>
+            <KSelect
+              testId="sub-animation"
+              flex
+              value={subtitleStyle.animation ?? 'none'}
+              onChange={(v) => applyStyle({ animation: v as SubtitleStyle['animation'] })}
+              options={[
+                { value: 'none', label: '없음 (한 번에)' },
+                { value: 'reveal', label: '한 어절씩 등장' },
+                { value: 'karaoke', label: '가라오케(노래방)' },
+              ]}
+            />
+          </div>
           <div className="sub-group">
             <span className="sub-group-label">위치</span>
             <div className="sub-pos-grid">
@@ -2076,19 +2151,6 @@ function Transcript() {
           <details className="sub-style-adv">
             <summary>세부 스타일 (색·외곽선·배경·폰트·강조)</summary>
             <div className="sub-style-body">
-              <div className="sub-ctl">
-                <span>프리셋</span>
-                <KSelect
-                  testId="sub-preset"
-                  flex
-                  value={presetSel}
-                  onChange={(v) => {
-                    setPresetSel(v);
-                    void applyPreset(v);
-                  }}
-                  options={Object.keys(SUBTITLE_PRESETS).map((id) => ({ value: id, label: id }))}
-                />
-              </div>
               <label className="sub-ctl">
                 <span>글자색</span>
                 <input

@@ -35,8 +35,33 @@ const NOBOX = { color: '#ffffff', bg: 'transparent', stroke: '' } as const;
 describe('SUBTITLE_PRESETS', () => {
   it('exposes the documented preset ids', () => {
     expect(Object.keys(SUBTITLE_PRESETS).sort()).toEqual(
-      ['cinematic', 'default', 'highlight', 'korean', 'koreanShorts', 'podcast', 'tiktok'].sort(),
+      [
+        'cinematic',
+        'default',
+        'highlight',
+        'korean',
+        'koreanShorts',
+        'podcast',
+        'tiktok',
+        'youtubeBold',
+        'varietyYellow',
+        'minimal',
+        'neon',
+        'captionBar',
+      ].sort(),
     );
+  });
+
+  it('새 프리셋 룩의 핵심 속성 + 한글 폰트(두부 방지)', () => {
+    const cjk = /apple sd gothic|pretendard|noto|malgun/;
+    expect(SUBTITLE_PRESETS.youtubeBold!.strokeWidth ?? 0).toBeGreaterThan(8);
+    expect(SUBTITLE_PRESETS.varietyYellow!.bg).toMatch(/255\s*,\s*225/); // 노란 바
+    expect(SUBTITLE_PRESETS.captionBar!.bg).toMatch(/0\.8/); // 불투명 어두운 바
+    expect(SUBTITLE_PRESETS.neon!.emphasisColor).toBeTruthy();
+    expect(SUBTITLE_PRESETS.minimal!.bg).toBe('transparent');
+    for (const id of ['youtubeBold', 'varietyYellow', 'minimal', 'neon', 'captionBar'] as const) {
+      expect(SUBTITLE_PRESETS[id]!.fontFamily?.toLowerCase()).toMatch(cjk);
+    }
   });
 
   it('korean preset prefers CJK fonts before falling back to system', () => {

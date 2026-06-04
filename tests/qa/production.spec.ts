@@ -205,13 +205,25 @@ test('F3 subtitle-style', async () => {
     await settle(c.win, 250);
     await c.shot('size-45', card);
 
-    // 세부 스타일 펼치기 → 프리셋/색
+    // 프리셋 갤러리(썸네일) — 룩 선택
+    await c.shot('preset-gallery', c.win.getByTestId('preset-gallery'));
+    await c.win
+      .getByTestId('sub-preset-card-youtubeBold')
+      .click()
+      .catch(() => {});
+    await settle(c.win, 300);
+    await c.shot('preset-youtubeBold', card);
+    // 애니메이션 선택(한 어절씩 등장)
+    await pickOption(c.win, 'sub-animation', { value: 'reveal' });
+    await settle(c.win, 200);
+    c.note('animation', 'reveal');
+
+    // 세부 스타일 펼치기 → 색
     await card
       .getByText('세부 스타일', { exact: false })
       .click()
       .catch(() => {});
     await settle(c.win, 250);
-    await pickOption(c.win, 'sub-preset', { index: 1 });
     await setInput(c.win.getByTestId('sub-color'), '#ffcc00');
     await settle(c.win, 300);
     await c.shot('style-details', card);
