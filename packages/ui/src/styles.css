@@ -212,6 +212,12 @@ body {
   max-width: 100%;
   max-height: calc(100vh - 372px);
 }
+/* 번인 전 라이브 자막 밴드 — 영상 위에 얹힘. 클릭은 통과(오버레이 선택 방해 X). */
+.live-cap {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}
 /* 리프레임(9:16·1:1) 크롭 가이드 — 잘릴 영역 마스킹 + 세이프프레임 */
 .reframe-mask {
   position: absolute;
@@ -1130,6 +1136,30 @@ body {
 .btn.ghost.xs {
   padding: 2px 7px;
   font-size: 10.5px;
+}
+/* 아이콘 닫기/삭제 버튼(lucide X·Trash2) 공통 — SVG를 가운데 정렬하고 둥근 hover 히트영역을 준다.
+   각 컨텍스트(.asset-card .x / .glossary-row .x …)는 색만 덮어쓴다. */
+.x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, transform 0.05s;
+}
+.x:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+.x:active {
+  transform: scale(0.9);
 }
 /* 모션 스티커(애니 GIF) 썸네일 그리드 */
 .motion-grid {

@@ -43,6 +43,7 @@ import {
   Pause,
   Pencil,
   Play,
+  Plus,
   Redo2,
   RotateCcw,
   Scissors,
@@ -54,6 +55,7 @@ import {
   Undo2,
   Volume2,
   Wand2,
+  X,
 } from 'lucide-react';
 import {
   type CSSProperties,
@@ -528,7 +530,7 @@ function MediaPanel() {
             title="이 영상 치우기 (편집 초기화)"
             aria-label="영상 제거"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       )}
@@ -555,7 +557,7 @@ function MediaPanel() {
             }}
             title="삭제 (Delete/Backspace로도 가능)"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       ))}
@@ -570,7 +572,7 @@ function MediaPanel() {
           }}
           style={{ marginTop: 8, fontSize: 11 }}
         >
-          ✕ clear all ({imageOverlays.length})
+          <Trash2 size={13} /> 모두 지우기 ({imageOverlays.length})
         </button>
       )}
       <p className="muted-note">
@@ -821,7 +823,7 @@ function TextPanel() {
             }}
             title="삭제 (Delete/Backspace로도 가능)"
           >
-            ✕
+            <X size={14} />
           </button>
         </div>
       ))}
@@ -956,7 +958,7 @@ function StickerPanel() {
               }}
               title="삭제 (Delete/Backspace로도 가능)"
             >
-              ✕
+              <X size={14} />
             </button>
           </div>
         ))}
@@ -1170,6 +1172,7 @@ function Preview() {
     frameH,
   } = useEditor();
   const selectedOverlay = overlays.find((o) => o.id === selectedOverlayId) ?? null;
+  const liveCap = useLiveCaption();
   // 프리뷰 필터 = 색보정 프리셋 근사 + 자동 보정 eq 근사(둘 다 CSS, 익스포트는 ffmpeg 정확).
   const previewFilter =
     [colorPreset !== 'none' ? CSS_COLOR_APPROX[colorPreset] : null, cssFromEq(autoEnhanceEq)]
@@ -1393,6 +1396,16 @@ function Preview() {
                 )}
               </div>
             ))}
+            {/* 번인 전 라이브 자막 — 영상 위에 그대로 얹어 "자막이 들어간다"를 눈으로 확인.
+                번인(burnt)되면 실제 subtitle 오버레이가 같은 자리에 떠 이중표시가 안 되게 끈다. */}
+            {previewPath && !videoErr && !liveCap.burnt && liveCap.caption && (
+              <VideoCaption
+                style={liveCap.style}
+                text={liveCap.caption}
+                emphasis={liveCap.emphasis}
+                pos={liveCap.pos}
+              />
+            )}
           </div>
         ) : (
           <div className="empty-stage">
@@ -1543,7 +1556,7 @@ function Preview() {
             data-testid="overlay-remove"
             onClick={() => removeOverlay(selectedOverlay.id)}
           >
-            ✕ 이 오버레이 제거
+            <Trash2 size={13} /> 이 오버레이 제거
           </button>
           <span className="ov-props-hint">키보드 Delete / Backspace 로도 삭제됩니다.</span>
         </div>
@@ -1715,6 +1728,86 @@ function SubtitlePreview({
       <canvas className="sub-band" ref={ref} data-testid="sub-preview" />
     </div>
   );
+}
+
+// 현재 playhead의 자막 한 줄(받아쓰기 또는 수기) — 번인과 '동일 경로'(transcriptToCues/manualToCues
+// → captionFrames → wrapCaption)로 계산해 미리보기 카드와 영상 위 라이브 자막이 정확히 일치한다.
+// Transcript 카드와 달리 cue를 못 찾으면 null(fallback 없음) — 영상 위엔 "지금 보일 자막"만 떠야 한다.
+function useLiveCaption() {
+  const { transcript, timeline, manualCues, playheadUs, subtitleStyle, subtitlePos, overlays } =
+    useEditor();
+  const subAnim = subtitleStyle.animation ?? 'none';
+  const emphasizeKeywords = subtitleStyle.emphasizeKeywords ?? false;
+  const burnt = overlays.some((o) => o.kind === 'subtitle');
+  const currentCue = useMemo(() => {
+    if (!timeline) return null;
+    const cues = transcript
+      ? transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim))
+      : manualToCues(manualCues);
+    return cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? null;
+  }, [transcript, timeline, playheadUs, subAnim, manualCues]);
+  const currentFrame = useMemo(() => {
+    if (!currentCue) return null;
+    const frames = captionFrames(currentCue, subAnim);
+    return frames.find((f) => playheadUs >= f.startUs && playheadUs < f.endUs) ?? frames[0] ?? null;
+  }, [currentCue, subAnim, playheadUs]);
+  const caption = useMemo(
+    () =>
+      currentFrame ? wrapCaption(currentFrame.text, { maxCharsPerLine: 16, maxLines: 2 }) : '',
+    [currentFrame],
+  );
+  const emphasis = useMemo(() => {
+    if (!currentCue) return undefined;
+    if (subAnim === 'karaoke' && currentFrame?.activeWord)
+      return new Set([currentFrame.activeWord]);
+    return emphasisFor(currentCue.text, emphasizeKeywords);
+  }, [currentCue, currentFrame, subAnim, emphasizeKeywords]);
+  return { caption, emphasis, style: subtitleStyle, pos: subtitlePos, burnt };
+}
+
+// 영상 프레임 위에 그대로 얹는 라이브 자막 밴드(SubtitlePreview와 동일한 drawSubtitle/밴드 수학,
+// 다만 무대가 아니라 실제 .video-frame을 관측). 번인 전에도 "자막이 영상에 들어간다"를 눈으로 확인.
+function VideoCaption({
+  style,
+  text,
+  emphasis,
+  pos,
+}: {
+  style: SubtitleStyle;
+  text: string;
+  emphasis?: ReadonlySet<string>;
+  pos: { x: number; y: number; scale: number };
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    const frame = c?.parentElement;
+    if (!c || !frame) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const draw = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const fw = frame.clientWidth;
+      const fh = frame.clientHeight;
+      if (fw < 8 || fh < 8) return;
+      const bandW = Math.max(48, Math.round(fw * pos.scale));
+      const bandH = Math.max(14, Math.round(bandW * 0.15)); // export raster 1000:150 비율
+      c.width = Math.round(bandW * dpr);
+      c.height = Math.round(bandH * dpr);
+      c.style.width = `${bandW}px`;
+      c.style.height = `${bandH}px`;
+      c.style.left = `${Math.round(Math.min(Math.max(0, pos.x), Math.max(0, 1 - pos.scale)) * fw)}px`;
+      c.style.top = `${Math.round(Math.min(Math.max(0, pos.y), 1) * Math.max(0, fh - bandH))}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, bandW, bandH);
+      drawSubtitle(ctx, bandW, bandH, text, style, emphasis);
+    };
+    draw();
+    const ro = new ResizeObserver(draw);
+    ro.observe(frame);
+    return () => ro.disconnect();
+  }, [style, text, emphasis, pos.x, pos.y, pos.scale]);
+  return <canvas className="live-cap" ref={ref} data-testid="live-caption" />;
 }
 
 const ANCHORS: { id: string; label: string; x: number; y: number }[] = [
@@ -2442,7 +2535,7 @@ function Transcript() {
                         onClick={() => removeGlossaryPair(i)}
                         aria-label="사전 항목 삭제"
                       >
-                        ✕
+                        <X size={14} />
                       </button>
                     </div>
                   ))}
@@ -2538,11 +2631,12 @@ function Transcript() {
                 <span>직접 입력 자막 ({manualCues.length})</span>
                 <button
                   type="button"
-                  className="link"
+                  className="btn ghost xs"
                   data-testid="add-manual-cue"
                   onClick={() => addManualCue('')}
+                  title="현재 재생 위치에 새 자막 추가"
                 >
-                  + 현재 위치에 추가
+                  <Plus size={13} /> 현재 위치에 추가
                 </button>
               </div>
               {[...manualCues]
@@ -2596,7 +2690,7 @@ function Transcript() {
                         title="삭제"
                         onClick={() => removeManualCue(c.id)}
                       >
-                        ✕
+                        <X size={14} />
                       </button>
                     </div>
                   </div>
@@ -3016,7 +3110,7 @@ function StatusBar() {
             onClick={() => dismissHighlightNotice()}
             aria-label="닫기"
           >
-            ✕
+            <X size={14} />
           </button>
         </span>
       )}
@@ -3033,7 +3127,7 @@ function StatusBar() {
             폴더에서 보기
           </button>
           <button type="button" className="x" onClick={() => dismissExport()} aria-label="닫기">
-            ✕
+            <X size={14} />
           </button>
         </span>
       ) : (
@@ -3212,6 +3306,9 @@ export function AppShell() {
       correctWord: (wordId: string, text: string) => useEditor.getState().correctWord(wordId, text),
       autoHighlight: (targetSeconds: number) => useEditor.getState().autoHighlight(targetSeconds),
       detectLlm: () => useEditor.getState().detectLlm(),
+      // 수기 자막(무음 영상 대응) 자동화 표면 — 라이브 자막 미리보기 검증에 사용.
+      addManualCue: (text: string) => useEditor.getState().addManualCue(text),
+      setPlayhead: (us: number) => useEditor.getState().setPlayhead(us),
     };
     // QA/검증용 읽기 스냅샷(상태 단언). __editor와 동일하게 무해한 자동화 표면.
     window.__dawnState = () => {
@@ -3379,7 +3476,7 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
         <div className="help-head">
           <strong>Keyboard shortcuts</strong>
           <button type="button" className="x" onClick={onClose}>
-            ✕
+            <X size={14} />
           </button>
         </div>
         <table>
