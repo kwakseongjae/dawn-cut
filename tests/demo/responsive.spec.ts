@@ -71,6 +71,16 @@ test('작은 창: 우측 패널 스크롤 + 가운데 미리보기 맞춤', asyn
     expect(fit.aboveTimeline, `preview must not punch into timeline: ${JSON.stringify(fit)}`).toBe(
       true,
     );
+    // 재생바(play/scrub)가 잘리지 않고 온전히 타임라인 위에 보인다.
+    const controls = await win.locator('.controls').evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const tl = (document.querySelector('.timeline') as HTMLElement).getBoundingClientRect();
+      return { bottom: r.bottom, tlTop: tl.top, visible: r.bottom <= tl.top + 1 && r.height > 30 };
+    });
+    expect(
+      controls.visible,
+      `play controls must be fully visible: ${JSON.stringify(controls)}`,
+    ).toBe(true);
   } finally {
     await app.close();
   }

@@ -178,6 +178,8 @@ body {
   background: radial-gradient(120% 120% at 50% 0%, #101218 0%, var(--bg) 70%);
   border-right: 1px solid var(--border);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden; /* 영상이 .preview 셀을 넘어 재생바/타임라인을 침범하지 않게 */
 }
 .stage {
   flex: 1;
@@ -186,6 +188,7 @@ body {
   justify-content: center;
   padding: 22px;
   min-height: 0;
+  overflow: hidden; /* ov-props 패널 등으로 스테이지가 줄어도 영상은 안에서 클립(재생바 보존) */
 }
 .video-frame {
   position: relative;
@@ -193,9 +196,9 @@ body {
   align-items: center;
   justify-content: center;
   max-width: 100%;
-  /* 세로 영상이 타임라인을 뚫고 내려가지 않게: 창 높이에서 고정 크롬(툴바52+타임라인178+상태30
-     +스테이지 패딩+재생바 ≈ 340)을 뺀 definite 값으로 상한. %는 content-sized 프레임에서 안 먹음. */
-  max-height: calc(100vh - 340px);
+  /* 세로 영상이 재생바/타임라인을 밀어내지 않게 definite 상한. 고정 크롬(툴바52+타임라인178+
+     상태30+스테이지 패딩44+재생바66 ≈ 370)을 창 높이에서 뺀다. %는 content-sized 프레임에서 안 먹음. */
+  max-height: calc(100vh - 372px);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -207,7 +210,7 @@ body {
   object-fit: contain;
   /* 가로·세로 둘 다에 맞춰 축소(definite 상한이라 세로 영상도 영역 안에 들어옴). */
   max-width: 100%;
-  max-height: calc(100vh - 340px);
+  max-height: calc(100vh - 372px);
 }
 /* 리프레임(9:16·1:1) 크롭 가이드 — 잘릴 영역 마스킹 + 세이프프레임 */
 .reframe-mask {
