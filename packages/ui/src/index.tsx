@@ -1332,7 +1332,10 @@ function Preview() {
             {/* 변환 중(proxyBusy)이거나 아직 미리보기 경로가 없으면 안내 오버레이를 영상 위에 덮어
                 검은 화면 오해를 막는다. (프록시가 previewPath를 먼저 세팅하는 레이스에도 견고) */}
             {(proxyBusy || !previewPath) && (
-              <div className="video-err" data-testid="proxy-busy">
+              <div
+                className={`video-err${previewPath ? '' : ' standalone'}`}
+                data-testid="proxy-busy"
+              >
                 <span className="spinner" />
                 <div className="big">미리보기 변환 중…</div>
                 <div className="sub">
@@ -2067,610 +2070,617 @@ function Transcript() {
           <RotateCcw size={13} /> 초기화
         </button>
       </div>
-      {advanced && transcript && (
-        <div className="nl-bar" data-testid="nl-bar">
-          <span className="nl-ico">
-            <Bot size={15} />
-          </span>
-          <input
-            className="input"
-            data-testid="nl-input"
-            placeholder={'예: "말버릇 빼줘" · "시네마틱하게" · "따뜻한 색감"'}
-            disabled={nlBusy}
-            onKeyDown={(e) => {
-              const v = e.currentTarget.value.trim();
-              if (e.key === 'Enter' && v) {
-                planAndPreview(v);
-                e.currentTarget.value = '';
-              }
-            }}
-          />
-          <span className="nl-hint" data-testid="nl-engine">
-            {nlBusy ? '생각 중…' : llmReady ? 'AI · Enter' : 'Enter'}
-          </span>
-        </div>
-      )}
-      {advanced && transcript && (
-        <button
-          type="button"
-          className="btn ghost"
-          data-testid="auto-highlight"
-          onClick={() => autoHighlight(60)}
-          title="핵심만 남겨 ~60초 하이라이트로 컷합니다 (롱폼→쇼츠)"
-          style={{ fontSize: 11, padding: '4px 8px', margin: '0 8px 8px' }}
-        >
-          <Scissors size={13} /> 자동 하이라이트 (60초)
-        </button>
-      )}
-      {transcript && (
-        <div className="nl-bar" data-testid="style-pack-bar">
-          <span className="nl-ico">
-            <Palette size={15} />
-          </span>
-          <KSelect
-            testId="style-pack"
-            flex
-            placeholder="스타일 팩 1클릭 — 색·자막·말버릇 한 번에"
-            value=""
-            onChange={(id) => {
-              if (id) void applyPackAndBurn(id);
-            }}
-            options={STYLE_PACKS.map((p) => ({ value: p.id, label: `${p.label} · ${p.genre}` }))}
-          />
-        </div>
-      )}
-      {pendingPlan && (
-        <div className="plan-card" data-testid="plan-card">
-          <div className="plan-head">
-            <span>제안: “{pendingPlan.input}”</span>
-            <span className="plan-engine" data-testid="plan-engine">
-              {pendingPlan.engine === 'llm' ? (
-                <>
-                  <Bot size={12} /> AI
-                </>
-              ) : (
-                <>
-                  <Settings size={12} /> 룰
-                </>
-              )}
+      {/* 헤더 아래 전체를 단일 스크롤 영역으로 — 작은 창에서 자막카드·갤러리가 잘리지 않고 스크롤된다. */}
+      <div className="transcript-scroll">
+        {advanced && transcript && (
+          <div className="nl-bar" data-testid="nl-bar">
+            <span className="nl-ico">
+              <Bot size={15} />
+            </span>
+            <input
+              className="input"
+              data-testid="nl-input"
+              placeholder={'예: "말버릇 빼줘" · "시네마틱하게" · "따뜻한 색감"'}
+              disabled={nlBusy}
+              onKeyDown={(e) => {
+                const v = e.currentTarget.value.trim();
+                if (e.key === 'Enter' && v) {
+                  planAndPreview(v);
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
+            <span className="nl-hint" data-testid="nl-engine">
+              {nlBusy ? '생각 중…' : llmReady ? 'AI · Enter' : 'Enter'}
             </span>
           </div>
-          {pendingPlan.commands.length > 0 ? (
-            <ul className="plan-cmds">
-              {pendingPlan.commands.map((c, i) => (
-                <li key={`${c.type}-${i}`}>
-                  {CMD_LABEL[c.type] ?? c.type}
-                  {c.type === 'applyColorgrade' ? ` · ${c.preset}` : ''}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="plan-empty">{nlError ?? '제안할 편집이 없습니다.'}</div>
-          )}
-          {planReport && pendingPlan.commands.length > 0 && (
-            <div className="plan-diff" data-testid="plan-diff">
-              {planReport.removedProgramUs > 0
-                ? `예상: −${fmt(planReport.removedProgramUs)}  (${fmt(planReport.beforeDurationUs)} → ${fmt(planReport.afterDurationUs)})`
-                : '예상: 길이 변화 없음 (룩/자막만 변경 — 미리보기는 근사)'}
-              {!planReport.ok && <span className="plan-bad"> · 적용 불가: {planReport.error}</span>}
-            </div>
-          )}
-          <div className="plan-actions">
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="plan-approve"
-              disabled={!planReport?.ok || pendingPlan.commands.length === 0}
-              onClick={() => approvePlan()}
-            >
-              승인
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              data-testid="plan-reject"
-              onClick={() => rejectPlan()}
-            >
-              취소
-            </button>
-          </div>
-        </div>
-      )}
-      {advanced && (
-        <div className="sub-pos card" data-testid="subtitle-pos">
-          <div className="sub-pos-head">
-            <span className="sub-pos-title">자막 미리보기</span>
-            <span className="sub-pos-sub">영상에서 보일 모습 그대로</span>
-          </div>
-          <SubtitlePreview
-            style={subtitleStyle}
-            text={currentCaption}
-            emphasis={currentEmphasis}
-            pos={subtitlePos}
-          />
-          <div className="sub-group sub-gallery-group">
-            <span className="sub-group-label">스타일</span>
-            <div className="preset-gallery" data-testid="preset-gallery">
-              {PRESET_META.map((m) => (
-                <PresetThumb
-                  key={m.id}
-                  id={m.id}
-                  label={m.label}
-                  sample={m.sample}
-                  active={presetSel === m.id}
-                  onPick={() => {
-                    setPresetSel(m.id);
-                    void applyPreset(m.id);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="sub-group">
-            <span className="sub-group-label">애니메이션</span>
-            <KSelect
-              testId="sub-animation"
-              flex
-              value={subtitleStyle.animation ?? 'none'}
-              onChange={(v) => applyStyle({ animation: v as SubtitleStyle['animation'] })}
-              options={[
-                { value: 'none', label: '없음 (한 번에)' },
-                { value: 'pop', label: '팝 (커지며 등장)' },
-                { value: 'reveal', label: '한 어절씩 등장' },
-                { value: 'typewriter', label: '타자기 (글자씩)' },
-                { value: 'karaoke', label: '가라오케(노래방)' },
-              ]}
-            />
-          </div>
-          <div className="sub-group">
-            <span className="sub-group-label">위치</span>
-            <div className="sub-pos-grid">
-              {ANCHORS.map((a) => {
-                const sel =
-                  Math.abs(subtitlePos.y - a.y) < 0.05 &&
-                  Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
-                return (
-                  <button
-                    key={a.id}
-                    type="button"
-                    className={sel ? 'on' : ''}
-                    data-testid={`sub-anchor-${a.id}`}
-                    title={`anchor ${a.id}`}
-                    onClick={() => applyAnchor(a.x, a.y)}
-                  >
-                    {a.label}
-                  </button>
-                );
-              })}
-            </div>
-            <label className="sub-slider">
-              <span>크기 {Math.round(subtitlePos.scale * 100)}%</span>
-              <input
-                type="range"
-                min={20}
-                max={100}
-                value={Math.round(subtitlePos.scale * 100)}
-                data-testid="sub-scale"
-                onChange={async (e) => {
-                  const scale = Number(e.target.value) / 100;
-                  setSubtitlePos({ scale });
-                  scheduleReburn({ ...subtitlePos, scale }, subtitleStyle);
-                }}
-              />
-            </label>
-          </div>
-          <details className="sub-style-adv">
-            <summary>세부 스타일 (색·외곽선·배경·폰트·강조)</summary>
-            <div className="sub-style-body">
-              <label className="sub-ctl">
-                <span>글자색</span>
-                <input
-                  type="color"
-                  className="swatch"
-                  value={subtitleStyle.color ?? '#ffffff'}
-                  data-testid="sub-color"
-                  onChange={(e) => applyStyle({ color: e.target.value })}
-                />
-              </label>
-              <label className="sub-ctl">
-                <span>외곽선</span>
-                <input
-                  type="color"
-                  className="swatch"
-                  value={(subtitleStyle.stroke as string) || '#000000'}
-                  data-testid="sub-stroke"
-                  onChange={(e) => applyStyle({ stroke: e.target.value })}
-                />
-              </label>
-              <div className="sub-ctl">
-                <span>배경</span>
-                <KSelect
-                  testId="sub-bg"
-                  flex
-                  value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
-                  onChange={(v) => applyStyle({ bg: v })}
-                  options={[
-                    { value: 'rgba(0,0,0,0.55)', label: '어둡게 55%' },
-                    { value: 'rgba(0,0,0,0.85)', label: '어둡게 85%' },
-                    { value: 'rgba(255,255,255,0.7)', label: '밝게' },
-                    { value: 'transparent', label: '없음' },
-                  ]}
-                />
-              </div>
-              <div className="sub-ctl">
-                <span>폰트</span>
-                <KSelect
-                  testId="sub-font"
-                  flex
-                  value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
-                  onChange={(v) => applyStyle({ fontFamily: v })}
-                  options={[
-                    { value: 'system-ui, sans-serif', label: '시스템' },
-                    { value: 'Georgia, serif', label: '세리프' },
-                    { value: "'Courier New', monospace", label: '고정폭' },
-                    { value: 'Impact, sans-serif', label: '임팩트' },
-                    {
-                      value:
-                        '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
-                      label: '한글(CJK)',
-                    },
-                  ]}
-                />
-              </div>
-              <label className="sub-ctl checkbox">
-                <span>키워드 강조</span>
-                <input
-                  type="checkbox"
-                  data-testid="sub-emphasis"
-                  checked={emphasizeKeywords}
-                  onChange={(e) => applyEmphasis(e.target.checked)}
-                />
-              </label>
-              <label className="sub-ctl">
-                <span>강조색</span>
-                <input
-                  type="color"
-                  className="swatch"
-                  data-testid="sub-emphasis-color"
-                  value={subtitleStyle.emphasisColor ?? '#ffd54f'}
-                  disabled={!emphasizeKeywords}
-                  onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
-                />
-              </label>
-              <div className="sub-xy">
-                <label className="sub-slider">
-                  <span>가로 {Math.round(subtitlePos.x * 100)}%</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(subtitlePos.x * 100)}
-                    data-testid="sub-x"
-                    onChange={async (e) => {
-                      const x = Number(e.target.value) / 100;
-                      setSubtitlePos({ x });
-                      scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
-                    }}
-                  />
-                </label>
-                <label className="sub-slider">
-                  <span>세로 {Math.round(subtitlePos.y * 100)}%</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={Math.round(subtitlePos.y * 100)}
-                    data-testid="sub-y"
-                    onChange={async (e) => {
-                      const y = Number(e.target.value) / 100;
-                      setSubtitlePos({ y });
-                      scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          </details>
-        </div>
-      )}
-      <div className="review-tools" data-testid="review-tools">
-        <button
-          type="button"
-          className="btn ghost"
-          data-testid="remove-fillers"
-          disabled={!transcript || fillerIds.size === 0}
-          onClick={() => removeFillers()}
-          title="음/어/흠 같은 말버릇 어절을 한 번에 컷합니다"
-        >
-          <Eraser size={13} /> 말버릇 {fillerIds.size}개 제거
-          {fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
-        </button>
-        <label
-          className="ov-field"
-          data-testid="review-mode-field"
-          title="STT 신뢰도가 낮은 어절을 빨갛게 표시합니다. 더블클릭으로 고칠 수 있어요."
-        >
-          <input
-            type="checkbox"
-            data-testid="review-mode"
-            checked={reviewMode}
-            disabled={!transcript}
-            onChange={(e) => setReviewMode(e.target.checked)}
-          />
-          <Search size={13} /> 검수{' '}
-          {reviewMode && uncertainIds.size > 0 ? `(${uncertainIds.size})` : ''}
-        </label>
-        {reviewMode && uncertainIds.size > 0 && (
+        )}
+        {advanced && transcript && (
           <button
             type="button"
             className="btn ghost"
-            data-testid="jump-uncertain"
-            onClick={jumpNextUncertain}
-            title="다음 검수 대상 어절로 이동"
+            data-testid="auto-highlight"
+            onClick={() => autoHighlight(60)}
+            title="핵심만 남겨 ~60초 하이라이트로 컷합니다 (롱폼→쇼츠)"
+            style={{ fontSize: 11, padding: '4px 8px', margin: '0 8px 8px' }}
           >
-            <CornerDownRight size={13} /> 다음 의심 어절
+            <Scissors size={13} /> 자동 하이라이트 (60초)
           </button>
         )}
-        {advanced && (
-          <>
-            <details className="glossary">
-              <summary>
-                <NotebookText size={13} /> 내 사전 ({glossary.length})
-              </summary>
-              <div className="glossary-body">
-                {glossary.length === 0 && (
-                  <div className="glossary-hint">
-                    자주 틀리는 고유명사를 등록하면 전사 후 자동 교정됩니다.
-                  </div>
+        {transcript && (
+          <div className="nl-bar" data-testid="style-pack-bar">
+            <span className="nl-ico">
+              <Palette size={15} />
+            </span>
+            <KSelect
+              testId="style-pack"
+              flex
+              placeholder="스타일 팩 1클릭 — 색·자막·말버릇 한 번에"
+              value=""
+              onChange={(id) => {
+                if (id) void applyPackAndBurn(id);
+              }}
+              options={STYLE_PACKS.map((p) => ({ value: p.id, label: `${p.label} · ${p.genre}` }))}
+            />
+          </div>
+        )}
+        {pendingPlan && (
+          <div className="plan-card" data-testid="plan-card">
+            <div className="plan-head">
+              <span>제안: “{pendingPlan.input}”</span>
+              <span className="plan-engine" data-testid="plan-engine">
+                {pendingPlan.engine === 'llm' ? (
+                  <>
+                    <Bot size={12} /> AI
+                  </>
+                ) : (
+                  <>
+                    <Settings size={12} /> 룰
+                  </>
                 )}
-                {glossary.map((p, i) => (
-                  <div className="glossary-row" key={`${p.from}-${i}`} data-testid="glossary-row">
-                    <span>
-                      {p.from} → {p.to || '(삭제)'}
-                    </span>
-                    <button
-                      type="button"
-                      className="x"
-                      data-testid="glossary-remove"
-                      onClick={() => removeGlossaryPair(i)}
-                      aria-label="사전 항목 삭제"
-                    >
-                      ✕
-                    </button>
-                  </div>
+              </span>
+            </div>
+            {pendingPlan.commands.length > 0 ? (
+              <ul className="plan-cmds">
+                {pendingPlan.commands.map((c, i) => (
+                  <li key={`${c.type}-${i}`}>
+                    {CMD_LABEL[c.type] ?? c.type}
+                    {c.type === 'applyColorgrade' ? ` · ${c.preset}` : ''}
+                  </li>
                 ))}
-                <GlossaryAdd onAdd={addGlossaryPair} />
+              </ul>
+            ) : (
+              <div className="plan-empty">{nlError ?? '제안할 편집이 없습니다.'}</div>
+            )}
+            {planReport && pendingPlan.commands.length > 0 && (
+              <div className="plan-diff" data-testid="plan-diff">
+                {planReport.removedProgramUs > 0
+                  ? `예상: −${fmt(planReport.removedProgramUs)}  (${fmt(planReport.beforeDurationUs)} → ${fmt(planReport.afterDurationUs)})`
+                  : '예상: 길이 변화 없음 (룩/자막만 변경 — 미리보기는 근사)'}
+                {!planReport.ok && (
+                  <span className="plan-bad"> · 적용 불가: {planReport.error}</span>
+                )}
+              </div>
+            )}
+            <div className="plan-actions">
+              <button
+                type="button"
+                className="btn primary"
+                data-testid="plan-approve"
+                disabled={!planReport?.ok || pendingPlan.commands.length === 0}
+                onClick={() => approvePlan()}
+              >
+                승인
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                data-testid="plan-reject"
+                onClick={() => rejectPlan()}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+        {advanced && (
+          <div className="sub-pos card" data-testid="subtitle-pos">
+            <div className="sub-pos-head">
+              <span className="sub-pos-title">자막 미리보기</span>
+              <span className="sub-pos-sub">영상에서 보일 모습 그대로</span>
+            </div>
+            <SubtitlePreview
+              style={subtitleStyle}
+              text={currentCaption}
+              emphasis={currentEmphasis}
+              pos={subtitlePos}
+            />
+            <div className="sub-group sub-gallery-group">
+              <span className="sub-group-label">스타일</span>
+              <div className="preset-gallery" data-testid="preset-gallery">
+                {PRESET_META.map((m) => (
+                  <PresetThumb
+                    key={m.id}
+                    id={m.id}
+                    label={m.label}
+                    sample={m.sample}
+                    active={presetSel === m.id}
+                    onPick={() => {
+                      setPresetSel(m.id);
+                      void applyPreset(m.id);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="sub-group">
+              <span className="sub-group-label">애니메이션</span>
+              <KSelect
+                testId="sub-animation"
+                flex
+                value={subtitleStyle.animation ?? 'none'}
+                onChange={(v) => applyStyle({ animation: v as SubtitleStyle['animation'] })}
+                options={[
+                  { value: 'none', label: '없음 (한 번에)' },
+                  { value: 'pop', label: '팝 (커지며 등장)' },
+                  { value: 'reveal', label: '한 어절씩 등장' },
+                  { value: 'typewriter', label: '타자기 (글자씩)' },
+                  { value: 'karaoke', label: '가라오케(노래방)' },
+                ]}
+              />
+            </div>
+            <div className="sub-group">
+              <span className="sub-group-label">위치</span>
+              <div className="sub-pos-grid">
+                {ANCHORS.map((a) => {
+                  const sel =
+                    Math.abs(subtitlePos.y - a.y) < 0.05 &&
+                    Math.abs(anchorXForScale(a.x, subtitlePos.scale) - subtitlePos.x) < 0.05;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={sel ? 'on' : ''}
+                      data-testid={`sub-anchor-${a.id}`}
+                      title={`anchor ${a.id}`}
+                      onClick={() => applyAnchor(a.x, a.y)}
+                    >
+                      {a.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="sub-slider">
+                <span>크기 {Math.round(subtitlePos.scale * 100)}%</span>
+                <input
+                  type="range"
+                  min={20}
+                  max={100}
+                  value={Math.round(subtitlePos.scale * 100)}
+                  data-testid="sub-scale"
+                  onChange={async (e) => {
+                    const scale = Number(e.target.value) / 100;
+                    setSubtitlePos({ scale });
+                    scheduleReburn({ ...subtitlePos, scale }, subtitleStyle);
+                  }}
+                />
+              </label>
+            </div>
+            <details className="sub-style-adv">
+              <summary>세부 스타일 (색·외곽선·배경·폰트·강조)</summary>
+              <div className="sub-style-body">
+                <label className="sub-ctl">
+                  <span>글자색</span>
+                  <input
+                    type="color"
+                    className="swatch"
+                    value={subtitleStyle.color ?? '#ffffff'}
+                    data-testid="sub-color"
+                    onChange={(e) => applyStyle({ color: e.target.value })}
+                  />
+                </label>
+                <label className="sub-ctl">
+                  <span>외곽선</span>
+                  <input
+                    type="color"
+                    className="swatch"
+                    value={(subtitleStyle.stroke as string) || '#000000'}
+                    data-testid="sub-stroke"
+                    onChange={(e) => applyStyle({ stroke: e.target.value })}
+                  />
+                </label>
+                <div className="sub-ctl">
+                  <span>배경</span>
+                  <KSelect
+                    testId="sub-bg"
+                    flex
+                    value={subtitleStyle.bg ?? 'rgba(0,0,0,0.55)'}
+                    onChange={(v) => applyStyle({ bg: v })}
+                    options={[
+                      { value: 'rgba(0,0,0,0.55)', label: '어둡게 55%' },
+                      { value: 'rgba(0,0,0,0.85)', label: '어둡게 85%' },
+                      { value: 'rgba(255,255,255,0.7)', label: '밝게' },
+                      { value: 'transparent', label: '없음' },
+                    ]}
+                  />
+                </div>
+                <div className="sub-ctl">
+                  <span>폰트</span>
+                  <KSelect
+                    testId="sub-font"
+                    flex
+                    value={subtitleStyle.fontFamily ?? 'system-ui, sans-serif'}
+                    onChange={(v) => applyStyle({ fontFamily: v })}
+                    options={[
+                      { value: 'system-ui, sans-serif', label: '시스템' },
+                      { value: 'Georgia, serif', label: '세리프' },
+                      { value: "'Courier New', monospace", label: '고정폭' },
+                      { value: 'Impact, sans-serif', label: '임팩트' },
+                      {
+                        value:
+                          '"Apple SD Gothic Neo", "Pretendard", "Noto Sans CJK KR", "Malgun Gothic", system-ui, sans-serif',
+                        label: '한글(CJK)',
+                      },
+                    ]}
+                  />
+                </div>
+                <label className="sub-ctl checkbox">
+                  <span>키워드 강조</span>
+                  <input
+                    type="checkbox"
+                    data-testid="sub-emphasis"
+                    checked={emphasizeKeywords}
+                    onChange={(e) => applyEmphasis(e.target.checked)}
+                  />
+                </label>
+                <label className="sub-ctl">
+                  <span>강조색</span>
+                  <input
+                    type="color"
+                    className="swatch"
+                    data-testid="sub-emphasis-color"
+                    value={subtitleStyle.emphasisColor ?? '#ffd54f'}
+                    disabled={!emphasizeKeywords}
+                    onChange={(e) => applyStyle({ emphasisColor: e.target.value })}
+                  />
+                </label>
+                <div className="sub-xy">
+                  <label className="sub-slider">
+                    <span>가로 {Math.round(subtitlePos.x * 100)}%</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(subtitlePos.x * 100)}
+                      data-testid="sub-x"
+                      onChange={async (e) => {
+                        const x = Number(e.target.value) / 100;
+                        setSubtitlePos({ x });
+                        scheduleReburn({ ...subtitlePos, x }, subtitleStyle);
+                      }}
+                    />
+                  </label>
+                  <label className="sub-slider">
+                    <span>세로 {Math.round(subtitlePos.y * 100)}%</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(subtitlePos.y * 100)}
+                      data-testid="sub-y"
+                      onChange={async (e) => {
+                        const y = Number(e.target.value) / 100;
+                        setSubtitlePos({ y });
+                        scheduleReburn({ ...subtitlePos, y }, subtitleStyle);
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
             </details>
-            <details className="chapters">
-              <summary>
-                <ListTree size={13} /> 챕터 / 타임스탬프
-              </summary>
-              <div className="chapters-body">
-                <div className="chapters-actions">
-                  <button
-                    type="button"
-                    className="btn ghost"
-                    data-testid="gen-chapters"
-                    disabled={!transcript}
-                    onClick={genChapters}
-                    title="무음·문장 경계로 챕터를 추출합니다"
-                  >
-                    추출
-                  </button>
-                  {chapters.length > 0 && (
+          </div>
+        )}
+        <div className="review-tools" data-testid="review-tools">
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="remove-fillers"
+            disabled={!transcript || fillerIds.size === 0}
+            onClick={() => removeFillers()}
+            title="음/어/흠 같은 말버릇 어절을 한 번에 컷합니다"
+          >
+            <Eraser size={13} /> 말버릇 {fillerIds.size}개 제거
+            {fillerSavedUs > 0 ? ` · −${fmt(fillerSavedUs)}` : ''}
+          </button>
+          <label
+            className="ov-field"
+            data-testid="review-mode-field"
+            title="STT 신뢰도가 낮은 어절을 빨갛게 표시합니다. 더블클릭으로 고칠 수 있어요."
+          >
+            <input
+              type="checkbox"
+              data-testid="review-mode"
+              checked={reviewMode}
+              disabled={!transcript}
+              onChange={(e) => setReviewMode(e.target.checked)}
+            />
+            <Search size={13} /> 검수{' '}
+            {reviewMode && uncertainIds.size > 0 ? `(${uncertainIds.size})` : ''}
+          </label>
+          {reviewMode && uncertainIds.size > 0 && (
+            <button
+              type="button"
+              className="btn ghost"
+              data-testid="jump-uncertain"
+              onClick={jumpNextUncertain}
+              title="다음 검수 대상 어절로 이동"
+            >
+              <CornerDownRight size={13} /> 다음 의심 어절
+            </button>
+          )}
+          {advanced && (
+            <>
+              <details className="glossary">
+                <summary>
+                  <NotebookText size={13} /> 내 사전 ({glossary.length})
+                </summary>
+                <div className="glossary-body">
+                  {glossary.length === 0 && (
+                    <div className="glossary-hint">
+                      자주 틀리는 고유명사를 등록하면 전사 후 자동 교정됩니다.
+                    </div>
+                  )}
+                  {glossary.map((p, i) => (
+                    <div className="glossary-row" key={`${p.from}-${i}`} data-testid="glossary-row">
+                      <span>
+                        {p.from} → {p.to || '(삭제)'}
+                      </span>
+                      <button
+                        type="button"
+                        className="x"
+                        data-testid="glossary-remove"
+                        onClick={() => removeGlossaryPair(i)}
+                        aria-label="사전 항목 삭제"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <GlossaryAdd onAdd={addGlossaryPair} />
+                </div>
+              </details>
+              <details className="chapters">
+                <summary>
+                  <ListTree size={13} /> 챕터 / 타임스탬프
+                </summary>
+                <div className="chapters-body">
+                  <div className="chapters-actions">
                     <button
                       type="button"
                       className="btn ghost"
-                      data-testid="copy-chapters"
-                      onClick={copyChapters}
+                      data-testid="gen-chapters"
+                      disabled={!transcript}
+                      onClick={genChapters}
+                      title="무음·문장 경계로 챕터를 추출합니다"
                     >
-                      <Clipboard size={13} /> 복사
+                      추출
                     </button>
+                    {chapters.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        data-testid="copy-chapters"
+                        onClick={copyChapters}
+                      >
+                        <Clipboard size={13} /> 복사
+                      </button>
+                    )}
+                  </div>
+                  {chapters.length > 0 && (
+                    <pre className="chapters-out" data-testid="chapters-out">
+                      {formatChapters(chapters)}
+                    </pre>
                   )}
                 </div>
-                {chapters.length > 0 && (
-                  <pre className="chapters-out" data-testid="chapters-out">
-                    {formatChapters(chapters)}
-                  </pre>
-                )}
-              </div>
-            </details>
-          </>
-        )}
-      </div>
-      <div className="transcript-body" data-testid="transcript-panel">
-        {!transcript && !mediaPath && (
-          <div className="empty-transcript">
-            먼저 영상을 가져오세요.
-            <br />
-            그다음 "자막 생성"을 누르면 받아쓰기가 시작됩니다.
-          </div>
-        )}
-        {!transcript && mediaPath && (
-          <div className="empty-transcript">
-            <button
-              type="button"
-              className="btn primary"
-              data-testid="transcribe"
-              disabled={!hasAudio || status === 'extracting' || status === 'transcribing'}
-              onClick={() => void transcribeMedia()}
-            >
-              <Mic size={14} /> 자막 생성 (받아쓰기)
-            </button>
-            {transcribeError ? (
-              <div
-                data-testid="transcribe-error"
-                style={{ marginTop: 10, fontSize: 12, color: '#ff8a8a' }}
-              >
-                {transcribeError}
-              </div>
-            ) : (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-                {hasAudio
-                  ? '오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다. 자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.'
-                  : '이 영상엔 오디오가 없어 받아쓰기는 불가해요. 대신 아래 "직접 자막 입력"으로 캡션을 타이핑할 수 있습니다.'}
-              </div>
-            )}
-            <div style={{ marginTop: 12 }}>
+              </details>
+            </>
+          )}
+        </div>
+        <div className="transcript-body" data-testid="transcript-panel">
+          {!transcript && !mediaPath && (
+            <div className="empty-transcript">
+              먼저 영상을 가져오세요.
+              <br />
+              그다음 "자막 생성"을 누르면 받아쓰기가 시작됩니다.
+            </div>
+          )}
+          {!transcript && mediaPath && (
+            <div className="empty-transcript">
               <button
                 type="button"
-                className="btn"
-                data-testid="add-manual-cue"
-                onClick={() => addManualCue('')}
-                title="현재 재생 위치에 자막을 직접 입력합니다 (음성 없어도 가능)"
+                className="btn primary"
+                data-testid="transcribe"
+                disabled={!hasAudio || status === 'extracting' || status === 'transcribing'}
+                onClick={() => void transcribeMedia()}
               >
-                <Pencil size={13} /> 직접 자막 입력
+                <Mic size={14} /> 자막 생성 (받아쓰기)
               </button>
-            </div>
-          </div>
-        )}
-        {manualCues.length > 0 && (
-          <div className="manual-cues" data-testid="manual-cues">
-            <div className="field" style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>직접 입력 자막 ({manualCues.length})</span>
-              <button
-                type="button"
-                className="link"
-                data-testid="add-manual-cue"
-                onClick={() => addManualCue('')}
-              >
-                + 현재 위치에 추가
-              </button>
-            </div>
-            {[...manualCues]
-              .sort((a, b) => a.startUs - b.startUs)
-              .map((c) => (
-                <div className="manual-cue" key={c.id}>
-                  <input
-                    className="input"
-                    data-testid="manual-cue-text"
-                    value={c.text}
-                    placeholder="자막 텍스트를 입력하세요"
-                    onChange={(e) => updateManualCue(c.id, { text: e.target.value })}
-                  />
-                  <div className="manual-cue-time">
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() => setPlayhead(c.startUs)}
-                      title="이 자막 시작으로 이동"
-                    >
-                      {fmt(c.startUs)}~{fmt(c.endUs)}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn ghost xs"
-                      title="시작을 현재 재생 위치로"
-                      onClick={() =>
-                        updateManualCue(c.id, {
-                          startUs: Math.min(playheadUs, c.endUs - 100_000),
-                        })
-                      }
-                    >
-                      시작=현재
-                    </button>
-                    <button
-                      type="button"
-                      className="btn ghost xs"
-                      title="끝을 현재 재생 위치로"
-                      onClick={() =>
-                        updateManualCue(c.id, { endUs: Math.max(playheadUs, c.startUs + 100_000) })
-                      }
-                    >
-                      끝=현재
-                    </button>
-                    <button
-                      type="button"
-                      className="x"
-                      data-testid="manual-cue-remove"
-                      title="삭제"
-                      onClick={() => removeManualCue(c.id)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
-            <p className="muted-note">
-              스크럽으로 위치를 맞춘 뒤 <b>시작=현재 / 끝=현재</b>로 타이밍을 잡고, 위{' '}
-              <b>자막 입히기</b>로 영상에 새깁니다. 스타일·애니메이션·내보내기(SRT)는 받아쓰기
-              자막과 동일하게 적용돼요.
-            </p>
-          </div>
-        )}
-        {transcript?.segments.map((seg) => (
-          <div className="seg" key={seg.id}>
-            {seg.words.map((id) => {
-              const w = transcript.words[id];
-              if (!w) return null;
-              const isDead = dead.has(id);
-              const isUncertain = reviewMode && uncertainIds.has(id);
-              if (editingId === id) {
-                // 인라인 교정 입력 — Enter/blur 커밋, Esc 취소.
-                return (
-                  <input
-                    key={id}
-                    className="word-edit"
-                    data-testid="word-edit"
-                    defaultValue={w.text}
-                    // biome-ignore lint/a11y/noAutofocus: inline correction focuses the edited word
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void commitWordEdit(id, e.currentTarget.value);
-                      else if (e.key === 'Escape') setEditingId(null);
-                    }}
-                    onBlur={(e) => void commitWordEdit(id, e.currentTarget.value)}
-                  />
-                );
-              }
-              const cls = [
-                'word',
-                isDead ? 'dead' : '',
-                selected.includes(id) ? 'sel' : '',
-                id === activeId ? 'active' : '',
-                fillerIds.has(id) ? 'filler' : '',
-                isUncertain ? 'uncertain' : '',
-              ]
-                .filter(Boolean)
-                .join(' ');
-              return (
-                <span
-                  key={id}
-                  className={cls}
-                  data-testid="word"
-                  data-dead={isDead ? 'true' : 'false'}
-                  data-uncertain={isUncertain ? 'true' : 'false'}
-                  onClick={(e) => {
-                    if (isDead) return;
-                    if (e.metaKey || e.ctrlKey) {
-                      if (timeline) {
-                        const p = wordToProgram(timeline, w);
-                        if (p) setPlayhead(p.start);
-                      }
-                      return;
-                    }
-                    toggleWord(id);
-                  }}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    if (!isDead) setEditingId(id); // 더블클릭 → 텍스트 교정
-                  }}
-                  onKeyDown={() => {}}
-                  title={
-                    isUncertain
-                      ? `신뢰도 ${(w.confidence * 100).toFixed(0)}% · 더블클릭으로 교정`
-                      : timeline
-                        ? '⌘/Ctrl+click 위치 이동 · 더블클릭 교정'
-                        : undefined
-                  }
+              {transcribeError ? (
+                <div
+                  data-testid="transcribe-error"
+                  style={{ marginTop: 10, fontSize: 12, color: '#ff8a8a' }}
                 >
-                  {w.text}{' '}
-                </span>
-              );
-            })}
-          </div>
-        ))}
+                  {transcribeError}
+                </div>
+              ) : (
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                  {hasAudio
+                    ? '오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다. 자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.'
+                    : '이 영상엔 오디오가 없어 받아쓰기는 불가해요. 대신 아래 "직접 자막 입력"으로 캡션을 타이핑할 수 있습니다.'}
+                </div>
+              )}
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="add-manual-cue"
+                  onClick={() => addManualCue('')}
+                  title="현재 재생 위치에 자막을 직접 입력합니다 (음성 없어도 가능)"
+                >
+                  <Pencil size={13} /> 직접 자막 입력
+                </button>
+              </div>
+            </div>
+          )}
+          {manualCues.length > 0 && (
+            <div className="manual-cues" data-testid="manual-cues">
+              <div className="field" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>직접 입력 자막 ({manualCues.length})</span>
+                <button
+                  type="button"
+                  className="link"
+                  data-testid="add-manual-cue"
+                  onClick={() => addManualCue('')}
+                >
+                  + 현재 위치에 추가
+                </button>
+              </div>
+              {[...manualCues]
+                .sort((a, b) => a.startUs - b.startUs)
+                .map((c) => (
+                  <div className="manual-cue" key={c.id}>
+                    <input
+                      className="input"
+                      data-testid="manual-cue-text"
+                      value={c.text}
+                      placeholder="자막 텍스트를 입력하세요"
+                      onChange={(e) => updateManualCue(c.id, { text: e.target.value })}
+                    />
+                    <div className="manual-cue-time">
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => setPlayhead(c.startUs)}
+                        title="이 자막 시작으로 이동"
+                      >
+                        {fmt(c.startUs)}~{fmt(c.endUs)}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost xs"
+                        title="시작을 현재 재생 위치로"
+                        onClick={() =>
+                          updateManualCue(c.id, {
+                            startUs: Math.min(playheadUs, c.endUs - 100_000),
+                          })
+                        }
+                      >
+                        시작=현재
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost xs"
+                        title="끝을 현재 재생 위치로"
+                        onClick={() =>
+                          updateManualCue(c.id, {
+                            endUs: Math.max(playheadUs, c.startUs + 100_000),
+                          })
+                        }
+                      >
+                        끝=현재
+                      </button>
+                      <button
+                        type="button"
+                        className="x"
+                        data-testid="manual-cue-remove"
+                        title="삭제"
+                        onClick={() => removeManualCue(c.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              <p className="muted-note">
+                스크럽으로 위치를 맞춘 뒤 <b>시작=현재 / 끝=현재</b>로 타이밍을 잡고, 위{' '}
+                <b>자막 입히기</b>로 영상에 새깁니다. 스타일·애니메이션·내보내기(SRT)는 받아쓰기
+                자막과 동일하게 적용돼요.
+              </p>
+            </div>
+          )}
+          {transcript?.segments.map((seg) => (
+            <div className="seg" key={seg.id}>
+              {seg.words.map((id) => {
+                const w = transcript.words[id];
+                if (!w) return null;
+                const isDead = dead.has(id);
+                const isUncertain = reviewMode && uncertainIds.has(id);
+                if (editingId === id) {
+                  // 인라인 교정 입력 — Enter/blur 커밋, Esc 취소.
+                  return (
+                    <input
+                      key={id}
+                      className="word-edit"
+                      data-testid="word-edit"
+                      defaultValue={w.text}
+                      // biome-ignore lint/a11y/noAutofocus: inline correction focuses the edited word
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void commitWordEdit(id, e.currentTarget.value);
+                        else if (e.key === 'Escape') setEditingId(null);
+                      }}
+                      onBlur={(e) => void commitWordEdit(id, e.currentTarget.value)}
+                    />
+                  );
+                }
+                const cls = [
+                  'word',
+                  isDead ? 'dead' : '',
+                  selected.includes(id) ? 'sel' : '',
+                  id === activeId ? 'active' : '',
+                  fillerIds.has(id) ? 'filler' : '',
+                  isUncertain ? 'uncertain' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+                return (
+                  <span
+                    key={id}
+                    className={cls}
+                    data-testid="word"
+                    data-dead={isDead ? 'true' : 'false'}
+                    data-uncertain={isUncertain ? 'true' : 'false'}
+                    onClick={(e) => {
+                      if (isDead) return;
+                      if (e.metaKey || e.ctrlKey) {
+                        if (timeline) {
+                          const p = wordToProgram(timeline, w);
+                          if (p) setPlayhead(p.start);
+                        }
+                        return;
+                      }
+                      toggleWord(id);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      if (!isDead) setEditingId(id); // 더블클릭 → 텍스트 교정
+                    }}
+                    onKeyDown={() => {}}
+                    title={
+                      isUncertain
+                        ? `신뢰도 ${(w.confidence * 100).toFixed(0)}% · 더블클릭으로 교정`
+                        : timeline
+                          ? '⌘/Ctrl+click 위치 이동 · 더블클릭 교정'
+                          : undefined
+                    }
+                  >
+                    {w.text}{' '}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

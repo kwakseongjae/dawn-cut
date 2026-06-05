@@ -164,11 +164,11 @@ body {
 }
 .video-frame {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   max-width: 100%;
   max-height: 100%;
-  /* 변환 중(영상 요소 없음)일 때도 프레임이 0으로 collapse되지 않게 — 안내 오버레이가 채워질 면적 확보 */
-  min-width: 440px;
-  min-height: 248px;
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -177,8 +177,9 @@ body {
 }
 .video-frame video {
   display: block;
+  /* 창이 작아지면 가로·세로 둘 다에 맞춰 축소(어느 쪽도 넘치지 않게). */
   max-width: 100%;
-  max-height: 56vh;
+  max-height: 100%;
 }
 /* 리프레임(9:16·1:1) 크롭 가이드 — 잘릴 영역 마스킹 + 세이프프레임 */
 .reframe-mask {
@@ -222,6 +223,15 @@ body {
   text-align: center;
   background: rgba(10, 13, 24, 0.82);
   color: var(--text);
+}
+/* 변환 중 등 <video>가 아직 없을 때: 프레임이 0으로 collapse되지 않게 자체 크기를 갖는다(창 폭의 90%
+   상한, 16:9). 영상이 있으면(.video-err는 absolute 오버레이) 이 변형을 쓰지 않는다. */
+.video-err.standalone {
+  position: relative;
+  inset: auto;
+  width: min(560px, 90%);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
 }
 .video-err .big {
   font-size: 15px;
@@ -318,10 +328,15 @@ body {
   color: var(--faint);
   font-size: 12px;
 }
-.transcript-body {
+/* 헤더 아래 전체(자막카드·갤러리·검수도구·대본)를 한 스크롤 영역으로 — 작은 창에서 잘림 방지 */
+.transcript-scroll {
   flex: 1;
-  min-height: 0; /* flexbox: 콘텐츠보다 작아질 수 있어야 패널 안에서 스크롤(넘침 방지) */
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.transcript-body {
   padding: 16px 18px;
   line-height: 2.05;
 }
