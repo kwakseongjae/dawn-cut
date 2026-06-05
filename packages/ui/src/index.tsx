@@ -2788,6 +2788,8 @@ function Timeline() {
     playheadUs,
     overlays,
     ttsClips,
+    transcript,
+    manualCues,
     seekTo,
     selectOverlay,
     selectedOverlayId,
@@ -2797,6 +2799,13 @@ function Timeline() {
     updateTts,
   } = useEditor();
   const clips = timeline ? videoClips(timeline) : [];
+  // 자막 트랙 블록 = 받아쓰기 cue(문장 단위) + 수기 자막. 라이브 자막/번인과 동일한 소스라
+  // "자막을 만들면 타임라인에서 같이 보인다". 클릭하면 그 cue 시작으로 이동(읽기 전용).
+  const subtitleCues = useMemo(() => {
+    if (!timeline) return [];
+    const base = transcript ? transcriptToCues(transcript, timeline, {}) : [];
+    return [...base, ...manualToCues(manualCues)].sort((a, b) => a.startUs - b.startUs);
+  }, [transcript, timeline, manualCues]);
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
   // 트랙을 클릭하면 그 시점으로 플레이헤드 이동(+일시정지). 클립 자식 클릭도 트랙으로 버블링됨.
   const seekFromTrack = (e: MouseEvent<HTMLDivElement>) => {
@@ -2929,6 +2938,46 @@ function Timeline() {
           </div>
         </div>
         <div className="trackrow">
+          <span className="lbl">Subtitle</span>
+          <div
+            className="track thin ov-lane sub-lane"
+            data-testid="tl-subtitle-track"
+            onClick={seekFromTrack}
+            style={{ cursor: timeline ? 'pointer' : 'default' }}
+          >
+            {subtitleCues.length === 0 ? (
+              <span className="empty-track">
+                자막을 만들면(받아쓰기·직접 입력) 여기에 시간 블록으로 표시 — 클릭=그 자막으로 이동
+              </span>
+            ) : (
+              subtitleCues.map((c, i) => {
+                const left = durationProgramUs > 0 ? (c.startUs / durationProgramUs) * 100 : 0;
+                const width =
+                  durationProgramUs > 0
+                    ? Math.max(1.5, ((c.endUs - c.startUs) / durationProgramUs) * 100)
+                    : 0;
+                return (
+                  <button
+                    type="button"
+                    key={`${c.startUs}-${i}`}
+                    className="ov-block sub-block"
+                    data-testid="sub-block"
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                    title={`${fmt(c.startUs)}~${fmt(c.endUs)} · ${c.text}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      seekTo(c.startUs);
+                    }}
+                  >
+                    <span className="ov-block-label sub-block-label">{c.text}</span>
+                  </button>
+                );
+              })
+            )}
+            {timeline && <div className="playhead" style={{ left: `${ratio * 100}%` }} />}
+          </div>
+        </div>
+        <div className="trackrow">
           <span className="lbl">Overlay</span>
           <div
             className="track thin ov-lane"
@@ -2936,7 +2985,7 @@ function Timeline() {
             style={{ height: `${ovRows * OV_ROW_H + 4}px` }}
           >
             {laneOverlays.length === 0 ? (
-              <span className="track empty-track">
+              <span className="empty-track">
                 스티커·이미지를 추가하면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이 · Delete=삭제
               </span>
             ) : (
@@ -2999,7 +3048,7 @@ function Timeline() {
           <span className="lbl">Voice</span>
           <div className="track thin ov-lane voice-lane" ref={voiceLaneRef}>
             {ttsClips.length === 0 ? (
-              <span className="track empty-track">
+              <span className="empty-track">
                 AI 보이스를 만들면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이 · Delete=삭제
               </span>
             ) : (

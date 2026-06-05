@@ -65,7 +65,8 @@ body {
 
 .app {
   display: grid;
-  grid-template-rows: 52px 1fr 178px 30px;
+  /* 타임라인 4트랙(Video·Subtitle·Overlay·Voice)이 한눈에 들어오도록 높이 확보(넘치면 .tracks 스크롤). */
+  grid-template-rows: 52px 1fr 214px 30px;
   grid-template-areas: "toolbar" "main" "timeline" "status";
   height: 100vh;
 }
@@ -196,9 +197,9 @@ body {
   align-items: center;
   justify-content: center;
   max-width: 100%;
-  /* 세로 영상이 재생바/타임라인을 밀어내지 않게 definite 상한. 고정 크롬(툴바52+타임라인178+
-     상태30+스테이지 패딩44+재생바66 ≈ 370)을 창 높이에서 뺀다. %는 content-sized 프레임에서 안 먹음. */
-  max-height: calc(100vh - 372px);
+  /* 세로 영상이 재생바/타임라인을 밀어내지 않게 definite 상한. 고정 크롬(툴바52+타임라인214+
+     상태30+스테이지 패딩44+재생바66 ≈ 406)을 창 높이에서 뺀다. %는 content-sized 프레임에서 안 먹음. */
+  max-height: calc(100vh - 408px);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -210,7 +211,7 @@ body {
   object-fit: contain;
   /* 가로·세로 둘 다에 맞춰 축소(definite 상한이라 세로 영상도 영역 안에 들어옴). */
   max-width: 100%;
-  max-height: calc(100vh - 372px);
+  max-height: calc(100vh - 408px);
 }
 /* 번인 전 라이브 자막 밴드 — 영상 위에 얹힘. 클릭은 통과(오버레이 선택 방해 X). */
 .live-cap {
@@ -1384,6 +1385,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  /* 트랙이 4개(Video·Subtitle·Overlay·Voice)라 타임라인 패널 높이를 넘으면 부드럽게 스크롤. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 .trackrow {
   display: grid;
@@ -1522,6 +1529,37 @@ body {
   border-color: var(--ok);
   z-index: 2;
 }
+/* SUBTITLE 레인 — 자막 cue(받아쓰기·수기) 시간 블록. 읽기 전용(클릭=해당 자막으로 이동),
+   캡션을 연상시키는 앰버 톤. 텍스트는 왼쪽 정렬 + 말줄임. */
+.sub-lane .ov-block {
+  top: 2px;
+  height: calc(100% - 4px);
+}
+.sub-block {
+  appearance: none;
+  font: inherit;
+  justify-content: flex-start;
+  padding: 0 7px;
+  background: linear-gradient(180deg, #463a1c, #382e16);
+  border: 1px solid #6b5829;
+  color: #f3e3b0;
+  cursor: pointer;
+}
+.sub-block:hover {
+  border-color: #a98a3e;
+}
+.sub-block-label {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  font-size: 10px;
+  color: #f3e3b0;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
 /* 상태바 편집기록 카운트(연필 아이콘 정렬) */
 .statusbar .audit {
   display: inline-flex;
@@ -1533,12 +1571,21 @@ body {
   align-items: center;
   gap: 4px;
 }
-.track.empty-track {
-  color: var(--faint);
-  font-size: 10px;
+/* 빈 레인 힌트 — 레인(.ov-lane) 자체가 박스이므로, 힌트는 박스 없이 한 줄로 꽉 채워
+   넘치면 …로 줄인다(예전엔 .track 클래스가 텍스트 폭만큼의 둥근 박스를 만들어 모양이 이상했음). */
+.empty-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
   display: flex;
   align-items: center;
   padding-left: 8px;
+  color: var(--faint);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 
 /* preview overlay layer (WYSIWYG — matches FFmpeg overlay export coords) */
