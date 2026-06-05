@@ -1,10 +1,13 @@
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import electronPath from 'electron';
 
 const ROOT = process.cwd();
 const MAIN = resolve(ROOT, 'apps/desktop/out/main/index.js');
-const VIDEO = resolve(ROOT, 'output/sources/ko-talk.mp4');
+// 세로(portrait) 영상이 타임라인을 뚫던 케이스를 직접 재현 — 있으면 당근(세로), 없으면 ko-talk.
+const PORTRAIT = resolve(process.env.HOME ?? '', 'Desktop/패스트캠퍼스/당근.mp4');
+const VIDEO = existsSync(PORTRAIT) ? PORTRAIT : resolve(ROOT, 'output/sources/ko-talk.mp4');
 const shot = (n: string) => resolve(ROOT, `output/responsive/${n}`);
 
 test('작은 창: 우측 패널 스크롤 + 가운데 미리보기 맞춤', async () => {
@@ -48,14 +51,26 @@ test('작은 창: 우측 패널 스크롤 + 가운데 미리보기 맞춤', asyn
     await win.waitForTimeout(300);
     await win.screenshot({ path: shot('02-small-scrolled.png') });
 
-    // 미리보기 비디오가 창 안에 맞는가(프레임이 영역을 넘지 않음)
+    // 프록시 변환이 끝나 실제 <video>가 뜰 때까지 잠깐 대기(세로 영상 오버플로 재현 조건).
+    await win.waitForTimeout(2500);
+    await win.screenshot({ path: shot('03-portrait-fit.png') });
+    // 미리보기 프레임이 스테이지 안에 맞고, 타임라인을 뚫지 않는다(하단 침범 없음).
     const fit = await win.locator('.video-frame').evaluate((el) => {
       const stage = el.closest('.stage') as HTMLElement;
+      const timeline = document.querySelector('.timeline') as HTMLElement;
       const r = el.getBoundingClientRect();
       const s = stage.getBoundingClientRect();
-      return { withinW: r.width <= s.width + 1, withinH: r.height <= s.height + 1 };
+      return {
+        withinW: r.width <= s.width + 1,
+        withinH: r.height <= s.height + 1,
+        aboveTimeline:
+          r.bottom <= (timeline?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) + 1,
+      };
     });
     expect(fit.withinW && fit.withinH, `preview must fit stage: ${JSON.stringify(fit)}`).toBe(true);
+    expect(fit.aboveTimeline, `preview must not punch into timeline: ${JSON.stringify(fit)}`).toBe(
+      true,
+    );
   } finally {
     await app.close();
   }

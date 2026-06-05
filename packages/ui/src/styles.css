@@ -37,6 +37,31 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
+/* 다크 UI에 맞춘 얇고 은은한 스크롤바(기본 밝은 막대가 과하게 도드라지던 문제). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 .app {
   display: grid;
@@ -168,7 +193,9 @@ body {
   align-items: center;
   justify-content: center;
   max-width: 100%;
-  max-height: 100%;
+  /* 세로 영상이 타임라인을 뚫고 내려가지 않게: 창 높이에서 고정 크롬(툴바52+타임라인178+상태30
+     +스테이지 패딩+재생바 ≈ 340)을 뺀 definite 값으로 상한. %는 content-sized 프레임에서 안 먹음. */
+  max-height: calc(100vh - 340px);
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -177,9 +204,10 @@ body {
 }
 .video-frame video {
   display: block;
-  /* 창이 작아지면 가로·세로 둘 다에 맞춰 축소(어느 쪽도 넘치지 않게). */
+  object-fit: contain;
+  /* 가로·세로 둘 다에 맞춰 축소(definite 상한이라 세로 영상도 영역 안에 들어옴). */
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100vh - 340px);
 }
 /* 리프레임(9:16·1:1) 크롭 가이드 — 잘릴 영역 마스킹 + 세이프프레임 */
 .reframe-mask {
