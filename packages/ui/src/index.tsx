@@ -1176,6 +1176,8 @@ function Preview() {
     selectOverlay,
     updateOverlay,
     removeOverlay,
+    updateManualCue,
+    setSubtitlePos,
     colorPreset,
     autoEnhanceEq,
     reframe,
@@ -1183,7 +1185,7 @@ function Preview() {
     frameH,
   } = useEditor();
   const selectedOverlay = overlays.find((o) => o.id === selectedOverlayId) ?? null;
-  const liveCap = useLiveCaption();
+  const liveCaps = useLiveCaptions();
   // 프리뷰 필터 = 색보정 프리셋 근사 + 자동 보정 eq 근사(둘 다 CSS, 익스포트는 ffmpeg 정확).
   const previewFilter =
     [colorPreset !== 'none' ? CSS_COLOR_APPROX[colorPreset] : null, cssFromEq(autoEnhanceEq)]
@@ -1408,15 +1410,23 @@ function Preview() {
               </div>
             ))}
             {/* 번인 전 라이브 자막 — 영상 위에 그대로 얹어 "자막이 들어간다"를 눈으로 확인.
+                여러 수기 자막은 각자 위치에 동시에 뜨고(스티커처럼), 드래그로 자리를 옮길 수 있다.
                 번인(burnt)되면 실제 subtitle 오버레이가 같은 자리에 떠 이중표시가 안 되게 끈다. */}
-            {previewPath && !videoErr && !liveCap.burnt && liveCap.caption && (
-              <VideoCaption
-                style={liveCap.style}
-                text={liveCap.caption}
-                emphasis={liveCap.emphasis}
-                pos={liveCap.pos}
-              />
-            )}
+            {previewPath &&
+              !videoErr &&
+              !liveCaps.burnt &&
+              liveCaps.items.map((it) => (
+                <VideoCaption
+                  key={it.key}
+                  style={it.style}
+                  text={it.caption}
+                  emphasis={it.emphasis}
+                  pos={it.pos}
+                  onDragPos={(p) =>
+                    it.cueId ? updateManualCue(it.cueId, { pos: p }) : setSubtitlePos(p)
+                  }
+                />
+              ))}
           </div>
         ) : (
           <div className="empty-stage">
@@ -1741,39 +1751,93 @@ function SubtitlePreview({
   );
 }
 
-// 현재 playhead의 자막 한 줄(받아쓰기 또는 수기) — 번인과 '동일 경로'(transcriptToCues/manualToCues
-// → captionFrames → wrapCaption)로 계산해 미리보기 카드와 영상 위 라이브 자막이 정확히 일치한다.
-// Transcript 카드와 달리 cue를 못 찾으면 null(fallback 없음) — 영상 위엔 "지금 보일 자막"만 떠야 한다.
-function useLiveCaption() {
+// 영상 위에 떠야 할 라이브 자막 한 줄. cueId가 있으면 수기 자막(드래그→그 cue 위치), 없으면 받아쓰기(전역).
+interface LiveCap {
+  key: string;
+  cueId?: string;
+  caption: string;
+  emphasis?: ReadonlySet<string>;
+  style: SubtitleStyle;
+  pos: { x: number; y: number; scale: number };
+}
+// cue → 현재 playhead의 라이브 자막(번인과 동일 경로: captionFrames → wrapCaption). 비면 null.
+function liveFromCue(
+  cue: SubtitleCue,
+  subAnim: Parameters<typeof captionFrames>[1],
+  emphasizeKeywords: boolean,
+  playheadUs: number,
+  style: SubtitleStyle,
+  pos: { x: number; y: number; scale: number },
+  key: string,
+  cueId?: string,
+): LiveCap | null {
+  const frames = captionFrames(cue, subAnim);
+  const fr =
+    frames.find((f) => playheadUs >= f.startUs && playheadUs < f.endUs) ?? frames[0] ?? null;
+  if (!fr) return null;
+  const caption = wrapCaption(fr.text, { maxCharsPerLine: 16, maxLines: 2 });
+  if (!caption.trim()) return null;
+  const emphasis =
+    subAnim === 'karaoke' && fr.activeWord
+      ? new Set([fr.activeWord])
+      : emphasisFor(cue.text, emphasizeKeywords);
+  return { key, cueId, caption, emphasis, style, pos };
+}
+// 현재 playhead에 보여야 할 모든 라이브 자막. 받아쓰기는 순차라 1개(전역 위치), 수기 자막은
+// 시간이 겹치면 여러 개가 각자 위치(cue.pos ?? 전역)에 동시에 뜬다 — 스티커처럼 병렬 표시.
+function useLiveCaptions(): { items: LiveCap[]; burnt: boolean } {
   const { transcript, timeline, manualCues, playheadUs, subtitleStyle, subtitlePos, overlays } =
     useEditor();
   const subAnim = subtitleStyle.animation ?? 'none';
   const emphasizeKeywords = subtitleStyle.emphasizeKeywords ?? false;
   const burnt = overlays.some((o) => o.kind === 'subtitle');
-  const currentCue = useMemo(() => {
-    if (!timeline) return null;
-    const cues = transcript
-      ? transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim))
-      : manualToCues(manualCues);
-    return cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? null;
-  }, [transcript, timeline, playheadUs, subAnim, manualCues]);
-  const currentFrame = useMemo(() => {
-    if (!currentCue) return null;
-    const frames = captionFrames(currentCue, subAnim);
-    return frames.find((f) => playheadUs >= f.startUs && playheadUs < f.endUs) ?? frames[0] ?? null;
-  }, [currentCue, subAnim, playheadUs]);
-  const caption = useMemo(
-    () =>
-      currentFrame ? wrapCaption(currentFrame.text, { maxCharsPerLine: 16, maxLines: 2 }) : '',
-    [currentFrame],
-  );
-  const emphasis = useMemo(() => {
-    if (!currentCue) return undefined;
-    if (subAnim === 'karaoke' && currentFrame?.activeWord)
-      return new Set([currentFrame.activeWord]);
-    return emphasisFor(currentCue.text, emphasizeKeywords);
-  }, [currentCue, currentFrame, subAnim, emphasizeKeywords]);
-  return { caption, emphasis, style: subtitleStyle, pos: subtitlePos, burnt };
+  const items = useMemo(() => {
+    if (!timeline) return [];
+    const out: LiveCap[] = [];
+    if (transcript) {
+      const cues = transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim));
+      const cur = cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs);
+      if (cur) {
+        const lc = liveFromCue(
+          cur,
+          subAnim,
+          emphasizeKeywords,
+          playheadUs,
+          subtitleStyle,
+          subtitlePos,
+          'transcript',
+        );
+        if (lc) out.push(lc);
+      }
+    }
+    // 활성 수기 자막 전부(시간 겹침 허용) → 각자 위치에 동시 표시.
+    for (const mc of manualCues) {
+      if (!mc.text.trim()) continue;
+      if (playheadUs < mc.startUs || playheadUs >= mc.endUs) continue;
+      const lc = liveFromCue(
+        manualCueToSubtitleCue(mc, 0),
+        subAnim,
+        emphasizeKeywords,
+        playheadUs,
+        subtitleStyle,
+        mc.pos ?? subtitlePos,
+        mc.id,
+        mc.id,
+      );
+      if (lc) out.push(lc);
+    }
+    return out;
+  }, [
+    transcript,
+    timeline,
+    playheadUs,
+    subAnim,
+    manualCues,
+    subtitleStyle,
+    subtitlePos,
+    emphasizeKeywords,
+  ]);
+  return { items, burnt };
 }
 
 // 영상 프레임 위에 그대로 얹는 라이브 자막 밴드(SubtitlePreview와 동일한 drawSubtitle/밴드 수학,
@@ -1783,13 +1847,40 @@ function VideoCaption({
   text,
   emphasis,
   pos,
+  onDragPos,
 }: {
   style: SubtitleStyle;
   text: string;
   emphasis?: ReadonlySet<string>;
   pos: { x: number; y: number; scale: number };
+  // 드래그로 위치를 옮길 수 있게(스티커처럼). 없으면 고정.
+  onDragPos?: (p: { x: number; y: number; scale: number }) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const onDown = (e: PointerEvent<HTMLCanvasElement>) => {
+    if (!onDragPos) return;
+    e.stopPropagation();
+    e.preventDefault();
+    drag.current = { px: e.clientX, py: e.clientY, ox: pos.x, oy: pos.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: PointerEvent<HTMLCanvasElement>) => {
+    const d = drag.current;
+    const frame = ref.current?.parentElement;
+    if (!d || !frame || !onDragPos) return;
+    const r = frame.getBoundingClientRect();
+    const nx = Math.min(
+      Math.max(0, d.ox + (e.clientX - d.px) / r.width),
+      Math.max(0, 1 - pos.scale),
+    );
+    const ny = Math.min(Math.max(0, d.oy + (e.clientY - d.py) / r.height), 1);
+    onDragPos({ x: nx, y: ny, scale: pos.scale });
+  };
+  const onUp = (e: PointerEvent<HTMLCanvasElement>) => {
+    drag.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  };
   useEffect(() => {
     const c = ref.current;
     const frame = c?.parentElement;
@@ -1818,7 +1909,16 @@ function VideoCaption({
     ro.observe(frame);
     return () => ro.disconnect();
   }, [style, text, emphasis, pos.x, pos.y, pos.scale]);
-  return <canvas className="live-cap" ref={ref} data-testid="live-caption" />;
+  return (
+    <canvas
+      className={`live-cap${onDragPos ? ' draggable' : ''}`}
+      ref={ref}
+      data-testid="live-caption"
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+    />
+  );
 }
 
 const ANCHORS: { id: string; label: string; x: number; y: number }[] = [
@@ -2018,12 +2118,17 @@ function Transcript() {
     // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
     // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
     const anim = style.animation ?? 'none';
-    // 자막 소스 = 받아쓰기(transcript) cue + 수기 자막(manualCues). 둘 다 있으면 합쳐 번인.
-    const cues = [
-      ...(tr ? transcriptToCues(tr, tl, cueOptsForAnim(anim)) : []),
-      ...manualToCues(mc),
+    // 자막 소스 = 받아쓰기(transcript) cue(전역 위치) + 수기 자막(각자 cue.pos, 없으면 전역).
+    // 수기 자막마다 위치를 따로 들고 가, 영상 위 라이브 자막과 동일한 자리에 번인된다(스티커처럼).
+    const placed: { cue: SubtitleCue; cuePos: { x: number; y: number; scale: number } }[] = [
+      ...(tr
+        ? transcriptToCues(tr, tl, cueOptsForAnim(anim)).map((cue) => ({ cue, cuePos: pos }))
+        : []),
+      ...mc
+        .filter((m) => m.text.trim())
+        .map((m, i) => ({ cue: manualCueToSubtitleCue(m, i), cuePos: m.pos ?? pos })),
     ];
-    for (const c of cues) {
+    for (const { cue: c, cuePos } of placed) {
       // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
       const cueKeys = emphasisFor(c.text, emphOn);
       // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
@@ -2037,12 +2142,12 @@ function Transcript() {
             name: c.text.slice(0, 24),
             text: fr.text,
             src: res.path,
-            x: pos.x,
-            y: pos.y,
+            x: cuePos.x,
+            y: cuePos.y,
             // pop: 작은 크기에서 시작 → 초반 구간 동안 풀크기로 커지는 키프레임 주입(스케일-인).
-            scale: anim === 'pop' ? pos.scale * POP_FROM : pos.scale,
+            scale: anim === 'pop' ? cuePos.scale * POP_FROM : cuePos.scale,
             ...(anim === 'pop'
-              ? { keyframes: [{ u: POP_U, scale: pos.scale, easing: 'easeOut' as const }] }
+              ? { keyframes: [{ u: POP_U, scale: cuePos.scale, easing: 'easeOut' as const }] }
               : {}),
             opacity: 1,
             startUs: fr.startUs,
@@ -2704,6 +2809,34 @@ function Transcript() {
                         <X size={14} />
                       </button>
                     </div>
+                    <div className="cue-pos-row">
+                      <span className="cue-pos-label">위치</span>
+                      <div className="cue-pos-grid" data-testid="cue-pos-grid">
+                        {ANCHORS.map((a) => {
+                          const cp = c.pos ?? subtitlePos;
+                          const sel =
+                            Math.abs(cp.y - a.y) < 0.06 &&
+                            Math.abs(anchorXForScale(a.x, cp.scale) - cp.x) < 0.06;
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              className={sel ? 'on' : ''}
+                              data-testid={`cue-anchor-${c.id}-${a.id}`}
+                              title={`위치 ${a.id} (영상 위에서 직접 끌어도 됩니다)`}
+                              onClick={() => {
+                                const scale = (c.pos ?? subtitlePos).scale;
+                                updateManualCue(c.id, {
+                                  pos: { x: anchorXForScale(a.x, scale), y: a.y, scale },
+                                });
+                              }}
+                            >
+                              {a.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 ))}
               <p className="muted-note">
@@ -2817,6 +2950,21 @@ function Timeline() {
     const base = transcript ? transcriptToCues(transcript, timeline, {}) : [];
     return [...base, ...manualToCues(manualCues)].sort((a, b) => a.startUs - b.startUs);
   }, [transcript, timeline, manualCues]);
+  // 자막 트랙도 OVERLAY처럼 그리디 인터벌 분할 — 시간이 겹치는 cue는 다른 행에 쌓아 병렬로 보이게(스티커처럼).
+  const { subRowOf, subRows } = useMemo(() => {
+    const rowOf: number[] = [];
+    const rowEnds: number[] = [];
+    subtitleCues.forEach((c, i) => {
+      let r = rowEnds.findIndex((end) => end <= c.startUs);
+      if (r === -1) {
+        r = rowEnds.length;
+        rowEnds.push(0);
+      }
+      rowEnds[r] = c.endUs;
+      rowOf[i] = r;
+    });
+    return { subRowOf: rowOf, subRows: Math.max(1, rowEnds.length) };
+  }, [subtitleCues]);
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
   // 트랙을 클릭하면 그 시점으로 플레이헤드 이동(+일시정지). 클립 자식 클릭도 트랙으로 버블링됨.
   const seekFromTrack = (e: MouseEvent<HTMLDivElement>) => {
@@ -2954,7 +3102,10 @@ function Timeline() {
             className="track thin ov-lane sub-lane"
             data-testid="tl-subtitle-track"
             onClick={seekFromTrack}
-            style={{ cursor: timeline ? 'pointer' : 'default' }}
+            style={{
+              cursor: timeline ? 'pointer' : 'default',
+              height: `${subRows * OV_ROW_H + 4}px`,
+            }}
           >
             {subtitleCues.length === 0 ? (
               <span className="empty-track">
@@ -2967,13 +3118,19 @@ function Timeline() {
                   durationProgramUs > 0
                     ? Math.max(1.5, ((c.endUs - c.startUs) / durationProgramUs) * 100)
                     : 0;
+                const row = subRowOf[i] ?? 0;
                 return (
                   <button
                     type="button"
                     key={`${c.startUs}-${i}`}
                     className="ov-block sub-block"
                     data-testid="sub-block"
-                    style={{ left: `${left}%`, width: `${width}%` }}
+                    style={{
+                      left: `${left}%`,
+                      width: `${width}%`,
+                      top: `${row * OV_ROW_H + 2}px`,
+                      height: `${OV_ROW_H - 4}px`,
+                    }}
                     title={`${fmt(c.startUs)}~${fmt(c.endUs)} · ${c.text}`}
                     onClick={(e) => {
                       e.stopPropagation();

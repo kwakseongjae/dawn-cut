@@ -213,11 +213,20 @@ body {
   max-width: 100%;
   max-height: calc(100vh - 408px);
 }
-/* 번인 전 라이브 자막 밴드 — 영상 위에 얹힘. 클릭은 통과(오버레이 선택 방해 X). */
+/* 번인 전 라이브 자막 밴드 — 영상 위에 얹힘. */
 .live-cap {
   position: absolute;
   pointer-events: none;
   z-index: 4;
+}
+/* 드래그로 위치를 옮길 수 있는 라이브 자막(스티커처럼). */
+.live-cap.draggable {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.live-cap.draggable:active {
+  cursor: grabbing;
 }
 /* 리프레임(9:16·1:1) 크롭 가이드 — 잘릴 영역 마스킹 + 세이프프레임 */
 .reframe-mask {
@@ -1124,6 +1133,44 @@ body {
   font-size: 11px;
   color: var(--muted);
   flex-wrap: wrap;
+}
+/* 수기 자막마다 위치 프리셋(9-앵커) — 영상 위 드래그와 같은 cue.pos를 세팅한다. */
+.cue-pos-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cue-pos-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--faint);
+}
+.cue-pos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 16px);
+  grid-template-rows: repeat(3, 16px);
+  gap: 2px;
+}
+.cue-pos-grid button {
+  font-size: 9px;
+  line-height: 1;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--faint);
+  padding: 0;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+.cue-pos-grid button:hover {
+  color: var(--muted);
+  border-color: var(--border);
+}
+.cue-pos-grid button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .manual-cue-time .link {
   border: none;

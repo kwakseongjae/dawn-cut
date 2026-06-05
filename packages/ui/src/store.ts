@@ -240,6 +240,9 @@ export interface ManualCue {
   text: string;
   startUs: number;
   endUs: number;
+  // 스티커처럼 cue마다 독립 위치(정규화 x/y + scale). 없으면 전역 subtitlePos를 따른다.
+  // 여러 수기 자막을 영상 위 서로 다른 자리에 동시에 둘 수 있게 한다.
+  pos?: { x: number; y: number; scale: number };
 }
 const DEFAULT_CUE_LEN_US = 2_500_000; // 새 수기 자막 기본 길이 2.5초
 const uid = () => Math.random().toString(36).slice(2, 9);
