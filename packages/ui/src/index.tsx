@@ -29,10 +29,13 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Clapperboard,
   Clipboard,
   CornerDownRight,
   Eraser,
   Film,
+  Image as ImageIcon,
+  Images,
   Info,
   ListTree,
   Lock,
@@ -491,7 +494,9 @@ function MediaPanel() {
       />
       {mediaPath && (
         <div className="asset-card">
-          <div className="thumb">🎬</div>
+          <div className="thumb">
+            <Clapperboard size={19} strokeWidth={1.75} />
+          </div>
           <div className="meta">
             <div className="name">{mediaPath.split('/').pop()}</div>
             <div className="sub">
@@ -541,7 +546,13 @@ function MediaPanel() {
           onClick={() => selectOverlay(o.id)}
         >
           <OvBadge n={laneNumber(overlays, o.id)} id={o.id} />
-          <div className="thumb">{o.kind === 'gif' ? 'GIF' : '🖼'}</div>
+          <div className="thumb">
+            {o.kind === 'gif' ? (
+              <Images size={18} strokeWidth={1.75} />
+            ) : (
+              <ImageIcon size={18} strokeWidth={1.75} />
+            )}
+          </div>
           <div className="meta">
             <div className="name">{o.name}</div>
             <div className="sub">
@@ -2995,14 +3006,17 @@ function Timeline() {
                   durationProgramUs > 0
                     ? Math.max(2, ((o.endUs - o.startUs) / durationProgramUs) * 100)
                     : 0;
+                // 미디어 종류는 lucide 아이콘으로(기본 이모지 대신). 이모지 '스티커'는 콘텐츠라 그대로.
                 const icon =
-                  o.kind === 'image'
-                    ? '🖼'
-                    : o.kind === 'gif'
-                      ? 'GIF'
-                      : o.kind === 'video'
-                        ? '🎞'
-                        : o.name;
+                  o.kind === 'image' ? (
+                    <ImageIcon size={11} strokeWidth={2} />
+                  ) : o.kind === 'gif' ? (
+                    <Images size={11} strokeWidth={2} />
+                  ) : o.kind === 'video' ? (
+                    <Film size={11} strokeWidth={2} />
+                  ) : (
+                    o.name
+                  );
                 const row = ovRowOf.get(o.id) ?? 0;
                 const sel = selectedOverlayId === o.id;
                 return (
@@ -3358,6 +3372,8 @@ export function AppShell() {
       // 수기 자막(무음 영상 대응) 자동화 표면 — 라이브 자막 미리보기 검증에 사용.
       addManualCue: (text: string) => useEditor.getState().addManualCue(text),
       setPlayhead: (us: number) => useEditor.getState().setPlayhead(us),
+      addOverlaySrc: (kind: 'image' | 'gif' | 'video', name: string, path: string) =>
+        useEditor.getState().addOverlaySrc(kind, name, path),
     };
     // QA/검증용 읽기 스냅샷(상태 단언). __editor와 동일하게 무해한 자동화 표면.
     window.__dawnState = () => {

@@ -989,9 +989,9 @@ body {
   background: #0c0e13;
   display: grid;
   place-items: center;
-  font-size: 17px;
   flex: none;
   border: 1px solid var(--border);
+  color: var(--accent);
 }
 .asset-card .meta {
   min-width: 0;
@@ -1468,6 +1468,9 @@ body {
   pointer-events: none;
   overflow: hidden;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 .ov-block-h {
   position: absolute;
