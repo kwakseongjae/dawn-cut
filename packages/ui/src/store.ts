@@ -59,6 +59,7 @@ interface EditorState {
   panel: PanelId;
   overlays: Overlay[]; // image/sticker/gif references
   ttsClips: TtsClip[]; // generated voiceovers (preview stub)
+  manualCues: ManualCue[]; // 직접 입력한 자막(STT 없이) — 무음 영상도 자막 가능
   frameW: number;
   frameH: number;
   selectedOverlayId: string | null;
@@ -95,6 +96,10 @@ interface EditorState {
   updateTts: (id: string, patch: Partial<TtsClip>) => void;
   removeTts: (id: string) => void;
   selectVoice: (id: string | null) => void;
+  // 수기 자막: 현재 재생 위치에 새 cue 추가 / 텍스트·타이밍 수정 / 삭제.
+  addManualCue: (text?: string) => void;
+  updateManualCue: (id: string, patch: Partial<ManualCue>) => void;
+  removeManualCue: (id: string) => void;
   removeOverlay: (id: string) => void;
   setSubtitlePos: (patch: Partial<{ x: number; y: number; scale: number }>) => void;
   setSubtitleStyle: (patch: SubtitleStyle) => void;
@@ -227,6 +232,16 @@ export interface TtsClip {
   opts?: TtsVoiceOpts; // 합성에 쓴 속도/톤/스타일(프로젝트 저장·재합성 대비)
 }
 const DEFAULT_TTS_LEN_US = 2_000_000; // 길이 모를 때(probe 실패) 기본 2초
+
+// 수기(직접 입력) 자막 cue — 받아쓰기(STT) 없이 사용자가 타이핑한 캡션. 프로그램 시간(µs).
+// 무음 영상(화면녹화 등)도 이걸로 자막을 넣을 수 있다. 번인/SRT/스타일은 STT 자막과 동일 엔진 사용.
+export interface ManualCue {
+  id: string;
+  text: string;
+  startUs: number;
+  endUs: number;
+}
+const DEFAULT_CUE_LEN_US = 2_500_000; // 새 수기 자막 기본 길이 2.5초
 const uid = () => Math.random().toString(36).slice(2, 9);
 const baseName = (p: string) => p.split('/').pop() ?? p;
 
@@ -349,6 +364,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   panel: 'media',
   overlays: [],
   ttsClips: [],
+  manualCues: [],
   frameW: 0,
   frameH: 0,
   selectedOverlayId: null,
@@ -516,6 +532,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedVoiceId: get().selectedVoiceId === id ? null : get().selectedVoiceId,
     }),
 
+  addManualCue: (text = '') => {
+    const { playheadUs, durationProgramUs, manualCues } = get();
+    const dur = durationProgramUs || DEFAULT_CUE_LEN_US;
+    const startUs = Math.max(0, Math.min(playheadUs, Math.max(0, dur - DEFAULT_CUE_LEN_US)));
+    const endUs = Math.min(startUs + DEFAULT_CUE_LEN_US, dur || startUs + DEFAULT_CUE_LEN_US);
+    set({ manualCues: [...manualCues, { id: uid(), text, startUs, endUs }] });
+  },
+  updateManualCue: (id, patch) =>
+    set({ manualCues: get().manualCues.map((c) => (c.id === id ? { ...c, ...patch } : c)) }),
+  removeManualCue: (id) => set({ manualCues: get().manualCues.filter((c) => c.id !== id) }),
+
   setPlayhead: (us) => set({ playheadUs: us }),
   setPlaying: (p) => set({ playing: p }),
   setPanel: (p) => set({ panel: p }),
@@ -631,6 +658,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       playing: false,
       overlays: [],
       ttsClips: [],
+      manualCues: [],
       selectedOverlayId: null,
       selectedVoiceId: null,
       frameW: probe.width,
@@ -708,6 +736,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       selectedOverlayId: null,
       selectedVoiceId: null,
       ttsClips: [],
+      manualCues: [],
       frameW: 0,
       frameH: 0,
       sourceDurationUs: 0,
@@ -895,11 +924,24 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   exportSrt: async (path) => {
-    const { timeline, transcript } = get();
+    const { timeline, transcript, manualCues } = get();
     const dawn = window.dawn;
-    if (!timeline || !transcript || !dawn) return;
+    if (!timeline || !dawn) return;
+    // 자막 소스: 받아쓰기(transcript) 우선, 없으면 수기 자막(manualCues). 둘 다 없으면 중단.
+    const cues = transcript
+      ? transcriptToCues(transcript, timeline)
+      : manualCues
+          .filter((c) => c.text.trim())
+          .slice()
+          .sort((a, b) => a.startUs - b.startUs)
+          .map((c, i) => ({
+            index: i + 1,
+            startUs: c.startUs,
+            endUs: c.endUs,
+            text: c.text.trim(),
+          }));
+    if (cues.length === 0) return;
     set({ status: 'exporting srt' });
-    const cues = transcriptToCues(transcript, timeline);
     await dawn.writeSrt(path, formatSrt(cues));
     set({
       status: 'srt exported',

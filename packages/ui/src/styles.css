@@ -1053,6 +1053,38 @@ body {
   gap: 8px;
   margin-top: 8px;
 }
+/* 수기 자막 편집기 */
+.manual-cues {
+  padding: 4px 2px 8px;
+}
+.manual-cue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.manual-cue-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.manual-cue-time .link {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+}
+.btn.ghost.xs {
+  padding: 2px 7px;
+  font-size: 10.5px;
+}
 /* 모션 스티커(애니 GIF) 썸네일 그리드 */
 .motion-grid {
   display: grid;

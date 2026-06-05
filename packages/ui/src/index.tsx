@@ -22,7 +22,7 @@ import {
   wordToProgram,
   wrapCaption,
 } from '@dawn-cut/core';
-import type { Chapter, ColorEq, Edl, SubtitleStyle } from '@dawn-cut/core';
+import type { Chapter, ColorEq, Edl, SubtitleCue, SubtitleStyle } from '@dawn-cut/core';
 import {
   ArrowUpToLine,
   Bot,
@@ -67,7 +67,7 @@ import {
 } from 'react';
 import './styles.css';
 import { deadSet, useEditor } from './store.js';
-import type { ColorPreset, Overlay, PanelId, TtsClip } from './store.js';
+import type { ColorPreset, ManualCue, Overlay, PanelId, TtsClip } from './store.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -196,6 +196,24 @@ const cueOptsForAnim = (
 // 자막 'pop' 등장 키프레임 — 시작 60% 크기에서 22% 구간 동안 풀크기로 커진다(easeOut).
 const POP_FROM = 0.6;
 const POP_U = 0.22;
+// 수기 자막 cue → SubtitleCue(어절 타이밍 포함)로 변환. reveal/karaoke 애니가 어절을 쓰도록
+// 텍스트를 공백으로 나눠 [startUs,endUs]에 균등 분배. none/pop/typewriter는 어절 불필요.
+function manualCueToSubtitleCue(mc: ManualCue, index: number): SubtitleCue {
+  const parts = mc.text.trim().split(/\s+/).filter(Boolean);
+  const span = Math.max(1, mc.endUs - mc.startUs);
+  const words = parts.map((t, i) => ({
+    text: t,
+    startUs: Math.round(mc.startUs + (span * i) / parts.length),
+    endUs: Math.round(mc.startUs + (span * (i + 1)) / parts.length),
+  }));
+  return { index: index + 1, startUs: mc.startUs, endUs: mc.endUs, text: mc.text.trim(), words };
+}
+const manualToCues = (cues: ManualCue[]): SubtitleCue[] =>
+  cues
+    .filter((c) => c.text.trim())
+    .slice()
+    .sort((a, b) => a.startUs - b.startUs)
+    .map(manualCueToSubtitleCue);
 
 // ── Toolbar ──────────────────────────────────────────────────────────
 function Toolbar() {
@@ -1805,6 +1823,10 @@ function Transcript() {
     nlError,
     llmReady,
     advanced,
+    manualCues,
+    addManualCue,
+    updateManualCue,
+    removeManualCue,
   } = useEditor();
   const dead = useMemo(() => deadSet(timeline, transcript), [timeline, transcript]);
   const activeId = useMemo(
@@ -1843,10 +1865,13 @@ function Transcript() {
   // (예전엔 미리보기가 기본 cueOpts라 애니/스타일팩에서 번인과 다른 문장이 떴음).
   const subAnim = subtitleStyle.animation ?? 'none';
   const currentCue = useMemo(() => {
-    if (!transcript || !timeline) return null;
-    const cues = transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim));
+    if (!timeline) return null;
+    // 받아쓰기 자막이 있으면 그걸, 없으면 수기 자막을 미리보기 단일 출처로 쓴다(무음 영상 대응).
+    const cues = transcript
+      ? transcriptToCues(transcript, timeline, cueOptsForAnim(subAnim))
+      : manualToCues(manualCues);
     return cues.find((c) => playheadUs >= c.startUs && playheadUs < c.endUs) ?? cues[0] ?? null;
-  }, [transcript, timeline, playheadUs, subAnim]);
+  }, [transcript, timeline, playheadUs, subAnim, manualCues]);
   // 현재 playhead가 속한 애니 서브프레임(번인과 동일: captionFrames). 'none'이면 cue 전체 1프레임.
   const currentFrame = useMemo(() => {
     if (!currentCue) return null;
@@ -1881,12 +1906,17 @@ function Transcript() {
   ) => {
     // fresh state를 읽는다 — 스타일 팩처럼 직전에 transcript/timeline을 바꾼(말버릇 컷) 핸들러가
     // 호출해도 stale 클로저로 옛 어절을 번인하지 않게.
-    const { transcript: tr, timeline: tl } = useEditor.getState();
-    if (!tr || !tl) return;
+    const { transcript: tr, timeline: tl, manualCues: mc } = useEditor.getState();
+    if (!tl) return;
     // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
     // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
     const anim = style.animation ?? 'none';
-    for (const c of transcriptToCues(tr, tl, cueOptsForAnim(anim))) {
+    // 자막 소스 = 받아쓰기(transcript) cue + 수기 자막(manualCues). 둘 다 있으면 합쳐 번인.
+    const cues = [
+      ...(tr ? transcriptToCues(tr, tl, cueOptsForAnim(anim)) : []),
+      ...manualToCues(mc),
+    ];
+    for (const c of cues) {
       // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
       const cueKeys = emphasisFor(c.text, emphOn);
       // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
@@ -1927,11 +1957,12 @@ function Transcript() {
     }, 180);
   };
   const burnSubtitles = async () => {
-    if (!transcript || !timeline) return;
+    if (!timeline) return;
     if (burnt) {
       clearOverlaysByKind('subtitle');
       return;
     }
+    if (!transcript && manualCues.length === 0) return; // 받아쓰기·수기 자막 둘 다 없으면 할 게 없음
     await doBurn(subtitlePos, subtitleStyle);
   };
   const applyAnchor = async (ax: number, ay: number) => {
@@ -2013,7 +2044,7 @@ function Transcript() {
           type="button"
           className="btn ghost"
           data-testid="burn-subtitles"
-          disabled={!transcript}
+          disabled={!transcript && manualCues.length === 0}
           onClick={burnSubtitles}
           style={{ fontSize: 11, padding: '4px 8px' }}
         >
@@ -2478,9 +2509,94 @@ function Transcript() {
               <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
                 {hasAudio
                   ? '오디오를 추출해 한국어 자막을 만듭니다. 영상은 이 Mac을 떠나지 않습니다. 자막을 만들면 텍스트 편집·검수·하이라이트를 쓸 수 있어요.'
-                  : '이 영상에는 오디오가 없어 자막을 만들 수 없어요. (색보정·하이라이트·오버레이·내보내기는 그대로 됩니다.)'}
+                  : '이 영상엔 오디오가 없어 받아쓰기는 불가해요. 대신 아래 "직접 자막 입력"으로 캡션을 타이핑할 수 있습니다.'}
               </div>
             )}
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn"
+                data-testid="add-manual-cue"
+                onClick={() => addManualCue('')}
+                title="현재 재생 위치에 자막을 직접 입력합니다 (음성 없어도 가능)"
+              >
+                <Pencil size={13} /> 직접 자막 입력
+              </button>
+            </div>
+          </div>
+        )}
+        {manualCues.length > 0 && (
+          <div className="manual-cues" data-testid="manual-cues">
+            <div className="field" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>직접 입력 자막 ({manualCues.length})</span>
+              <button
+                type="button"
+                className="link"
+                data-testid="add-manual-cue"
+                onClick={() => addManualCue('')}
+              >
+                + 현재 위치에 추가
+              </button>
+            </div>
+            {[...manualCues]
+              .sort((a, b) => a.startUs - b.startUs)
+              .map((c) => (
+                <div className="manual-cue" key={c.id}>
+                  <input
+                    className="input"
+                    data-testid="manual-cue-text"
+                    value={c.text}
+                    placeholder="자막 텍스트를 입력하세요"
+                    onChange={(e) => updateManualCue(c.id, { text: e.target.value })}
+                  />
+                  <div className="manual-cue-time">
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setPlayhead(c.startUs)}
+                      title="이 자막 시작으로 이동"
+                    >
+                      {fmt(c.startUs)}~{fmt(c.endUs)}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost xs"
+                      title="시작을 현재 재생 위치로"
+                      onClick={() =>
+                        updateManualCue(c.id, {
+                          startUs: Math.min(playheadUs, c.endUs - 100_000),
+                        })
+                      }
+                    >
+                      시작=현재
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost xs"
+                      title="끝을 현재 재생 위치로"
+                      onClick={() =>
+                        updateManualCue(c.id, { endUs: Math.max(playheadUs, c.startUs + 100_000) })
+                      }
+                    >
+                      끝=현재
+                    </button>
+                    <button
+                      type="button"
+                      className="x"
+                      data-testid="manual-cue-remove"
+                      title="삭제"
+                      onClick={() => removeManualCue(c.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            <p className="muted-note">
+              스크럽으로 위치를 맞춘 뒤 <b>시작=현재 / 끝=현재</b>로 타이밍을 잡고, 위{' '}
+              <b>자막 입히기</b>로 영상에 새깁니다. 스타일·애니메이션·내보내기(SRT)는 받아쓰기
+              자막과 동일하게 적용돼요.
+            </p>
           </div>
         )}
         {transcript?.segments.map((seg) => (

@@ -88,6 +88,38 @@ test('F1 import-preview', async () => {
       await settle(c.win, 1200);
       c.note('noaudio-state', JSON.stringify(await c.state()));
       await c.shot('noaudio-imported');
+
+      // 무음 영상에 '직접 자막 입력' — 받아쓰기 안 되는 영상도 캡션을 단다(핵심 시나리오).
+      await c.win
+        .getByTestId('add-manual-cue')
+        .first()
+        .click()
+        .catch(() => {});
+      await settle(c.win, 200);
+      await c.win
+        .getByTestId('manual-cue-text')
+        .first()
+        .fill('직접 입력한 자막입니다')
+        .catch(() => {});
+      await settle(c.win, 200);
+      await c.shot('manual-caption-editor');
+      // 번인 → 자막 오버레이 생김(무음 영상인데 자막 합성)
+      await c.win
+        .getByTestId('burn-subtitles')
+        .click()
+        .catch(() => {});
+      await c.win
+        .waitForFunction(
+          () =>
+            ((
+              window as unknown as { __dawnState?: () => { subtitleOverlays: number } }
+            ).__dawnState?.()?.subtitleOverlays ?? 0) > 0,
+          null,
+          { timeout: 20_000 },
+        )
+        .catch(() => {});
+      c.note('manual-burn', JSON.stringify(await c.state()));
+      await c.shot('manual-burned');
     } else {
       c.note('noaudio-skip', `missing ${MEDIA.noAudio}`);
     }
