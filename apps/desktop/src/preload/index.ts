@@ -13,6 +13,7 @@ type RenderOpts = {
   voiceStartUs?: number;
   outHeight?: number;
   quality?: 'high' | 'medium' | 'small';
+  inputHasAudio?: boolean;
 };
 
 // Typed bridge. contextIsolation=true, nodeIntegration=false. Mirrors DawnBridge in @dawn-cut/ui.
@@ -31,8 +32,8 @@ const bridge = {
   probe: (path: string): Promise<ProbeResult> => ipcRenderer.invoke('media:probe', path),
   extractAudio: (path: string): Promise<{ wavPath: string }> =>
     ipcRenderer.invoke('media:extractAudio', path),
-  transcribe: (wavPath: string, mediaId: string): Promise<TranscribeResult> =>
-    ipcRenderer.invoke('stt:transcribe', wavPath, mediaId),
+  transcribe: (wavPath: string, mediaId: string, lang?: string): Promise<TranscribeResult> =>
+    ipcRenderer.invoke('stt:transcribe', wavPath, mediaId, lang),
   detectSilences: (
     path: string,
     opts?: { noiseDb?: number; minSilenceUs?: number },

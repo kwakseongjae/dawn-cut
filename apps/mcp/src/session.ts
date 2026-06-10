@@ -230,6 +230,7 @@ export class DawnSession {
     await renderEdl(edl, outPath, {
       frameW: probe.width,
       frameH: probe.height,
+      inputHasAudio: probe.hasAudio,
       ...(overlays.length > 0 ? { overlays } : {}),
       ...(reframe && reframe !== 'source' ? { reframe } : {}),
     });

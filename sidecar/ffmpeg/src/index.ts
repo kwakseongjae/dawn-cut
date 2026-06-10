@@ -225,6 +225,12 @@ export interface RenderOpts {
   outHeight?: number;
   /** 품질 프리셋 → libx264 CRF(high=18/medium=23/small=28). 미지정=ffmpeg 기본. */
   quality?: 'high' | 'medium' | 'small';
+  /**
+   * 입력에 오디오 스트림이 있는가(기본 true=기존 동작). false면 [0:a] 참조 대신
+   * 무음 트랙(anullsrc)을 합성한다 — 화면녹화 등 무음 영상도 내보내기·TTS 믹스가 되게.
+   * (실측 2026-06-11: 미지정 상태로 무음 입력을 주면 ffmpeg가 [0:a]에서 즉사했다.)
+   */
+  inputHasAudio?: boolean;
 }
 
 /** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
@@ -312,8 +318,13 @@ export async function renderEdl(
     return { outPath };
   }
 
+  const hasAud = opts.inputHasAudio !== false;
+  const totalSec = edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6;
   const interleaved = edl.segments.map((_, i) => `${vlabels[i]}${alabels[i]}`).join('');
-  const concat = `${vparts.join(';')};${aparts.join(';')};${interleaved}concat=n=${n}:v=1:a=1[vbase][a]`;
+  // 무음 입력: 비디오만 concat + anullsrc로 길이만큼 무음 트랙 합성([0:a] 참조 금지).
+  const concat = hasAud
+    ? `${vparts.join(';')};${aparts.join(';')};${interleaved}concat=n=${n}:v=1:a=1[vbase][a]`
+    : `${vparts.join(';')};${vlabels.join('')}concat=n=${n}:v=1:a=0[vbase];anullsrc=r=48000:cl=stereo,atrim=duration=${totalSec.toFixed(6)}[a]`;
   const cropPart = cropFilter ? `;${cropFilter}` : '';
   let filter = ovf.filter ? `${concat}${cropPart};${ovf.filter}` : `${concat}${cropPart}`;
   const videoLabel = ovf.out; // '[vbase]'(reframe 시 '[vrf]') when no overlays, else '[voN]'

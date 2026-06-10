@@ -1,6 +1,6 @@
 {
   "name": "dawn-cut",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Open-source AI video editor — text-based editing, auto subtitles, auto silence removal. No subscriptions, no watermarks.",
   "license": "MIT",

@@ -55,3 +55,35 @@ describe.skipIf(!existsSync(SAMPLE))(
     }, 60_000);
   },
 );
+
+describe.skipIf(!existsSync(SAMPLE))('무음 입력 내보내기 (inputHasAudio=false)', () => {
+  it('오디오 스트림 없는 영상도 내보내기 성공 + 무음 트랙 포함', async () => {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const dir = mkdtempSync(join(tmpdir(), 'dawn-silent-'));
+    const silent = join(dir, 'silent.mp4');
+    await exec(process.env.DAWN_FFMPEG ?? 'ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=d=3:s=320x240:r=30',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      silent,
+    ]);
+    const probe = await probeMedia(silent);
+    expect(probe.hasAudio).toBe(false);
+    const edl = timelineToEdl(createInitialTimeline('m', probe.durationUs, 30), silent);
+    const out = join(dir, 'out.mp4');
+    await renderEdl(edl, out, { frameW: 320, frameH: 240, inputHasAudio: false });
+    const p2 = await probeMedia(out);
+    expect(p2.hasAudio).toBe(true); // 무음 트랙이 깔려 플레이어 호환
+    expect(Math.abs(p2.durationUs - probe.durationUs)).toBeLessThan(150_000);
+  }, 60_000);
+});

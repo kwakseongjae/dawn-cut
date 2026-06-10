@@ -2,6 +2,7 @@ import {
   appendAudit,
   applyCommand,
   applyGlossary,
+  assessSpeech,
   autoEnhanceParams,
   buildPlanPrompt,
   buildTranscriptModel,
@@ -805,7 +806,31 @@ export const useEditor = create<EditorState>((set, get) => ({
     try {
       const { wavPath } = await dawn.extractAudio(mediaPath);
       set({ status: 'transcribing' });
-      const tr = await dawn.transcribe(wavPath, MEDIA_ID);
+      let tr = await dawn.transcribe(wavPath, MEDIA_ID);
+      let speech = assessSpeech(tr.words, get().sourceDurationUs || undefined);
+      // 언어 오감지 복구 — whisper가 한국어 발화를 영어 등으로 오감지하면 환각 루프가 나온다
+      // (실측 ko-review: auto=en 중앙신뢰 0.53 → ko 강제 시 1.00). 비한국어 감지 + 신뢰도가
+      // 애매하면 한국어로 1회 재전사해 더 나은 쪽을 쓴다(한국어 우선 제품 가정).
+      if (tr.language !== 'ko' && speech.medianConfidence < 0.7) {
+        const koTr = await dawn.transcribe(wavPath, MEDIA_ID, 'ko');
+        const koSpeech = assessSpeech(koTr.words, get().sourceDurationUs || undefined);
+        if (koSpeech.medianConfidence > speech.medianConfidence) {
+          tr = koTr;
+          speech = koSpeech;
+        }
+      }
+      // 잡음/무발화 가드 — whisper는 잡음에서도 그럴듯한 문장을 환각한다. 신뢰도 평가로
+      // 거르고, 환각 의심이면 자막을 만들지 않고 사유를 안내한다(2026-06-11).
+      if (!speech.speechLikely) {
+        set({
+          status: 'ready',
+          transcribeError:
+            speech.reason === 'no-words'
+              ? '오디오에서 말소리를 찾지 못했어요. (배경음/무음일 수 있어요 — 직접 자막 입력은 가능합니다.)'
+              : '말소리가 또렷하지 않아요(잡음·음악일 가능성). 자막 정확도를 보장할 수 없어 만들지 않았어요 — 직접 자막 입력을 써보세요.',
+        });
+        return;
+      }
       // 전사 직후 '내 사전'을 적용해 자주 틀리는 고유명사를 교정한다.
       const subWords = applyGlossary(tr.words, get().glossary);
       const transcript = buildTranscriptModel(subWords, MEDIA_ID, tr.language);
@@ -984,6 +1009,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
+      inputHasAudio: get().hasAudio,
       ...(voiceClip
         ? { voicePath: voiceClip.wavPath, voiceStartUs: Math.max(0, voiceClip.startUs) }
         : {}),
@@ -1038,6 +1064,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
       frameH,
+      inputHasAudio: get().hasAudio,
       ...(voiceClip
         ? { voicePath: voiceClip.wavPath, voiceStartUs: Math.max(0, voiceClip.startUs) }
         : {}),

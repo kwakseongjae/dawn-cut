@@ -34,7 +34,7 @@ export interface DawnBridge {
   ping: () => Promise<string>;
   probe: (path: string) => Promise<ProbeResult>;
   extractAudio: (path: string) => Promise<{ wavPath: string }>;
-  transcribe: (wavPath: string, mediaId: string) => Promise<TranscribeResult>;
+  transcribe: (wavPath: string, mediaId: string, lang?: string) => Promise<TranscribeResult>;
   detectSilences: (
     path: string,
     opts?: { noiseDb?: number; minSilenceUs?: number },
@@ -55,6 +55,7 @@ export interface DawnBridge {
       voiceStartUs?: number;
       outHeight?: number;
       quality?: 'high' | 'medium' | 'small';
+      inputHasAudio?: boolean;
     },
   ) => Promise<{ outPath: string; actualDurationUs: number }>;
   writeSrt: (path: string, content: string) => Promise<{ path: string }>;

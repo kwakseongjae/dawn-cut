@@ -47,8 +47,8 @@ ipcMain.handle('media:extractAudio', async (_e, path: string) => {
   return { wavPath };
 });
 
-ipcMain.handle('stt:transcribe', (_e, wavPath: string, mediaId: string) =>
-  transcribe(wavPath, { mediaId }),
+ipcMain.handle('stt:transcribe', (_e, wavPath: string, mediaId: string, lang?: string) =>
+  transcribe(wavPath, { mediaId, ...(lang ? { lang } : {}) }),
 );
 
 ipcMain.handle(
@@ -86,24 +86,69 @@ ipcMain.handle('preview:proxy', async (_e, path: string) => {
 // P3 로컬 LLM 플래너(llama.cpp). renderer가 buildPlanPrompt로 만든 프롬프트를 받아 raw 텍스트를
 // 돌려준다(파싱/dryRun은 renderer가 core로). DAWN_DISABLE_LLM이 set이면 가용성 false로 강제해
 // 결정적 룰 경로(e2e/CI)를 보장한다. 부재/오류 시 renderer가 룰 플래너로 폴백한다.
-ipcMain.handle('llm:available', () => {
+// 클라우드 플래너(#15, BYOK) — OpenRouter 키가 있으면 프론티어 LLM이 NL→plan을 만든다.
+// 안전성은 모델이 아니라 버스가 보장: parsePlan(Zod)·plannerManifest 화이트리스트·dry-run·승인
+// 게이트는 로컬/클라우드 동일하게 통과해야 한다. 전송되는 것은 지시문+상태 요약(대본 일부)뿐.
+const PLANNER_MODEL = process.env.DAWN_PLANNER_MODEL ?? 'anthropic/claude-sonnet-4.6';
+async function openrouterPlan(
+  prompt: string,
+  apiKey: string,
+): Promise<{ text: string; ms: number }> {
+  const t0 = Date.now();
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: PLANNER_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0, // 결정성 우선 — 같은 지시는 같은 플랜으로.
+      max_tokens: 1200,
+    }),
+  });
+  if (!res.ok)
+    throw new Error(
+      `클라우드 플래너 실패(${res.status}): ${(await res.text().catch(() => '')).slice(0, 200)}`,
+    );
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const text = data.choices?.[0]?.message?.content ?? '';
+  if (!text) throw new Error('클라우드 플래너: 빈 응답');
+  return { text, ms: Date.now() - t0 };
+}
+
+ipcMain.handle('llm:available', async () => {
   if (process.env.DAWN_DISABLE_LLM) {
     return { available: false, binPath: '', modelPath: '', reason: '비활성화(DAWN_DISABLE_LLM)' };
   }
+  // 클라우드 우선 — OpenRouter 키가 있으면 프론티어 플래너 사용 가능.
+  const s = await readSettings();
+  if (s.openrouterApiKey)
+    return { available: true, binPath: 'openrouter', modelPath: PLANNER_MODEL };
   return isLlmAvailable();
 });
 
 // 상주 서버를 미리 기동(앱 마운트 시 호출 → 첫 요청이 콜드 ~9s 대신 웜 ~0.1–0.5s).
-ipcMain.handle('llm:warmup', () => {
+ipcMain.handle('llm:warmup', async () => {
   if (process.env.DAWN_DISABLE_LLM)
     return { ready: false, ms: 0, reason: '비활성화(DAWN_DISABLE_LLM)' };
+  const s = await readSettings();
+  if (s.openrouterApiKey) return { ready: true, ms: 0 }; // 클라우드는 웜업 불필요
   return warmupLlm();
 });
 
-ipcMain.handle('llm:plan', (_e, prompt: string) => {
+ipcMain.handle('llm:plan', async (_e, prompt: string) => {
   // kill-switch 심층방어: 렌더러는 llmReady일 때만 호출하지만, IPC 직접 호출/테스트가
   // 우회해 상주 서버를 spawn하지 못하게 여기서도 막는다.
   if (process.env.DAWN_DISABLE_LLM) throw new Error('LLM 비활성화(DAWN_DISABLE_LLM)');
+  const s = await readSettings();
+  if (s.openrouterApiKey) {
+    try {
+      return await openrouterPlan(prompt, s.openrouterApiKey);
+    } catch {
+      // 클라우드 실패(네트워크/크레딧) → 로컬 LLM이 있으면 폴백, 없으면 룰 플래너(store)가 받는다.
+      if (isLlmAvailable().available) return llmComplete(prompt);
+      throw new Error('클라우드 플래너 실패 — 룰 플래너로 폴백합니다');
+    }
+  }
   return llmComplete(prompt);
 });
 
