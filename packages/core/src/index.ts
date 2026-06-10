@@ -19,6 +19,7 @@ export * from './easing.js';
 export * from './whisper.js';
 export * from './confidence.js';
 export * from './caption.js';
+export * from './burn.js';
 export * from './fillers.js';
 export * from './glossary.js';
 export * from './chapters.js';

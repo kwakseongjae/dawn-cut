@@ -36,8 +36,9 @@ function writeProject(): string {
   return path;
 }
 
-const textOf = (res: { content?: unknown }) =>
-  (res.content as { type: string; text: string }[])[0]?.text ?? '';
+// SDK CallToolResult는 content 없는 변형(toolResult)도 포함하는 유니언이라 unknown으로 받는다.
+const textOf = (res: unknown) =>
+  ((res as { content?: { type: string; text: string }[] }).content ?? [])[0]?.text ?? '';
 
 describe('dawn-cut MCP server — 실제 프로토콜 왕복', () => {
   let client: Client;

@@ -4,6 +4,7 @@ import {
   SUBTITLE_PRESETS,
   captionFrames,
   clampRange,
+  cueOptsForAnim,
   detectFillers,
   drawBadge,
   drawEmoji,
@@ -16,6 +17,7 @@ import {
   pickKeywords,
   programToWord,
   resizeOverlay,
+  subtitleBurnPlan,
   timelineToEdl,
   transcriptToCues,
   videoClips,
@@ -189,18 +191,8 @@ const isGif = (n: string) => /\.gif$/i.test(n);
 const filePath = (f: File) =>
   window.dawn?.pathForFile?.(f) || (f as File & { path?: string }).path || '';
 
-// 자막 cue 분절 옵션 — 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 쪼갠다. 미리보기와 번인이
-// 반드시 같은 함수를 써야 동일한 자막 텍스트가 나온다(드리프트 방지). 'none'이면 기본(cue당 1프레임).
-const cueOptsForAnim = (
-  anim: string,
-): { maxWordsPerCue?: number; maxCharsPerCue?: number; maxGapUs?: number } =>
-  // 'none'·'pop'은 cue 전체 유지(pop=등장 모션이라 쇼츠 분절 불필요). 나머지는 짧게 쪼갠다.
-  anim === 'none' || anim === 'pop'
-    ? {}
-    : { maxWordsPerCue: 4, maxCharsPerCue: 13, maxGapUs: 400_000 };
-// 자막 'pop' 등장 키프레임 — 시작 60% 크기에서 22% 구간 동안 풀크기로 커진다(easeOut).
-const POP_FROM = 0.6;
-const POP_U = 0.22;
+// 자막 cue 분절(cueOptsForAnim)·pop 키프레임 상수는 core/burn.ts로 승격 —
+// 미리보기·번인·헤드리스(MCP)가 같은 함수를 써야 동일한 자막이 나온다(드리프트 방지).
 // 수기 자막 cue → SubtitleCue(어절 타이밍 포함)로 변환. reveal/karaoke 애니가 어절을 쓰도록
 // 텍스트를 공백으로 나눠 [startUs,endUs]에 균등 분배. none/pop/typewriter는 어절 불필요.
 function manualCueToSubtitleCue(mc: ManualCue, index: number): SubtitleCue {
@@ -2115,46 +2107,32 @@ function Transcript() {
     // 호출해도 stale 클로저로 옛 어절을 번인하지 않게.
     const { transcript: tr, timeline: tl, manualCues: mc } = useEditor.getState();
     if (!tl) return;
-    // 애니메이션(reveal/karaoke)이면 짧은 쇼츠형 cue로 끊어 단어가 또박또박 등장하게 한다.
-    // animation 'none'(또는 미설정)이면 기존 동작 그대로(기본 cue, cue당 1오버레이) — e2e 보존.
-    const anim = style.animation ?? 'none';
-    // 자막 소스 = 받아쓰기(transcript) cue(전역 위치) + 수기 자막(각자 cue.pos, 없으면 전역).
-    // 수기 자막마다 위치를 따로 들고 가, 영상 위 라이브 자막과 동일한 자리에 번인된다(스티커처럼).
-    const placed: { cue: SubtitleCue; cuePos: { x: number; y: number; scale: number } }[] = [
-      ...(tr
-        ? transcriptToCues(tr, tl, cueOptsForAnim(anim)).map((cue) => ({ cue, cuePos: pos }))
-        : []),
+    // 플랜은 core subtitleBurnPlan 단일 진실원천 — MCP 헤드리스 렌더와 구조적으로 동일한
+    // 텍스트·분절·강조·키프레임이 나온다. UI는 래스터(DOM canvas)와 IPC 저장만 담당.
+    const plan = subtitleBurnPlan(tr, tl, { ...style, emphasizeKeywords: emphOn }, pos, [
+      // 수기 자막은 각자 위치(cue.pos)로, 없으면 전역 pos — 라이브 자막과 동일 자리에 번인.
       ...mc
         .filter((m) => m.text.trim())
-        .map((m, i) => ({ cue: manualCueToSubtitleCue(m, i), cuePos: m.pos ?? pos })),
-    ];
-    for (const { cue: c, cuePos } of placed) {
-      // 키워드 강조는 줄바꿈 전 원문 c.text로 계산해야 표면형 코어가 일치한다.
-      const cueKeys = emphasisFor(c.text, emphOn);
-      // cue를 애니 서브프레임으로 펼친다('none'이면 cue 전체 1프레임 → 기존과 동일).
-      for (const fr of captionFrames(c, anim)) {
-        const emph = anim === 'karaoke' && fr.activeWord ? new Set([fr.activeWord]) : cueKeys;
-        const wrapped = wrapCaption(fr.text, { maxCharsPerLine: 16, maxLines: 2 });
-        const res = await window.dawn?.writeAsset(rasterizeSubtitle(wrapped, style, emph));
-        if (res)
-          addOverlayWith({
-            kind: 'subtitle',
-            name: c.text.slice(0, 24),
-            text: fr.text,
-            src: res.path,
-            x: cuePos.x,
-            y: cuePos.y,
-            // pop: 작은 크기에서 시작 → 초반 구간 동안 풀크기로 커지는 키프레임 주입(스케일-인).
-            scale: anim === 'pop' ? cuePos.scale * POP_FROM : cuePos.scale,
-            ...(anim === 'pop'
-              ? { keyframes: [{ u: POP_U, scale: cuePos.scale, easing: 'easeOut' as const }] }
-              : {}),
-            opacity: 1,
-            startUs: fr.startUs,
-            endUs: fr.endUs,
-            z: 100,
-          });
-      }
+        .map((m, i) => ({ cue: manualCueToSubtitleCue(m, i), pos: m.pos ?? pos })),
+    ]);
+    for (const fr of plan) {
+      const emph = fr.emphasis ? new Set(fr.emphasis) : undefined;
+      const res = await window.dawn?.writeAsset(rasterizeSubtitle(fr.wrapped, style, emph));
+      if (res)
+        addOverlayWith({
+          kind: 'subtitle',
+          name: fr.cueText.slice(0, 24),
+          text: fr.text,
+          src: res.path,
+          x: fr.x,
+          y: fr.y,
+          scale: fr.scale,
+          ...(fr.keyframes ? { keyframes: fr.keyframes } : {}),
+          opacity: 1,
+          startUs: fr.startUs,
+          endUs: fr.endUs,
+          z: 100,
+        });
     }
   };
   // Debounced re-burn — slider drags (every onChange tick) used to fire one

@@ -1,28 +1,39 @@
 // dawn-cut MCP 세션 — '한 번에 .dawn 프로젝트 하나'를 메모리에 들고, GUI와 동일한
 // command bus(applyCommand) + 불변식 + 감사로그(appendAudit) + dry-run 게이트로 편집한다.
 // SDK 비의존(순수 로직 + node fs) → 직접 단위/통합 테스트 가능. index.ts가 이걸 MCP tool로 감싼다.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   type AuditEntry,
+  BURN_RASTER_H,
+  BURN_RASTER_W,
+  DEFAULT_SUBTITLE_POS,
+  type DrawCtx,
   type DryRunReport,
   type EditCommand,
   type EditorState,
+  type OverlayClip,
   type Project,
   type StateSummary,
   appendAudit,
   applyCommand,
+  burnFrameToOverlay,
   commandManifest,
   deserializeProject,
+  drawSubtitle,
   dryRunCommands,
   makeProject,
   planAndPreview,
   plannerManifest,
   ruleBasedPlan,
   serializeProject,
+  subtitleBurnPlan,
   summarizeState,
   timelineToEdl,
   verifyAudit,
 } from '@dawn-cut/core';
+import { createCanvas } from '@napi-rs/canvas';
 import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
 import { isLlmAvailable, llmPlanProvider } from '@dawn-cut/sidecar-llm';
 
@@ -161,22 +172,51 @@ export class DawnSession {
   /**
    * 현재 편집(타임라인=컷+색보정/줌 이펙트)을 실제 mp4로 렌더한다(sidecar-ffmpeg).
    * 외부 AI 파이프라인의 마지막 단계 — open→(plan)→apply→render. 길이/색/줌/파일오버레이가 반영된다.
-   * 주의(MVP): 자막 '번인'은 렌더에 미포함(자막 PNG 래스터는 UI/데모 캔버스 파이프라인에 있음).
+   * 자막 번인 포함(기본 on): GUI doBurn과 동일한 core subtitleBurnPlan + drawSubtitle 경로로
+   * 헤드리스 래스터(@napi-rs/canvas) → PNG 오버레이 합성 — 에이전트 출력 == GUI 출력 (issue #1).
    */
   async render(
     outPath: string,
     reframe?: '9:16' | '1:1' | 'source',
-  ): Promise<{ outPath: string; durationUs: number }> {
+    opts?: { burnSubtitles?: boolean },
+  ): Promise<{ outPath: string; durationUs: number; burnedSubtitleFrames: number }> {
     const st = this.require();
     if (!this.project) throw new Error('열린 프로젝트가 없습니다.');
     const probe = await probeMedia(this.project.mediaPath);
     const edl = timelineToEdl(st.timeline, this.project.mediaPath);
+    const burn = opts?.burnSubtitles ?? true;
+    let overlays: OverlayClip[] = [];
+    if (burn && st.transcript) {
+      const plan = subtitleBurnPlan(
+        st.transcript,
+        st.timeline,
+        st.subtitleStyle ?? {},
+        this.project.subtitlePos ?? DEFAULT_SUBTITLE_POS,
+      );
+      const dir = mkdtempSync(join(tmpdir(), 'dawn-burn-'));
+      overlays = plan.map((fr, i) => {
+        const canvas = createCanvas(BURN_RASTER_W, BURN_RASTER_H);
+        const ctx = canvas.getContext('2d') as unknown as DrawCtx;
+        drawSubtitle(
+          ctx,
+          BURN_RASTER_W,
+          BURN_RASTER_H,
+          fr.wrapped,
+          st.subtitleStyle ?? {},
+          fr.emphasis ? new Set(fr.emphasis) : undefined,
+        );
+        const png = join(dir, `sub-${i}.png`);
+        writeFileSync(png, canvas.toBuffer('image/png'));
+        return burnFrameToOverlay(fr, png, `mcp-sub-${i}`);
+      });
+    }
     await renderEdl(edl, outPath, {
       frameW: probe.width,
       frameH: probe.height,
+      ...(overlays.length > 0 ? { overlays } : {}),
       ...(reframe && reframe !== 'source' ? { reframe } : {}),
     });
     const result = await probeMedia(outPath);
-    return { outPath, durationUs: result.durationUs };
+    return { outPath, durationUs: result.durationUs, burnedSubtitleFrames: overlays.length };
   }
 }
