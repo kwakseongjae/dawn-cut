@@ -50,6 +50,9 @@ export async function transcribe(
     '-np', // no progress prints
   ];
   if (opts.lang) args.push('-l', opts.lang);
+  // CI 등 가상화 macOS의 Metal('Apple Paravirtual device')은 GPU 경로가 빈/엉뚱한
+  // 전사를 낸다(크래시 아님 — 조용한 오염). DAWN_WHISPER_NO_GPU=1이면 CPU 강제(-ng).
+  if (process.env.DAWN_WHISPER_NO_GPU === '1') args.push('-ng');
 
   await exec(WHISPER_BIN, args, { maxBuffer: 32 * 1024 * 1024 });
 

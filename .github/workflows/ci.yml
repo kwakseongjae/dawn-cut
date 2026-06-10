@@ -49,6 +49,9 @@ jobs:
           pnpm make:fixture
 
       - name: Integration tests (real ffmpeg/whisper)
+        # 가상화 러너의 Metal(Paravirtual)은 whisper GPU 경로가 조용히 빈 전사를 낸다 → CPU 강제.
+        env:
+          DAWN_WHISPER_NO_GPU: '1'
         run: pnpm test:int
 
       - name: E2E (Electron)
