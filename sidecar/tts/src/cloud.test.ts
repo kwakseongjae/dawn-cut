@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLOUD_VOICES,
+  OPENROUTER_FRONTIER_MODEL,
   SIGNATURE_VOICE_ID,
   buildElevenRequest,
   buildInstructions,
+  buildOpenRouterRequest,
   buildSpeechRequest,
   cloudVoiceById,
 } from './cloud.js';
@@ -82,14 +84,25 @@ describe('ElevenLabs eleven_v3 — 순수 헬퍼 (네트워크 없음)', () => {
 });
 
 describe('OpenRouter TTS — 순수 헬퍼 (네트워크 없음)', () => {
-  it('OpenAI 호환 요청 빌더 재사용 — 모델 prefix만 다르다', () => {
-    const req = buildSpeechRequest('안녕', {
-      apiKey: 'sk-or-x',
-      voice: 'dawn',
-      model: 'openai/gpt-4o-mini-tts',
-    });
-    expect(req.model).toBe('openai/gpt-4o-mini-tts');
-    expect(req.voice).toBe('nova'); // dawn → nova (제공자 무관 동일 매핑)
+  it('기본 모델 = Gemini 프론티어, google/*는 Gemini 보이스 + pcm', () => {
+    const req = buildOpenRouterRequest('안녕', { apiKey: 'sk-or-x', voice: 'dawn' });
+    expect(req.model).toBe(OPENROUTER_FRONTIER_MODEL);
+    expect(req.voice).toBe('Zephyr'); // dawn → Gemini prebuilt
+    expect(req.response_format).toBe('pcm'); // 실측: Gemini는 pcm 전용
     expect(req.instructions).toMatch(/한국어/);
+  });
+
+  it('비-google 모델 오버라이드는 OpenAI 보이스 + mp3', () => {
+    const req = buildOpenRouterRequest('안녕', {
+      apiKey: 'k',
+      voice: 'hojin',
+      model: 'openai/some-tts',
+    });
+    expect(req.voice).toBe('onyx');
+    expect(req.response_format).toBe('mp3');
+  });
+
+  it('카탈로그 전 보이스가 Gemini 보이스 매핑을 가진다', () => {
+    for (const v of CLOUD_VOICES) expect(v.geminiVoice.length).toBeGreaterThan(2);
   });
 });

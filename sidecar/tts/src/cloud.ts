@@ -28,6 +28,8 @@ export interface CloudVoice {
   openaiVoice: string;
   /** ElevenLabs premade voice id(프론티어 eleven_v3 경로). 같은 '던' 브랜드가 양쪽에 매핑된다. */
   elevenVoiceId: string;
+  /** Gemini TTS prebuilt voice 이름(OpenRouter google/gemini-* 경로 — 2026-05 Elo 1위). */
+  geminiVoice: string;
   /** 기본 말투 지시(한국어 최적화). 스타일 프리셋이 덧붙는다. */
   baseInstructions: string;
 }
@@ -42,6 +44,7 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     label: '던 (시그니처 · 또렷한 내레이션)',
     openaiVoice: 'nova',
     elevenVoiceId: '21m00Tcm4TlvDq8ikWAM', // Rachel — 또렷한 내레이션
+    geminiVoice: 'Zephyr', // bright·clear
     baseInstructions:
       '밝고 또렷한 한국어 내레이션. 유튜브 해설 톤으로 자연스럽게, 문장 끝을 흐리지 않고 명확하게 읽는다. 영어 단어는 자연스러운 외래어 발음으로.',
   },
@@ -50,6 +53,7 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     label: '서연 (차분한 다큐)',
     openaiVoice: 'shimmer',
     elevenVoiceId: 'MF3mGyEYCl7XYWbV9V6O', // Elli — 차분·부드러움
+    geminiVoice: 'Charon', // informative·calm
     baseInstructions: '차분하고 신뢰감 있는 한국어 다큐멘터리 내레이션. 또박또박, 약간 낮은 톤.',
   },
   {
@@ -57,6 +61,7 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     label: '호진 (묵직한 예고편)',
     openaiVoice: 'onyx',
     elevenVoiceId: 'pNInz6obpgDQGcFmaJgB', // Adam — 깊고 묵직
+    geminiVoice: 'Orus', // firm·deep
     baseInstructions: '묵직하고 깊은 한국어 내레이션. 영화 예고편처럼 무게감 있게.',
   },
   {
@@ -64,6 +69,7 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     label: '하루 (활기찬 쇼츠)',
     openaiVoice: 'coral',
     elevenVoiceId: 'AZnzlk1XvdvUeBnXmlld', // Domi — 에너지
+    geminiVoice: 'Puck', // upbeat
     baseInstructions: '활기차고 에너지 넘치는 한국어 쇼츠 내레이션. 빠른 호흡, 친근한 말투.',
   },
 ] as const;
@@ -123,12 +129,40 @@ export interface CloudTtsResult {
 
 // ── OpenRouter — 한 키로 여러 TTS(+추후 LLM 플래너까지) ──────────────────
 // OpenRouter /api/v1/audio/speech 는 OpenAI Audio Speech API 호환(2026 신설).
-// 제공 모델: openai/gpt-4o-mini-tts · google/gemini-flash-tts · mistralai/voxtral-mini-tts.
-// ElevenLabs는 OpenRouter에 없다 — 프론티어 음질은 ElevenLabs 직결 경로 사용.
+// 기본 모델 = google/gemini-3.1-flash-tts-preview — 2026-05 Speech Arena Elo 1위(프론티어,
+// ElevenLabs v3보다 위). 실패 시 openai/gpt-4o-mini-tts(가성비)로 같은 키 안에서 강등.
+// ElevenLabs는 OpenRouter에 없다 — 직결 키가 있을 때만 그 경로를 쓴다.
+
+/** OpenRouter 기본(프론티어) 모델 — 2026-05 Speech Arena Elo 1위. 실측 검증됨(2026-06-11). */
+export const OPENROUTER_FRONTIER_MODEL = 'google/gemini-3.1-flash-tts-preview';
 
 /**
- * OpenRouter 합성 → 16kHz mono wav. OpenAI 호환이라 같은 요청 빌더를 재사용하고
- * 모델 id만 'openai/...' prefix, 출력은 mp3(OpenRouter는 MP3/PCM만)로 받아 변환한다.
+ * OpenRouter 요청 본문(순수 — 단위테스트 대상). 모델 제공자에 맞는 보이스·포맷을 고른다:
+ *  - google/*: Gemini prebuilt 보이스(Zephyr/Charon/Orus/Puck) + **pcm 전용**(실측: mp3는 400).
+ *    PCM은 24kHz/16-bit/mono raw로 내려온다.
+ *  - 그 외(OpenAI 계열): nova 등 + mp3.
+ * instructions는 무시하는 제공자도 무해해 동일 전달(요청 구조 단일화).
+ */
+export function buildOpenRouterRequest(
+  text: string,
+  opts: CloudTtsOpts,
+): { model: string; voice: string; input: string; instructions: string; response_format: string } {
+  const model = opts.model ?? OPENROUTER_FRONTIER_MODEL;
+  const v = cloudVoiceById(opts.voice);
+  const isGemini = model.startsWith('google/');
+  return {
+    model,
+    voice: isGemini ? v.geminiVoice : v.openaiVoice,
+    input: text,
+    instructions: buildInstructions(v, opts.rate, opts.style),
+    response_format: isGemini ? 'pcm' : 'mp3',
+  };
+}
+
+/**
+ * OpenRouter 합성 → 16kHz mono wav. 기본 = Gemini 3.1 Flash TTS(프론티어).
+ * 실패하면 throw — 호출측(main)이 OpenAI 직결 → 로컬 say 순으로 폴백한다.
+ * (참고: speech 엔드포인트에 gpt-4o-mini-tts는 더 이상 없음 — 2026-06-11 실측 400.)
  */
 export async function synthesizeOpenRouterTts(
   text: string,
@@ -136,10 +170,7 @@ export async function synthesizeOpenRouterTts(
   opts: CloudTtsOpts,
 ): Promise<CloudTtsResult> {
   if (!opts.apiKey) throw new Error('OpenRouter TTS: API 키가 없습니다');
-  const body = {
-    ...buildSpeechRequest(text, { ...opts, model: opts.model ?? 'openai/gpt-4o-mini-tts' }),
-    response_format: 'mp3', // OpenRouter는 mp3/pcm만 지원
-  };
+  const body = buildOpenRouterRequest(text, opts);
   const res = await fetch('https://openrouter.ai/api/v1/audio/speech', {
     method: 'POST',
     headers: {
@@ -154,9 +185,33 @@ export async function synthesizeOpenRouterTts(
   }
   const buf = Buffer.from(await res.arrayBuffer());
   const dir = mkdtempSync(join(tmpdir(), 'dawn-or-tts-'));
-  const raw = join(dir, 'voice-raw.mp3');
-  await writeFile(raw, buf);
-  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  if (body.response_format === 'pcm') {
+    // Gemini: raw PCM s16le 24kHz mono → 표준 16kHz wav.
+    const raw = join(dir, 'voice-raw.pcm');
+    await writeFile(raw, buf);
+    await exec(FFMPEG, [
+      '-y',
+      '-loglevel',
+      'error',
+      '-f',
+      's16le',
+      '-ar',
+      '24000',
+      '-ac',
+      '1',
+      '-i',
+      raw,
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      outWav,
+    ]);
+  } else {
+    const raw = join(dir, 'voice-raw.mp3');
+    await writeFile(raw, buf);
+    await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  }
   return {
     wavPath: outWav,
     engine: 'cloud',
