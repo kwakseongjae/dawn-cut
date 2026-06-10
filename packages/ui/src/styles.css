@@ -66,8 +66,10 @@ body {
 .app {
   display: grid;
   /* 타임라인 4트랙(Video·Subtitle·Overlay·Voice)이 한눈에 들어오도록 높이 확보(넘치면 .tracks 스크롤). */
-  grid-template-rows: 52px 1fr 214px 30px;
-  grid-template-areas: "toolbar" "main" "timeline" "status";
+  /* banner 행은 복구 배너가 없으면 0으로 접힌다(auto). 배너가 암묵 행으로 밀려
+     전체 높이를 침범(좌우 패널 하단 클리핑)하던 버그 수정. */
+  grid-template-rows: 52px auto 1fr 214px 30px;
+  grid-template-areas: "toolbar" "banner" "main" "timeline" "status";
   height: 100vh;
 }
 
@@ -924,6 +926,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0; /* 그리드 행 안에서 줄어들 수 있어야 .dock-body 스크롤이 끝까지 닿는다 */
 }
 .dock-head {
   padding: 13px 16px 8px;
@@ -935,11 +938,13 @@ body {
 }
 .dock-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 14px 16px;
+  padding: 8px 14px 28px;
 }
 
 .badge {
+  white-space: nowrap;
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -1089,6 +1094,7 @@ body {
   flex-wrap: wrap;
 }
 .tchip {
+  white-space: nowrap;
   appearance: none;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -2002,6 +2008,7 @@ body {
 
 /* ── 자동저장 복구 배너 (issue #17) ── */
 .recovery-banner {
+  grid-area: banner;
   display: flex;
   align-items: center;
   gap: 10px;

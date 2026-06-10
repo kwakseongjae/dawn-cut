@@ -780,7 +780,12 @@ function TextPanel() {
     <div className="dock-body">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <strong style={{ fontSize: 13 }}>AI 보이스 (TTS)</strong>
-        <span className="badge live">내보낼 때 합쳐짐</span>
+        <span
+          className="badge live"
+          title="생성한 보이스는 내보낼 때 영상 오디오에 자동으로 믹스됩니다"
+        >
+          자동 믹스
+        </span>
         <span
           className="badge"
           data-testid="tts-engine"
