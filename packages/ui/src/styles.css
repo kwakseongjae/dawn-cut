@@ -2014,3 +2014,55 @@ body {
   padding: 3px 10px;
   font-size: 12px;
 }
+
+/* ── 플랜 카드 부분 적용 + 감사로그 뷰어 (#14) ── */
+.plan-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+.plan-cmd-off {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+.audit-viewer {
+  margin: 0 8px 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.audit-viewer summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--muted, #9aa0ae);
+}
+.audit-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.audit-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.audit-n {
+  color: var(--muted, #9aa0ae);
+  min-width: 16px;
+  text-align: right;
+}
+.audit-delta {
+  color: #ffb86b;
+}
+.audit-hash {
+  margin-left: auto;
+  opacity: 0.5;
+  font-size: 10.5px;
+}

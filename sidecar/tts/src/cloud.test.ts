@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CLOUD_VOICES,
   SIGNATURE_VOICE_ID,
+  buildElevenRequest,
   buildInstructions,
   buildSpeechRequest,
   cloudVoiceById,
@@ -53,6 +54,29 @@ describe('클라우드 TTS — 순수 헬퍼 (네트워크 없음)', () => {
       rate: 145,
       style: 'calm',
     });
+    expect(a).toEqual(b);
+  });
+});
+
+describe('ElevenLabs eleven_v3 — 순수 헬퍼 (네트워크 없음)', () => {
+  it("'던'을 포함한 모든 보이스가 ElevenLabs voice id 매핑을 가진다", () => {
+    for (const v of CLOUD_VOICES) expect(v.elevenVoiceId.length).toBeGreaterThan(10);
+  });
+
+  it('기본 모델은 eleven_v3, 스타일 프리셋이 voice_settings로 결정적으로 매핑된다', () => {
+    const calm = buildElevenRequest('안녕', { apiKey: 'k', voice: 'dawn', style: 'calm' });
+    const lively = buildElevenRequest('안녕', { apiKey: 'k', voice: 'dawn', style: 'lively' });
+    expect(calm.body.model_id).toBe('eleven_v3');
+    expect(calm.voiceId).toBe(cloudVoiceById('dawn').elevenVoiceId);
+    expect(calm.body.voice_settings.stability).toBeGreaterThan(
+      lively.body.voice_settings.stability,
+    );
+    expect(lively.body.voice_settings.style).toBeGreaterThan(calm.body.voice_settings.style);
+  });
+
+  it('결정성: 같은 입력 → 같은 요청', () => {
+    const a = buildElevenRequest('테스트', { apiKey: 'k', voice: 'hojin', style: 'normal' });
+    const b = buildElevenRequest('테스트', { apiKey: 'k', voice: 'hojin', style: 'normal' });
     expect(a).toEqual(b);
   });
 });

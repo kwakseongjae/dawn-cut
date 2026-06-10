@@ -24,7 +24,15 @@ import {
   wordToProgram,
   wrapCaption,
 } from '@dawn-cut/core';
-import type { Chapter, ColorEq, Edl, SubtitleCue, SubtitleStyle } from '@dawn-cut/core';
+import type {
+  Chapter,
+  ColorEq,
+  EditCommand,
+  Edl,
+  SubtitleCue,
+  SubtitleStyle,
+  TranscriptModel,
+} from '@dawn-cut/core';
 import {
   ArrowUpToLine,
   Bot,
@@ -336,10 +344,46 @@ function Toolbar() {
               </button>
               <button
                 type="button"
+                data-testid="export-1080"
+                onClick={() => exportAs((p) => s.exportTo(p, { outHeight: 1080 }))}
+              >
+                <span>영상 — MP4 · 1080p</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-720"
+                onClick={() =>
+                  exportAs((p) => s.exportTo(p, { outHeight: 720, quality: 'medium' }))
+                }
+              >
+                <span>영상 — MP4 · 720p</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-small"
+                onClick={() => exportAs((p) => s.exportTo(p, { quality: 'small' }))}
+                title="화질을 약간 낮춰 파일을 작게 (메신저/메일 공유용)"
+              >
+                <span>영상 — MP4 · 작게(고압축)</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
                 data-testid="export-gif"
                 onClick={() => exportAs((p) => s.exportVideo(p, 'gif'))}
               >
                 <span>움짤 GIF</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-mp3"
+                onClick={() => exportAs((p) => s.exportAudio(p, 'mp3'))}
+                title="컷·무음 제거가 반영된 오디오만 (팟캐스트/녹취)"
+              >
+                <span>오디오만 — MP3</span>
                 <span className="k badge live">바로</span>
               </button>
               <button
@@ -680,11 +724,15 @@ function TextPanel() {
     };
   }, []);
   // 클라우드 TTS(opt-in, BYOK) — '던' 시그니처 보이스. 기본 off, 키는 main에만 저장.
-  const [cloudCfg, setCloudCfg] = useState<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>(
-    { ttsEngine: 'local', hasOpenaiKey: false },
-  );
+  // ElevenLabs(eleven_v3, 프론티어 음질) 키가 있으면 우선, 없으면 OpenAI(가성비) 사용.
+  const [cloudCfg, setCloudCfg] = useState<{
+    ttsEngine: 'local' | 'cloud';
+    hasOpenaiKey: boolean;
+    hasElevenKey?: boolean;
+  }>({ ttsEngine: 'local', hasOpenaiKey: false, hasElevenKey: false });
   const [cloudVoices, setCloudVoices] = useState<{ id: string; label: string }[]>([]);
   const [keyInput, setKeyInput] = useState('');
+  const [elevenKeyInput, setElevenKeyInput] = useState('');
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -700,18 +748,26 @@ function TextPanel() {
       alive = false;
     };
   }, []);
-  const cloudOn = cloudCfg.ttsEngine === 'cloud' && cloudCfg.hasOpenaiKey;
+  const hasAnyCloudKey = cloudCfg.hasOpenaiKey || Boolean(cloudCfg.hasElevenKey);
+  const cloudOn = cloudCfg.ttsEngine === 'cloud' && hasAnyCloudKey;
+  const frontier = Boolean(cloudCfg.hasElevenKey); // 프론티어(eleven_v3) 경로 활성?
   const [cloudVoice, setCloudVoice] = useState('dawn');
   const setEngine = async (engine: 'local' | 'cloud') => {
     const next = await window.dawn?.setSettings?.({ ttsEngine: engine });
     if (next) setCloudCfg(next);
   };
-  const saveKey = async () => {
-    const k = keyInput.trim();
-    if (!k) return;
-    const next = await window.dawn?.setSettings?.({ openaiApiKey: k, ttsEngine: 'cloud' });
+  const saveKeys = async () => {
+    const openai = keyInput.trim();
+    const eleven = elevenKeyInput.trim();
+    if (!openai && !eleven) return;
+    const next = await window.dawn?.setSettings?.({
+      ...(openai ? { openaiApiKey: openai } : {}),
+      ...(eleven ? { elevenlabsApiKey: eleven } : {}),
+      ttsEngine: 'cloud',
+    });
     if (next) setCloudCfg(next);
     setKeyInput('');
+    setElevenKeyInput('');
   };
   const koAvailable = voices.some((v) => isKoLang(v.lang));
   return (
@@ -724,13 +780,21 @@ function TextPanel() {
           data-testid="tts-engine"
           title={
             cloudOn
-              ? "클라우드 TTS(OpenAI gpt-4o-mini-tts) 사용 중 — '던' 시그니처 보이스"
+              ? frontier
+                ? "클라우드 TTS — ElevenLabs eleven_v3(프론티어 음질) 우선, '던' 시그니처 보이스"
+                : "클라우드 TTS — OpenAI gpt-4o-mini-tts(가성비), '던' 시그니처 보이스"
               : neural
                 ? '뉴럴(Piper) 엔진 사용 중'
                 : 'macOS say 엔진. 뉴럴은 pnpm setup:tts-neural 로 설치(영어 위주 — 한국어 뉴럴은 준비 중)'
           }
         >
-          {cloudOn ? '클라우드 · 던' : neural ? '뉴럴(Piper)' : 'macOS say'}
+          {cloudOn
+            ? frontier
+              ? '클라우드 · 던 (v3)'
+              : '클라우드 · 던'
+            : neural
+              ? '뉴럴(Piper)'
+              : 'macOS say'}
         </span>
       </div>
       <div className="field">엔진</div>
@@ -754,7 +818,7 @@ function TextPanel() {
           클라우드 (던) ✦
         </button>
       </div>
-      {cloudCfg.ttsEngine === 'cloud' && !cloudCfg.hasOpenaiKey && (
+      {cloudCfg.ttsEngine === 'cloud' && !hasAnyCloudKey && (
         <div
           className="ov-field"
           style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}
@@ -762,17 +826,26 @@ function TextPanel() {
           <input
             className="input"
             type="password"
+            data-testid="tts-cloud-key-eleven"
+            placeholder="ElevenLabs API 키 — 프론티어 음질(eleven_v3), 권장"
+            value={elevenKeyInput}
+            onChange={(e) => setElevenKeyInput(e.target.value)}
+          />
+          <input
+            className="input"
+            type="password"
             data-testid="tts-cloud-key"
-            placeholder="OpenAI API 키 (sk-…) — 내 키로 사용(BYOK)"
+            placeholder="OpenAI API 키 (sk-…) — 가성비(4o-mini-tts)"
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
           />
-          <button type="button" className="btn" data-testid="tts-cloud-key-save" onClick={saveKey}>
-            키 저장
+          <button type="button" className="btn" data-testid="tts-cloud-key-save" onClick={saveKeys}>
+            키 저장 (둘 중 하나만 있어도 됩니다)
           </button>
           <p className="muted-note">
-            ⚠️ 클라우드 보이스는 <b>원고 텍스트가 OpenAI로 전송</b>됩니다. 영상·오디오는 기기를
-            떠나지 않습니다. 키는 이 컴퓨터에만 저장됩니다.
+            ⚠️ 클라우드 보이스는 <b>원고 텍스트만 외부로 전송</b>됩니다. 영상·오디오는 기기를 떠나지
+            않습니다. 키는 이 컴퓨터에만 저장됩니다. 둘 다 있으면 ElevenLabs(프론티어) 우선, 실패 시
+            OpenAI → 로컬 순으로 자동 폴백합니다.
           </p>
         </div>
       )}
@@ -2041,7 +2114,48 @@ const CMD_LABEL: Record<string, string> = {
   replaceSubtitleStyle: '자막 프리셋',
   applyColorgrade: '색보정',
   applyZoom: '펀치인 줌',
+  highlightKeyword: '핵심 강조 자막',
+  autoHighlight: '자동 하이라이트',
+  applyAutoEnhance: '자동 보정',
+  correctWord: '어절 교정',
 };
+
+const COLOR_PRESET_KO: Record<string, string> = {
+  warm: '따뜻하게',
+  cool: '차갑게',
+  punch: '선명하게',
+  cinematic: '시네마틱',
+  flat: '플랫',
+  vivid: '화사하게',
+};
+
+/** 플랜 카드의 명령 1줄 설명(#14) — 무엇이 어떻게 바뀌는지 사람이 읽게. transcript로 어절 텍스트 해소. */
+function describeCommand(c: EditCommand, transcript: TranscriptModel | null): string {
+  const base = CMD_LABEL[c.type] ?? c.type;
+  switch (c.type) {
+    case 'deleteWordRange': {
+      const from = transcript?.words[c.fromWordId]?.text;
+      const to = transcript?.words[c.toWordId]?.text;
+      const span = from && to ? (from === to ? `“${from}”` : `“${from} … ${to}”`) : '';
+      return `${base} ${span}`.trim();
+    }
+    case 'removeSilences':
+      return `${base} · ${c.silences.length}곳`;
+    case 'applyColorgrade':
+      return `${base} · ${COLOR_PRESET_KO[c.preset] ?? c.preset}`;
+    case 'autoHighlight':
+      return `${base} · ~${c.targetSeconds}초로 컷`;
+    case 'highlightKeyword':
+      return `${base}${c.color ? ` · ${c.color}` : ''}`;
+    case 'applyGlossary':
+      return `${base} · ${c.pairs.length}쌍`;
+    case 'replaceSubtitleStyle':
+    case 'setSubtitleStyle':
+      return base;
+    default:
+      return base;
+  }
+}
 
 // 내 사전(고유명사 교정쌍) 추가 입력.
 function GlossaryAdd({ onAdd }: { onAdd: (from: string, to: string) => void }) {
@@ -2116,6 +2230,9 @@ function Transcript() {
     applyStylePack,
     pendingPlan,
     planReport,
+    planExcluded,
+    togglePlanCommand,
+    auditLog,
     nlBusy,
     nlError,
     llmReady,
@@ -2427,10 +2544,20 @@ function Transcript() {
             </div>
             {pendingPlan.commands.length > 0 ? (
               <ul className="plan-cmds">
+                {/* 부분 적용(#14): 체크 해제한 명령은 빼고 적용 — diff는 선택분만 재평가 */}
                 {pendingPlan.commands.map((c, i) => (
                   <li key={`${c.type}-${i}`}>
-                    {CMD_LABEL[c.type] ?? c.type}
-                    {c.type === 'applyColorgrade' ? ` · ${c.preset}` : ''}
+                    <label className="plan-cmd-row">
+                      <input
+                        type="checkbox"
+                        data-testid={`plan-cmd-${i}`}
+                        checked={!planExcluded.includes(i)}
+                        onChange={() => togglePlanCommand(i)}
+                      />
+                      <span className={planExcluded.includes(i) ? 'plan-cmd-off' : ''}>
+                        {describeCommand(c, transcript)}
+                      </span>
+                    </label>
                   </li>
                 ))}
               </ul>
@@ -2452,10 +2579,16 @@ function Transcript() {
                 type="button"
                 className="btn primary"
                 data-testid="plan-approve"
-                disabled={!planReport?.ok || pendingPlan.commands.length === 0}
+                disabled={
+                  !planReport?.ok ||
+                  pendingPlan.commands.filter((_, i) => !planExcluded.includes(i)).length === 0
+                }
                 onClick={() => approvePlan()}
               >
                 승인
+                {planExcluded.length > 0
+                  ? ` (${pendingPlan.commands.length - planExcluded.length}/${pendingPlan.commands.length})`
+                  : ''}
               </button>
               <button
                 type="button"
@@ -2467,6 +2600,26 @@ function Transcript() {
               </button>
             </div>
           </div>
+        )}
+        {advanced && auditLog.length > 0 && (
+          // 감사로그 뷰어(#14) — 적용된 모든 편집 명령의 해시체인. 'AI 편집은 불투명하지 않다'의 증거 UI.
+          <details className="card audit-viewer" data-testid="audit-viewer">
+            <summary>
+              <ListTree size={13} /> 편집 기록 {auditLog.length}개 · 해시체인 검증됨
+            </summary>
+            <ul className="audit-list">
+              {auditLog.map((a, i) => (
+                <li key={a.hash}>
+                  <span className="audit-n">{i + 1}</span>
+                  <span>{describeCommand(a.command as EditCommand, transcript)}</span>
+                  {a.removedProgramUs > 0 && (
+                    <span className="audit-delta">−{fmt(a.removedProgramUs)}</span>
+                  )}
+                  <code className="audit-hash">{a.hash.slice(0, 8)}</code>
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {advanced && (
           <div className="sub-pos card" data-testid="subtitle-pos">
@@ -3611,6 +3764,7 @@ export function AppShell() {
       planAndPreview: (input: string) => useEditor.getState().planAndPreview(input),
       approvePlan: () => useEditor.getState().approvePlan(),
       rejectPlan: () => useEditor.getState().rejectPlan(),
+      togglePlanCommand: (i: number) => useEditor.getState().togglePlanCommand(i),
       applyStylePack: (id: string) => useEditor.getState().applyStylePack(id),
       autoEnhance: () => useEditor.getState().autoEnhance(),
       correctWord: (wordId: string, text: string) => useEditor.getState().correctWord(wordId, text),

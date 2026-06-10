@@ -11,6 +11,7 @@ import {
   extractAudio,
   makePreviewProxy,
   probeMedia,
+  renderAudioOnly,
   renderEdl,
   writeSrt,
 } from '@dawn-cut/sidecar-ffmpeg';
@@ -21,6 +22,7 @@ import {
   isPiperAvailable,
   listVoices,
   synthesizeCloudTts,
+  synthesizeElevenTts,
   synthesizeTts,
 } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
@@ -106,7 +108,11 @@ ipcMain.handle('llm:plan', (_e, prompt: string) => {
 });
 
 // ── 설정(userData/settings.json) — API 키는 main에만 머물고 렌더러엔 보유 여부만 노출 ──
-type DawnSettings = { openaiApiKey?: string; ttsEngine?: 'local' | 'cloud' };
+type DawnSettings = {
+  openaiApiKey?: string;
+  elevenlabsApiKey?: string;
+  ttsEngine?: 'local' | 'cloud';
+};
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 async function readSettings(): Promise<DawnSettings> {
   try {
@@ -115,22 +121,33 @@ async function readSettings(): Promise<DawnSettings> {
     return {};
   }
 }
-ipcMain.handle('settings:get', async () => {
-  const s = await readSettings();
-  // 키 원문은 절대 렌더러로 보내지 않는다(웹 컨텐츠 노출 면적 최소화).
-  return { ttsEngine: s.ttsEngine ?? 'local', hasOpenaiKey: Boolean(s.openaiApiKey) };
-});
+// 렌더러에 주는 설정 뷰 — 키 원문은 절대 보내지 않는다(보유 여부만).
+function settingsView(s: DawnSettings) {
+  return {
+    ttsEngine: s.ttsEngine ?? 'local',
+    hasOpenaiKey: Boolean(s.openaiApiKey),
+    hasElevenKey: Boolean(s.elevenlabsApiKey),
+  };
+}
+ipcMain.handle('settings:get', async () => settingsView(await readSettings()));
 ipcMain.handle(
   'settings:set',
-  async (_e, patch: { openaiApiKey?: string | null; ttsEngine?: 'local' | 'cloud' }) => {
+  async (
+    _e,
+    patch: {
+      openaiApiKey?: string | null;
+      elevenlabsApiKey?: string | null;
+      ttsEngine?: 'local' | 'cloud';
+    },
+  ) => {
     const s = await readSettings();
-    if (patch.openaiApiKey !== undefined) {
-      // null/빈 문자열 = 키 제거(undefined 대입 — JSON.stringify가 필드를 떨어뜨린다).
-      s.openaiApiKey = patch.openaiApiKey || undefined;
-    }
+    // null/빈 문자열 = 키 제거(undefined 대입 — JSON.stringify가 필드를 떨어뜨린다).
+    if (patch.openaiApiKey !== undefined) s.openaiApiKey = patch.openaiApiKey || undefined;
+    if (patch.elevenlabsApiKey !== undefined)
+      s.elevenlabsApiKey = patch.elevenlabsApiKey || undefined;
     if (patch.ttsEngine) s.ttsEngine = patch.ttsEngine;
     await writeFile(settingsPath(), JSON.stringify(s, null, 2), 'utf8');
-    return { ttsEngine: s.ttsEngine ?? 'local', hasOpenaiKey: Boolean(s.openaiApiKey) };
+    return settingsView(s);
   },
 );
 ipcMain.handle('tts:cloudVoices', () => CLOUD_VOICES.map(({ id, label }) => ({ id, label })));
@@ -145,24 +162,43 @@ ipcMain.handle(
   ) => {
     const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
     const out = join(dir, 'voice.wav');
-    // 클라우드 opt-in + 키 보유 시에만 클라우드(BYOK). 실패하면 로컬 say로 폴백하고 사유 전달.
+    // 클라우드 opt-in + 키 보유 시에만 클라우드(BYOK). 우선순위: ElevenLabs eleven_v3(프론티어)
+    // → OpenAI gpt-4o-mini-tts(가성비) → 로컬 say(항상 가능). 실패 사유는 cloudError로 전달.
     const settings = await readSettings();
-    let res: { wavPath: string; engine: string; voice: string };
+    let res: { wavPath: string; engine: string; voice: string } | null = null;
     let cloudError: string | undefined;
-    if (settings.ttsEngine === 'cloud' && settings.openaiApiKey) {
-      try {
-        res = await synthesizeCloudTts(text, out, {
-          apiKey: settings.openaiApiKey,
-          voice,
-          rate: opts?.rate,
-          style: opts?.style,
-        });
-      } catch (e) {
-        cloudError = e instanceof Error ? e.message : String(e);
-        res = await synthesizeTts(text, out, { ...opts });
+    if (settings.ttsEngine === 'cloud') {
+      if (settings.elevenlabsApiKey) {
+        try {
+          res = await synthesizeElevenTts(text, out, {
+            apiKey: settings.elevenlabsApiKey,
+            voice,
+            rate: opts?.rate,
+            style: opts?.style,
+          });
+        } catch (e) {
+          cloudError = e instanceof Error ? e.message : String(e);
+        }
       }
-    } else {
-      res = await synthesizeTts(text, out, { voice, ...opts });
+      if (!res && settings.openaiApiKey) {
+        try {
+          res = await synthesizeCloudTts(text, out, {
+            apiKey: settings.openaiApiKey,
+            voice,
+            rate: opts?.rate,
+            style: opts?.style,
+          });
+          cloudError = undefined; // 가성비 라인으로 성공 — 프론티어 실패 사유는 덮는다
+        } catch (e) {
+          cloudError = e instanceof Error ? e.message : String(e);
+        }
+      }
+    }
+    if (!res) {
+      res = await synthesizeTts(text, out, {
+        ...(settings.ttsEngine === 'cloud' ? {} : { voice }),
+        ...opts,
+      });
     }
     let durationUs = 0;
     try {
@@ -269,6 +305,12 @@ ipcMain.handle('autosave:clear', async () => {
 });
 
 // 내보낸 파일을 Finder/탐색기에서 보여준다(완료 카드 '폴더에서 보기').
+// 오디오만 내보내기(issue #5) — mp3/wav.
+ipcMain.handle('export:audio', async (_e, edl: Edl, outPath: string, format: 'mp3' | 'wav') => {
+  await renderAudioOnly(edl, outPath, format);
+  return { outPath };
+});
+
 ipcMain.handle('shell:reveal', (_e, path: string) => {
   shell.showItemInFolder(path);
 });

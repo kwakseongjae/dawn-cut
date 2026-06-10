@@ -26,6 +26,8 @@ export interface CloudVoice {
   label: string;
   /** OpenAI voice 이름. */
   openaiVoice: string;
+  /** ElevenLabs premade voice id(프론티어 eleven_v3 경로). 같은 '던' 브랜드가 양쪽에 매핑된다. */
+  elevenVoiceId: string;
   /** 기본 말투 지시(한국어 최적화). 스타일 프리셋이 덧붙는다. */
   baseInstructions: string;
 }
@@ -39,6 +41,7 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     id: 'dawn',
     label: '던 (시그니처 · 또렷한 내레이션)',
     openaiVoice: 'nova',
+    elevenVoiceId: '21m00Tcm4TlvDq8ikWAM', // Rachel — 또렷한 내레이션
     baseInstructions:
       '밝고 또렷한 한국어 내레이션. 유튜브 해설 톤으로 자연스럽게, 문장 끝을 흐리지 않고 명확하게 읽는다. 영어 단어는 자연스러운 외래어 발음으로.',
   },
@@ -46,18 +49,21 @@ export const CLOUD_VOICES: readonly CloudVoice[] = [
     id: 'seoyeon',
     label: '서연 (차분한 다큐)',
     openaiVoice: 'shimmer',
+    elevenVoiceId: 'MF3mGyEYCl7XYWbV9V6O', // Elli — 차분·부드러움
     baseInstructions: '차분하고 신뢰감 있는 한국어 다큐멘터리 내레이션. 또박또박, 약간 낮은 톤.',
   },
   {
     id: 'hojin',
     label: '호진 (묵직한 예고편)',
     openaiVoice: 'onyx',
+    elevenVoiceId: 'pNInz6obpgDQGcFmaJgB', // Adam — 깊고 묵직
     baseInstructions: '묵직하고 깊은 한국어 내레이션. 영화 예고편처럼 무게감 있게.',
   },
   {
     id: 'haru',
     label: '하루 (활기찬 쇼츠)',
     openaiVoice: 'coral',
+    elevenVoiceId: 'AZnzlk1XvdvUeBnXmlld', // Domi — 에너지
     baseInstructions: '활기차고 에너지 넘치는 한국어 쇼츠 내레이션. 빠른 호흡, 친근한 말투.',
   },
 ] as const;
@@ -113,6 +119,88 @@ export interface CloudTtsResult {
   /** dawn-cut 보이스 id(예: 'dawn'). */
   voice: string;
   model: string;
+}
+
+// ── ElevenLabs eleven_v3 — 프론티어 음질 경로 (키 있으면 우선) ──────────
+// eleven_v3는 2026 현재 TTS 품질 프론티어(70+ 언어, 감정 오디오태그). API ~$0.1/1k자
+// (한국어 ~300자/분 → ~$0.03/분). gpt-4o-mini-tts(가성비 라인)의 상위 옵션.
+
+export interface ElevenTtsOpts {
+  apiKey: string;
+  voice?: string; // dawn-cut 보이스 id(CLOUD_VOICES)
+  rate?: number; // wpm — voice_settings에 직접 대응 없음 → 텍스트 페이스는 원고에 맡김
+  style?: string; // calm/normal/lively → stability/style 매핑
+  model?: string; // 기본 eleven_v3
+}
+
+/** ElevenLabs 요청(순수 — 단위테스트 대상). 스타일 프리셋 → voice_settings 결정적 매핑. */
+export function buildElevenRequest(
+  text: string,
+  opts: ElevenTtsOpts,
+): {
+  voiceId: string;
+  body: {
+    text: string;
+    model_id: string;
+    voice_settings: { stability: number; similarity_boost: number; style: number };
+  };
+} {
+  const v = cloudVoiceById(opts.voice);
+  // calm=안정 위주, lively=표현력 위주, 보통=중간. 결정적 상수(튜닝은 추후 실측으로).
+  const preset =
+    opts.style === 'calm'
+      ? { stability: 0.8, style: 0.15 }
+      : opts.style === 'lively'
+        ? { stability: 0.35, style: 0.65 }
+        : { stability: 0.55, style: 0.35 };
+  return {
+    voiceId: v.elevenVoiceId,
+    body: {
+      text,
+      model_id: opts.model ?? 'eleven_v3',
+      voice_settings: { ...preset, similarity_boost: 0.8 },
+    },
+  };
+}
+
+/**
+ * ElevenLabs 합성 → 16kHz mono wav. 실패는 throw — 호출측이 다음 엔진으로 폴백.
+ * (eleven_v3 미가용 계정이면 422 등이 떨어진다 → 호출측이 multilingual v2로 재시도.)
+ */
+export async function synthesizeElevenTts(
+  text: string,
+  outWav: string,
+  opts: ElevenTtsOpts,
+): Promise<CloudTtsResult> {
+  if (!opts.apiKey) throw new Error('ElevenLabs TTS: API 키가 없습니다');
+  const { voiceId, body } = buildElevenRequest(text, opts);
+  const res = await fetch(
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
+    {
+      method: 'POST',
+      headers: { 'xi-api-key': opts.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    // v3 미가용 계정 → multilingual v2로 1회 자동 강등(같은 보이스).
+    if (res.status >= 400 && body.model_id === 'eleven_v3') {
+      return synthesizeElevenTts(text, outWav, { ...opts, model: 'eleven_multilingual_v2' });
+    }
+    throw new Error(`ElevenLabs TTS 실패(${res.status}): ${detail.slice(0, 200)}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const dir = mkdtempSync(join(tmpdir(), 'dawn-eleven-tts-'));
+  const raw = join(dir, 'voice-raw.mp3');
+  await writeFile(raw, buf);
+  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  return {
+    wavPath: outWav,
+    engine: 'cloud',
+    voice: cloudVoiceById(opts.voice).id,
+    model: body.model_id,
+  };
 }
 
 /**

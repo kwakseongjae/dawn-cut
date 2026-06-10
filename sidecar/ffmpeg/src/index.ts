@@ -220,6 +220,16 @@ export interface RenderOpts {
   // 자동 리프레이밍: 소스를 목표 종횡비로 중앙 크롭(쇼츠 9:16, 정사각 1:1). 'source'/미지정=원본 유지.
   // 오버레이 좌표는 크롭된 프레임 기준으로 재계산된다(safe-area 보존).
   reframe?: '9:16' | '1:1' | 'source';
+  // ── 내보내기 프리셋(issue #5) — 미지정 시 기존과 바이트 동일 ──
+  /** 출력 세로 해상도(px) — 가로는 종횡비 유지(-2, 짝수). 예: 1080/720. */
+  outHeight?: number;
+  /** 품질 프리셋 → libx264 CRF(high=18/medium=23/small=28). 미지정=ffmpeg 기본. */
+  quality?: 'high' | 'medium' | 'small';
+}
+
+/** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
+export function crfForQuality(q: NonNullable<RenderOpts['quality']>): string {
+  return q === 'high' ? '18' : q === 'small' ? '28' : '23';
 }
 
 /** 소스 w×h를 목표 종횡비로 중앙 크롭할 짝수 치수(짝수=yuv420p 안전). */
@@ -321,14 +331,63 @@ export async function renderEdl(
     filter += `;[${voiceIdx}:a]adelay=${delayMs}:all=1[vdelay];[a][vdelay]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
     audioLabel = '[aout]';
   }
-  args.push('-filter_complex', filter, '-map', videoLabel, '-map', audioLabel);
+  // 내보내기 프리셋(issue #5): 해상도 스케일은 최종 비디오 라벨 뒤에 1번만 붙인다(오버레이/크롭 이후).
+  let mapVideo = videoLabel;
+  if (opts.outHeight && opts.outHeight > 0) {
+    const h = Math.max(2, opts.outHeight - (opts.outHeight % 2));
+    filter += `;${videoLabel}scale=-2:${h}:flags=lanczos[vscaled]`;
+    mapVideo = '[vscaled]';
+  }
+  args.push('-filter_complex', filter, '-map', mapVideo, '-map', audioLabel);
   if (opts.subtitlesPath) args.push('-map', `${subIdx}:0`, '-c:s', 'mov_text');
   // a looping GIF overlay is an infinite input → bound output to the finite base.
   // (only when a GIF overlay is present, so a short subtitle track can't trim the video.)
   if (ovf.inputs.some((p) => /\.gif$/i.test(p))) args.push('-shortest');
+  if (opts.quality) args.push('-c:v', 'libx264', '-crf', crfForQuality(opts.quality));
   args.push('-r', String(edl.fps), '-pix_fmt', 'yuv420p', outPath);
 
   await exec(FFMPEG, args, { maxBuffer: 32 * 1024 * 1024 });
+  return { outPath };
+}
+
+/**
+ * 오디오만 내보내기(issue #5) — EDL의 오디오 세그먼트만 trim/concat해 mp3/wav로.
+ * 팟캐스트 클립·녹취 공유용. 비디오 디코드가 없어 매우 빠르다.
+ */
+export async function renderAudioOnly(
+  edl: Edl,
+  outPath: string,
+  format: 'mp3' | 'wav',
+): Promise<{ outPath: string }> {
+  if (edl.segments.length === 0) throw new Error('renderAudioOnly: empty EDL');
+  const input = edl.segments[0]!.mediaPath;
+  const parts: string[] = [];
+  const labels: string[] = [];
+  edl.segments.forEach((s, i) => {
+    parts.push(
+      `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS[a${i}]`,
+    );
+    labels.push(`[a${i}]`);
+  });
+  const filter = `${parts.join(';')};${labels.join('')}concat=n=${edl.segments.length}:v=0:a=1[a]`;
+  const codec = format === 'mp3' ? ['-c:a', 'libmp3lame', '-q:a', '2'] : ['-c:a', 'pcm_s16le'];
+  await exec(
+    FFMPEG,
+    [
+      '-y',
+      '-loglevel',
+      'error',
+      '-i',
+      input,
+      '-filter_complex',
+      filter,
+      '-map',
+      '[a]',
+      ...codec,
+      outPath,
+    ],
+    { maxBuffer: 32 * 1024 * 1024 },
+  );
   return { outPath };
 }
 

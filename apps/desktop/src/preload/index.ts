@@ -11,6 +11,8 @@ type RenderOpts = {
   reframe?: 'source' | '9:16' | '1:1';
   voicePath?: string;
   voiceStartUs?: number;
+  outHeight?: number;
+  quality?: 'high' | 'medium' | 'small';
 };
 
 // Typed bridge. contextIsolation=true, nodeIntegration=false. Mirrors DawnBridge in @dawn-cut/ui.
@@ -46,6 +48,8 @@ const bridge = {
     ipcRenderer.invoke('export:render', edl, outPath, opts),
   writeSrt: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('subtitle:write', path, content),
+  renderAudio: (edl: Edl, outPath: string, format: 'mp3' | 'wav'): Promise<{ outPath: string }> =>
+    ipcRenderer.invoke('export:audio', edl, outPath, format),
   writeAsset: (dataUrl: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('asset:writeImage', dataUrl),
   synthesizeTts: (
@@ -62,12 +66,16 @@ const bridge = {
   listTtsVoices: (): Promise<{ name: string; lang: string }[]> => ipcRenderer.invoke('tts:voices'),
   cloudTtsVoices: (): Promise<{ id: string; label: string }[]> =>
     ipcRenderer.invoke('tts:cloudVoices'),
-  getSettings: (): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }> =>
-    ipcRenderer.invoke('settings:get'),
+  getSettings: (): Promise<{
+    ttsEngine: 'local' | 'cloud';
+    hasOpenaiKey: boolean;
+    hasElevenKey: boolean;
+  }> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: {
     openaiApiKey?: string | null;
+    elevenlabsApiKey?: string | null;
     ttsEngine?: 'local' | 'cloud';
-  }): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }> =>
+  }): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean; hasElevenKey: boolean }> =>
     ipcRenderer.invoke('settings:set', patch),
   motionStickers: (): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('assets:motionStickers'),

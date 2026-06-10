@@ -53,9 +53,13 @@ export interface DawnBridge {
       reframe?: 'source' | '9:16' | '1:1';
       voicePath?: string;
       voiceStartUs?: number;
+      outHeight?: number;
+      quality?: 'high' | 'medium' | 'small';
     },
   ) => Promise<{ outPath: string; actualDurationUs: number }>;
   writeSrt: (path: string, content: string) => Promise<{ path: string }>;
+  /** 오디오만 내보내기(mp3/wav) — EDL 오디오 trim/concat (issue #5). */
+  renderAudio?: (edl: Edl, outPath: string, format: 'mp3' | 'wav') => Promise<{ outPath: string }>;
   writeAsset: (dataUrl: string) => Promise<{ path: string }>;
   synthesizeTts: (
     text: string,
@@ -74,11 +78,16 @@ export interface DawnBridge {
   /** 클라우드 보이스 카탈로그('던' 시그니처 등) — opt-in 시 보이스 셀렉트에 노출. */
   cloudTtsVoices?: () => Promise<{ id: string; label: string }[]>;
   /** 설정(API 키는 보유 여부만 노출 — 원문은 main에만). */
-  getSettings?: () => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>;
+  getSettings?: () => Promise<{
+    ttsEngine: 'local' | 'cloud';
+    hasOpenaiKey: boolean;
+    hasElevenKey: boolean;
+  }>;
   setSettings?: (patch: {
     openaiApiKey?: string | null;
+    elevenlabsApiKey?: string | null;
     ttsEngine?: 'local' | 'cloud';
-  }) => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>;
+  }) => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean; hasElevenKey: boolean }>;
   /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
   motionStickers: () => Promise<{ name: string; path: string }[]>;
   /** TTS 엔진 상태 — 뉴럴(Piper) 사용 가능 여부. 미설치면 macOS say 폴백. */
@@ -122,6 +131,7 @@ declare global {
       planAndPreview: (input: string) => Promise<void>;
       approvePlan: () => void;
       rejectPlan: () => void;
+      togglePlanCommand: (index: number) => void;
       applyStylePack: (id: string) => void;
       autoEnhance: () => Promise<void>;
       correctWord: (wordId: string, text: string) => void;

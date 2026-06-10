@@ -77,8 +77,12 @@ interface EditorState {
   removeSilencesAction: () => Promise<void>;
   undo: () => void;
   redo: () => void;
-  exportTo: (path: string) => Promise<void>;
+  exportTo: (
+    path: string,
+    preset?: { outHeight?: number; quality?: 'high' | 'medium' | 'small' },
+  ) => Promise<void>;
   exportVideo: (path: string, format: 'mp4' | 'gif') => Promise<void>;
+  exportAudio: (path: string, format: 'mp3' | 'wav') => Promise<void>; // 오디오만(팟캐스트/녹취)
   exportSrt: (path: string) => Promise<void>;
   saveProject: (path: string) => Promise<void>;
   openProject: (path: string) => Promise<void>;
@@ -132,7 +136,9 @@ interface EditorState {
   nlBusy: boolean;
   // 승인 대기(승인 전 상태 불변). engine = 이 plan을 만든 주체(로컬 LLM / 룰).
   pendingPlan: { input: string; commands: EditCommand[]; engine: 'llm' | 'rule' } | null;
-  planReport: DryRunReport | null; // pendingPlan의 dryRun diff
+  planReport: DryRunReport | null; // pendingPlan의 dryRun diff (부분 적용 시 선택분만 재평가)
+  planExcluded: number[]; // 부분 적용 — 사용자가 체크 해제한 명령 인덱스(#14)
+  togglePlanCommand: (index: number) => void; // 체크 토글 → 선택분만 dry-run 재평가
   nlError: string | null;
   llmReady: boolean; // 로컬 LLM 사용 가능(llama.cpp+모델). false면 룰 플래너만.
   llmReason: string | null; // llmReady=false 사유(사람이 읽을 메시지) 또는 null.
@@ -947,7 +953,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 
-  exportTo: async (path) => {
+  exportTo: async (path, preset) => {
     const { timeline, mediaPath, overlays, frameW, frameH, ttsClips, transcript, reframe } = get();
     const dawn = window.dawn;
     if (!timeline || !mediaPath || !dawn) return;
@@ -976,6 +982,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         : {}),
       ...(subtitlesPath ? { subtitlesPath } : {}),
       ...(reframe !== 'source' ? { reframe } : {}),
+      ...(preset?.outHeight ? { outHeight: preset.outHeight } : {}),
+      ...(preset?.quality ? { quality: preset.quality } : {}),
     });
     set({
       status: 'exported',
@@ -984,6 +992,29 @@ export const useEditor = create<EditorState>((set, get) => ({
         format: 'mp4',
         originalUs: get().sourceDurationUs,
         finalUs: res.actualDurationUs,
+      },
+    });
+  },
+
+  exportAudio: async (path, format) => {
+    // 오디오만 추출(issue #5) — 컷·무음 제거가 반영된 EDL 오디오를 mp3/wav로(색보정 무관).
+    const { timeline, mediaPath } = get();
+    const dawn = window.dawn;
+    if (!timeline || !mediaPath || !dawn?.renderAudio) return;
+    set({ status: 'exporting' });
+    // 저장 다이얼로그 기본값이 .mp4라 확장자를 포맷에 맞게 교정한다.
+    const out = new RegExp(`\\.${format}$`, 'i').test(path)
+      ? path
+      : `${path.replace(/\.[^/.]+$/, '')}.${format}`;
+    const edl = timelineToEdl(timeline, mediaPath);
+    await dawn.renderAudio(edl, out, format);
+    set({
+      status: 'exported',
+      lastExport: {
+        path: out,
+        format,
+        originalUs: get().sourceDurationUs,
+        finalUs: timeline.durationProgram,
       },
     });
   },
@@ -1187,6 +1218,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         nlBusy: false,
         pendingPlan: { input, commands, engine },
         planReport: report,
+        planExcluded: [],
         nlError:
           commands.length === 0
             ? '이해하지 못한 명령입니다. (예: "말버릇 빼줘", "시네마틱하게")'
@@ -1196,10 +1228,24 @@ export const useEditor = create<EditorState>((set, get) => ({
       set({ nlBusy: false, nlError: e instanceof Error ? e.message : String(e) });
     }
   },
+  planExcluded: [],
+  togglePlanCommand: (index) => {
+    // 부분 적용(#14): 체크 해제된 명령을 빼고 dry-run을 다시 평가한다(승인 전 상태 불변).
+    const { pendingPlan, planExcluded, timeline, transcript, subtitleStyle } = get();
+    if (!pendingPlan || !timeline || !transcript) return;
+    const excluded = planExcluded.includes(index)
+      ? planExcluded.filter((i) => i !== index)
+      : [...planExcluded, index];
+    const enabled = pendingPlan.commands.filter((_, i) => !excluded.includes(i));
+    const { report } = dryRunCommands({ timeline, transcript, subtitleStyle }, enabled);
+    set({ planExcluded: excluded, planReport: report });
+  },
   approvePlan: () => {
-    // 승인 = 유일한 상태변경 지점. 각 명령을 command bus로 적용 + 감사 로그 기록.
-    const { pendingPlan, planReport, timeline, transcript, subtitleStyle } = get();
-    if (!pendingPlan || !planReport?.ok || pendingPlan.commands.length === 0) return;
+    // 승인 = 유일한 상태변경 지점. 선택된(체크된) 명령만 command bus로 적용 + 감사 로그 기록.
+    const { pendingPlan, planReport, planExcluded, timeline, transcript, subtitleStyle } = get();
+    if (!pendingPlan || !planReport?.ok) return;
+    const approved = pendingPlan.commands.filter((_, i) => !planExcluded.includes(i));
+    if (approved.length === 0) return;
     if (!timeline || !transcript) return;
     let st: { timeline: TimelineModel; transcript: TranscriptModel; subtitleStyle: SubtitleStyle } =
       {
@@ -1208,7 +1254,7 @@ export const useEditor = create<EditorState>((set, get) => ({
         subtitleStyle,
       };
     let audit = get().auditLog;
-    for (const cmd of pendingPlan.commands) {
+    for (const cmd of approved) {
       const { after, removedProgramUs } = applyCommand(st, cmd);
       st = {
         timeline: after.timeline,
@@ -1229,12 +1275,13 @@ export const useEditor = create<EditorState>((set, get) => ({
       selected: [],
       pendingPlan: null,
       planReport: null,
+      planExcluded: [],
       nlError: null,
       status: 'ready',
       ...derive(st.timeline),
     });
   },
-  rejectPlan: () => set({ pendingPlan: null, planReport: null, nlError: null }),
+  rejectPlan: () => set({ pendingPlan: null, planReport: null, planExcluded: [], nlError: null }),
 
   applyStylePack: (id) => {
     // 1클릭 스타일 팩 = plan(EditCommand[] 묶음)을 approvePlan과 동일한 command bus 경로로 적용.
