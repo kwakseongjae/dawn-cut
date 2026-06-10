@@ -70,13 +70,19 @@ const bridge = {
     ttsEngine: 'local' | 'cloud';
     hasOpenaiKey: boolean;
     hasElevenKey: boolean;
+    hasOpenrouterKey: boolean;
   }> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: {
     openaiApiKey?: string | null;
     elevenlabsApiKey?: string | null;
+    openrouterApiKey?: string | null;
     ttsEngine?: 'local' | 'cloud';
-  }): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean; hasElevenKey: boolean }> =>
-    ipcRenderer.invoke('settings:set', patch),
+  }): Promise<{
+    ttsEngine: 'local' | 'cloud';
+    hasOpenaiKey: boolean;
+    hasElevenKey: boolean;
+    hasOpenrouterKey: boolean;
+  }> => ipcRenderer.invoke('settings:set', patch),
   motionStickers: (): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('assets:motionStickers'),
   ttsEngineStatus: (): Promise<{

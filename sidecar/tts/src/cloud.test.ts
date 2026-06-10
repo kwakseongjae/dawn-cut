@@ -80,3 +80,16 @@ describe('ElevenLabs eleven_v3 — 순수 헬퍼 (네트워크 없음)', () => {
     expect(a).toEqual(b);
   });
 });
+
+describe('OpenRouter TTS — 순수 헬퍼 (네트워크 없음)', () => {
+  it('OpenAI 호환 요청 빌더 재사용 — 모델 prefix만 다르다', () => {
+    const req = buildSpeechRequest('안녕', {
+      apiKey: 'sk-or-x',
+      voice: 'dawn',
+      model: 'openai/gpt-4o-mini-tts',
+    });
+    expect(req.model).toBe('openai/gpt-4o-mini-tts');
+    expect(req.voice).toBe('nova'); // dawn → nova (제공자 무관 동일 매핑)
+    expect(req.instructions).toMatch(/한국어/);
+  });
+});

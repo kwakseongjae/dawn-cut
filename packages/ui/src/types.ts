@@ -82,12 +82,19 @@ export interface DawnBridge {
     ttsEngine: 'local' | 'cloud';
     hasOpenaiKey: boolean;
     hasElevenKey: boolean;
+    hasOpenrouterKey?: boolean;
   }>;
   setSettings?: (patch: {
     openaiApiKey?: string | null;
     elevenlabsApiKey?: string | null;
+    openrouterApiKey?: string | null;
     ttsEngine?: 'local' | 'cloud';
-  }) => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean; hasElevenKey: boolean }>;
+  }) => Promise<{
+    ttsEngine: 'local' | 'cloud';
+    hasOpenaiKey: boolean;
+    hasElevenKey: boolean;
+    hasOpenrouterKey?: boolean;
+  }>;
   /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
   motionStickers: () => Promise<{ name: string; path: string }[]>;
   /** TTS 엔진 상태 — 뉴럴(Piper) 사용 가능 여부. 미설치면 macOS say 폴백. */

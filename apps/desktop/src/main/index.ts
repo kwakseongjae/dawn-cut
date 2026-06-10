@@ -23,6 +23,7 @@ import {
   listVoices,
   synthesizeCloudTts,
   synthesizeElevenTts,
+  synthesizeOpenRouterTts,
   synthesizeTts,
 } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
@@ -111,6 +112,7 @@ ipcMain.handle('llm:plan', (_e, prompt: string) => {
 type DawnSettings = {
   openaiApiKey?: string;
   elevenlabsApiKey?: string;
+  openrouterApiKey?: string;
   ttsEngine?: 'local' | 'cloud';
 };
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
@@ -127,6 +129,7 @@ function settingsView(s: DawnSettings) {
     ttsEngine: s.ttsEngine ?? 'local',
     hasOpenaiKey: Boolean(s.openaiApiKey),
     hasElevenKey: Boolean(s.elevenlabsApiKey),
+    hasOpenrouterKey: Boolean(s.openrouterApiKey),
   };
 }
 ipcMain.handle('settings:get', async () => settingsView(await readSettings()));
@@ -137,6 +140,7 @@ ipcMain.handle(
     patch: {
       openaiApiKey?: string | null;
       elevenlabsApiKey?: string | null;
+      openrouterApiKey?: string | null;
       ttsEngine?: 'local' | 'cloud';
     },
   ) => {
@@ -145,6 +149,8 @@ ipcMain.handle(
     if (patch.openaiApiKey !== undefined) s.openaiApiKey = patch.openaiApiKey || undefined;
     if (patch.elevenlabsApiKey !== undefined)
       s.elevenlabsApiKey = patch.elevenlabsApiKey || undefined;
+    if (patch.openrouterApiKey !== undefined)
+      s.openrouterApiKey = patch.openrouterApiKey || undefined;
     if (patch.ttsEngine) s.ttsEngine = patch.ttsEngine;
     await writeFile(settingsPath(), JSON.stringify(s, null, 2), 'utf8');
     return settingsView(s);
@@ -189,6 +195,20 @@ ipcMain.handle(
             style: opts?.style,
           });
           cloudError = undefined; // 가성비 라인으로 성공 — 프론티어 실패 사유는 덮는다
+        } catch (e) {
+          cloudError = e instanceof Error ? e.message : String(e);
+        }
+      }
+      // OpenRouter — 한 키로 여러 모델(기본 openai/gpt-4o-mini-tts). 직결 키가 없거나 실패했을 때.
+      if (!res && settings.openrouterApiKey) {
+        try {
+          res = await synthesizeOpenRouterTts(text, out, {
+            apiKey: settings.openrouterApiKey,
+            voice,
+            rate: opts?.rate,
+            style: opts?.style,
+          });
+          cloudError = undefined;
         } catch (e) {
           cloudError = e instanceof Error ? e.message : String(e);
         }

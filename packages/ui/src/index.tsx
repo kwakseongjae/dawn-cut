@@ -729,10 +729,12 @@ function TextPanel() {
     ttsEngine: 'local' | 'cloud';
     hasOpenaiKey: boolean;
     hasElevenKey?: boolean;
-  }>({ ttsEngine: 'local', hasOpenaiKey: false, hasElevenKey: false });
+    hasOpenrouterKey?: boolean;
+  }>({ ttsEngine: 'local', hasOpenaiKey: false, hasElevenKey: false, hasOpenrouterKey: false });
   const [cloudVoices, setCloudVoices] = useState<{ id: string; label: string }[]>([]);
   const [keyInput, setKeyInput] = useState('');
   const [elevenKeyInput, setElevenKeyInput] = useState('');
+  const [orKeyInput, setOrKeyInput] = useState('');
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -748,7 +750,8 @@ function TextPanel() {
       alive = false;
     };
   }, []);
-  const hasAnyCloudKey = cloudCfg.hasOpenaiKey || Boolean(cloudCfg.hasElevenKey);
+  const hasAnyCloudKey =
+    cloudCfg.hasOpenaiKey || Boolean(cloudCfg.hasElevenKey) || Boolean(cloudCfg.hasOpenrouterKey);
   const cloudOn = cloudCfg.ttsEngine === 'cloud' && hasAnyCloudKey;
   const frontier = Boolean(cloudCfg.hasElevenKey); // 프론티어(eleven_v3) 경로 활성?
   const [cloudVoice, setCloudVoice] = useState('dawn');
@@ -759,15 +762,18 @@ function TextPanel() {
   const saveKeys = async () => {
     const openai = keyInput.trim();
     const eleven = elevenKeyInput.trim();
-    if (!openai && !eleven) return;
+    const openrouter = orKeyInput.trim();
+    if (!openai && !eleven && !openrouter) return;
     const next = await window.dawn?.setSettings?.({
       ...(openai ? { openaiApiKey: openai } : {}),
       ...(eleven ? { elevenlabsApiKey: eleven } : {}),
+      ...(openrouter ? { openrouterApiKey: openrouter } : {}),
       ttsEngine: 'cloud',
     });
     if (next) setCloudCfg(next);
     setKeyInput('');
     setElevenKeyInput('');
+    setOrKeyInput('');
   };
   const koAvailable = voices.some((v) => isKoLang(v.lang));
   return (
@@ -839,13 +845,21 @@ function TextPanel() {
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
           />
+          <input
+            className="input"
+            type="password"
+            data-testid="tts-cloud-key-openrouter"
+            placeholder="OpenRouter API 키 (sk-or-…) — 한 키로 여러 모델"
+            value={orKeyInput}
+            onChange={(e) => setOrKeyInput(e.target.value)}
+          />
           <button type="button" className="btn" data-testid="tts-cloud-key-save" onClick={saveKeys}>
-            키 저장 (둘 중 하나만 있어도 됩니다)
+            키 저장 (하나만 있어도 됩니다)
           </button>
           <p className="muted-note">
             ⚠️ 클라우드 보이스는 <b>원고 텍스트만 외부로 전송</b>됩니다. 영상·오디오는 기기를 떠나지
-            않습니다. 키는 이 컴퓨터에만 저장됩니다. 둘 다 있으면 ElevenLabs(프론티어) 우선, 실패 시
-            OpenAI → 로컬 순으로 자동 폴백합니다.
+            않습니다. 키는 이 컴퓨터에만 저장됩니다. 우선순위: ElevenLabs(프론티어 음질) → OpenAI →
+            OpenRouter → 로컬 자동 폴백.
           </p>
         </div>
       )}

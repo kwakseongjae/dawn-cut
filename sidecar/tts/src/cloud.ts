@@ -121,6 +121,50 @@ export interface CloudTtsResult {
   model: string;
 }
 
+// ── OpenRouter — 한 키로 여러 TTS(+추후 LLM 플래너까지) ──────────────────
+// OpenRouter /api/v1/audio/speech 는 OpenAI Audio Speech API 호환(2026 신설).
+// 제공 모델: openai/gpt-4o-mini-tts · google/gemini-flash-tts · mistralai/voxtral-mini-tts.
+// ElevenLabs는 OpenRouter에 없다 — 프론티어 음질은 ElevenLabs 직결 경로 사용.
+
+/**
+ * OpenRouter 합성 → 16kHz mono wav. OpenAI 호환이라 같은 요청 빌더를 재사용하고
+ * 모델 id만 'openai/...' prefix, 출력은 mp3(OpenRouter는 MP3/PCM만)로 받아 변환한다.
+ */
+export async function synthesizeOpenRouterTts(
+  text: string,
+  outWav: string,
+  opts: CloudTtsOpts,
+): Promise<CloudTtsResult> {
+  if (!opts.apiKey) throw new Error('OpenRouter TTS: API 키가 없습니다');
+  const body = {
+    ...buildSpeechRequest(text, { ...opts, model: opts.model ?? 'openai/gpt-4o-mini-tts' }),
+    response_format: 'mp3', // OpenRouter는 mp3/pcm만 지원
+  };
+  const res = await fetch('https://openrouter.ai/api/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`OpenRouter TTS 실패(${res.status}): ${detail.slice(0, 200)}`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  const dir = mkdtempSync(join(tmpdir(), 'dawn-or-tts-'));
+  const raw = join(dir, 'voice-raw.mp3');
+  await writeFile(raw, buf);
+  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  return {
+    wavPath: outWav,
+    engine: 'cloud',
+    voice: cloudVoiceById(opts.voice).id,
+    model: body.model,
+  };
+}
+
 // ── ElevenLabs eleven_v3 — 프론티어 음질 경로 (키 있으면 우선) ──────────
 // eleven_v3는 2026 현재 TTS 품질 프론티어(70+ 언어, 감정 오디오태그). API ~$0.1/1k자
 // (한국어 ~300자/분 → ~$0.03/분). gpt-4o-mini-tts(가성비 라인)의 상위 옵션.

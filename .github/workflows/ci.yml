@@ -12,9 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 버전은 package.json "packageManager"(pnpm@10.x)가 단일 진실원천.
+      # 여기에 version을 또 지정하면 action-setup이 충돌로 즉사한다(6/2~6/10 CI 전멸 원인).
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         with:
