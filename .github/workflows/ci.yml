@@ -9,6 +9,10 @@ jobs:
   verify:
     # macOS runner: PoC targets macOS; needs `say` for fixtures + ffmpeg.
     runs-on: macos-14
+    env:
+      # 가상화 러너의 Metal('Apple Paravirtual device')은 whisper GPU 추론을 조용히
+      # 오염시켜 빈 전사를 낸다 → CPU 강제. 통합·E2E(Electron 자식 sidecar까지) 전부 상속.
+      DAWN_WHISPER_NO_GPU: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -49,9 +53,6 @@ jobs:
           pnpm make:fixture
 
       - name: Integration tests (real ffmpeg/whisper)
-        # 가상화 러너의 Metal(Paravirtual)은 whisper GPU 경로가 조용히 빈 전사를 낸다 → CPU 강제.
-        env:
-          DAWN_WHISPER_NO_GPU: '1'
         run: pnpm test:int
 
       - name: E2E (Electron)
