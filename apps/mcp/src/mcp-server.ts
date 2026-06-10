@@ -143,6 +143,43 @@ export function buildServer(session: DawnSession = new DawnSession()): McpServer
   );
 
   server.registerTool(
+    'find_words',
+    {
+      description:
+        "NL 셀렉터(read-only): 전사에서 구절을 찾아 wordId 범위 핸들로 반환. µs/ID를 직접 계산하지 말고 이 결과의 fromWordId/toWordId를 deleteWordRange에 그대로 넣을 것. 예: query='인트로 잡담' → ranges[].",
+      inputSchema: {
+        query: z.string().min(1).describe('찾을 구절(어절 1개 이상, 조사 변형 흡수)'),
+        limit: z.number().int().positive().max(200).optional().describe('최대 결과 수(기본 50)'),
+      },
+    },
+    ({ query, limit }) => {
+      try {
+        return json({ ranges: session.findWords(query, limit) });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'find_silences',
+    {
+      description:
+        'NL 셀렉터(read-only): 발화 공백(무음) 구간을 소스 좌표로 반환(전사 타이밍 기반). 결과 intervals를 removeSilences.silences에 그대로 넣을 것.',
+      inputSchema: {
+        minMs: z.number().positive().optional().describe('무음 최소 길이 ms(기본 500)'),
+      },
+    },
+    ({ minMs }) => {
+      try {
+        return json({ intervals: session.findSilences(minMs) });
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
     'render',
     {
       description:

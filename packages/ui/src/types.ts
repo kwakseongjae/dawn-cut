@@ -60,10 +60,25 @@ export interface DawnBridge {
   synthesizeTts: (
     text: string,
     voice: string,
-    opts?: { rate?: number; pitch?: number; volume?: number },
-  ) => Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }>;
+    opts?: { rate?: number; pitch?: number; volume?: number; style?: string },
+  ) => Promise<{
+    wavPath: string;
+    engine: string;
+    voice: string;
+    durationUs: number;
+    /** 클라우드 합성 실패 → 로컬 폴백 시 사유(사람이 읽을 메시지). */
+    cloudError?: string;
+  }>;
   /** 설치된 TTS 보이스 목록(언어 태그 포함). macOS `say -v '?'`. */
   listTtsVoices: () => Promise<{ name: string; lang: string }[]>;
+  /** 클라우드 보이스 카탈로그('던' 시그니처 등) — opt-in 시 보이스 셀렉트에 노출. */
+  cloudTtsVoices?: () => Promise<{ id: string; label: string }[]>;
+  /** 설정(API 키는 보유 여부만 노출 — 원문은 main에만). */
+  getSettings?: () => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>;
+  setSettings?: (patch: {
+    openaiApiKey?: string | null;
+    ttsEngine?: 'local' | 'cloud';
+  }) => Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>;
   /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
   motionStickers: () => Promise<{ name: string; path: string }[]>;
   /** TTS 엔진 상태 — 뉴럴(Piper) 사용 가능 여부. 미설치면 macOS say 폴백. */
@@ -75,6 +90,12 @@ export interface DawnBridge {
   }>;
   saveProject: (path: string, content: string) => Promise<{ path: string }>;
   openProject: (path: string) => Promise<string>;
+  /** 작업 현황 저장 — tmp 에셋(PNG/wav)을 .dawn 옆 .assets/로 복사, {원경로→새경로} 반환. */
+  archiveAssets: (dawnPath: string, files: string[]) => Promise<Record<string, string>>;
+  /** 자동저장(단일 슬롯, userData/autosave.dawn) — 비정상 종료 복구용. */
+  autosaveWrite: (content: string) => Promise<{ path: string; savedAtMs: number }>;
+  autosaveRead: () => Promise<{ content: string; savedAtMs: number; path: string } | null>;
+  autosaveClear: () => Promise<{ ok: boolean }>;
   openFile: () => Promise<string | null>;
   saveFile: () => Promise<string | null>;
   revealItem: (path: string) => Promise<void>;

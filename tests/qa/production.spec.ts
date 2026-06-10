@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { MEDIA, runFeature } from './_harness.js';
 
@@ -596,7 +596,11 @@ test('F8 export-project', async () => {
     await c.editor('openProject', out('project.dawn')).catch(() => {});
     await ready(c.win, 30_000).catch(() => {});
     await settle(c.win, 400);
-    c.note('open-project', JSON.stringify(await c.state()));
+    const reopened = await c.state();
+    c.note('open-project', JSON.stringify(reopened));
+    // 작업 현황 저장(v3, issue #17): 저장 전 올린 오버레이가 열기 후에도 살아 있어야 한다.
+    // (v2까지는 timeline/transcript만 저장돼 스티커·이미지가 전부 유실됐다.)
+    expect((reopened as { overlays?: number }).overlays ?? 0).toBeGreaterThanOrEqual(1);
     await c.shot('after-open');
 
     // 되돌리기/다시

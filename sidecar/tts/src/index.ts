@@ -154,3 +154,6 @@ export async function synthesizeTts(
   await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', aiff, '-ar', '16000', '-ac', '1', outWav]);
   return { wavPath: outWav, engine: 'say', voice };
 }
+
+// 클라우드 TTS(opt-in, BYOK) — OpenAI gpt-4o-mini-tts. '던' 시그니처 보이스.
+export * from './cloud.js';

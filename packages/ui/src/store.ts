@@ -150,6 +150,12 @@ interface EditorState {
   refreshSilencePreview: () => Promise<void>;
   revealExport: () => void;
   dismissExport: () => void;
+  // ── 작업 현황 저장(issue #17) — 자동저장·복구 ──
+  autosavedAt: number | null; // 마지막 자동저장 시각(ms) — 상태바 표시용
+  recovery: { savedAtMs: number } | null; // 시작 시 발견된 자동저장(복구 제안 배너)
+  checkRecovery: () => Promise<void>; // 앱 시작 시 1회 — autosave 존재하면 recovery 세팅
+  recoverAutosave: () => Promise<void>; // 배너 [복구] — autosave를 프로젝트로 복원
+  dismissRecovery: () => void; // 배너 [무시] — autosave 삭제
 }
 
 export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
@@ -344,6 +350,90 @@ function deadSet(timeline: TimelineModel | null, transcript: TranscriptModel | n
     if (!live) dead.add(id);
   }
   return dead;
+}
+
+// ── 작업 현황 저장 헬퍼(issue #17) — 풀 상태 ↔ Project v3 ──────────────
+
+/** 디스크 파일을 참조하는 에셋 경로 전부(오버레이 PNG/GIF + TTS wav). 저장 시 .assets/로 복사 대상. */
+function collectAssetPaths(s: EditorState): string[] {
+  const files = new Set<string>();
+  for (const o of s.overlays) if (o.src) files.add(o.src);
+  for (const t of s.ttsClips) if (t.wavPath) files.add(t.wavPath);
+  return [...files];
+}
+
+/** 현재 편집 상태 전체를 Project v3 JSON으로 직렬화. mapping으로 에셋 경로 바꿔치기(자동저장은 {}). */
+function serializeFullProject(s: EditorState, mapping: Record<string, string>): string {
+  const remap = (p?: string) => (p && mapping[p] ? mapping[p] : p);
+  const tx = s.transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+  return serializeProject(
+    makeProject(s.mediaPath!, tx, s.timeline!, {
+      subtitlePos: s.subtitlePos,
+      subtitleStyle: s.subtitleStyle,
+      overlays: s.overlays.map((o) => ({ ...o, src: remap(o.src) ?? '' })),
+      manualCues: s.manualCues,
+      ttsClips: s.ttsClips.map((t) => ({ ...t, wavPath: remap(t.wavPath) })),
+      reframe: s.reframe,
+      colorPreset: s.colorPreset,
+      autoEnhanceEq: s.autoEnhanceEq,
+      glossary: s.glossary,
+    }),
+  );
+}
+
+/** 저장 직후 라이브 상태의 에셋 경로를 .assets/ 사본으로 교체(tmp 소멸 대비). */
+function remapAssetPaths(
+  set: (p: Partial<EditorState>) => void,
+  get: () => EditorState,
+  mapping: Record<string, string>,
+) {
+  set({
+    overlays: get().overlays.map((o) =>
+      o.src && mapping[o.src] ? { ...o, src: mapping[o.src] } : o,
+    ),
+    ttsClips: get().ttsClips.map((t) =>
+      t.wavPath && mapping[t.wavPath] ? { ...t, wavPath: mapping[t.wavPath] } : t,
+    ),
+  });
+}
+
+/** Project(v1/v2/v3) → 스토어 상태 패치. openProject와 자동저장 복구가 공유한다. */
+function restoreFromProject(project: ReturnType<typeof deserializeProject>) {
+  return {
+    mediaPath: project.mediaPath,
+    previewPath: project.mediaPath, // 열기는 원본 미리보기(검으면 다시 가져오기로 프록시 생성)
+    proxyBusy: false,
+    hasAudio: true, // 저장된 프로젝트는 이미 전사를 거쳤다고 가정
+    transcribeError: null,
+    transcript: project.transcript,
+    timeline: project.timeline,
+    selected: [],
+    status: 'opened',
+    past: [],
+    future: [],
+    canUndo: false,
+    canRedo: false,
+    playheadUs: 0,
+    playing: false,
+    clipCount: videoClips(project.timeline).length,
+    durationProgramUs: project.timeline.durationProgram,
+    subtitlePos: project.subtitlePos ?? { x: 0.1, y: 0.8, scale: 0.8 },
+    subtitleStyle: project.subtitleStyle ?? {},
+    sourceDurationUs: project.timeline.durationProgram,
+    lastExport: null,
+    silencePreview: null,
+    auditLog: [],
+    // ── v3 작업 현황 복원(구버전 파일은 빈 값) ──
+    overlays: (project.overlays ?? []).map((o) => ({ name: '', ...o })) as Overlay[],
+    manualCues: (project.manualCues ?? []) as ManualCue[],
+    ttsClips: (project.ttsClips ?? []) as TtsClip[],
+    reframe: (project.reframe ?? 'source') as Reframe,
+    colorPreset: (project.colorPreset ?? 'none') as ColorPreset,
+    autoEnhanceEq: project.autoEnhanceEq ?? null,
+    selectedOverlayId: null,
+    selectedVoiceId: null,
+    ...(project.glossary?.length ? { glossary: project.glossary } : {}),
+  } satisfies Partial<EditorState>;
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
@@ -958,16 +1048,17 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   saveProject: async (path) => {
-    const { timeline, transcript, mediaPath, subtitlePos, subtitleStyle } = get();
     const dawn = window.dawn;
+    const { timeline, mediaPath } = get();
     if (!timeline || !mediaPath || !dawn) return;
-    // 자막 없이도(무음/미전사 영상) 저장 가능 — 빈 TranscriptModel을 합성한다(스키마는 transcript
-    // 필수 유지 → 역직렬화 가드/하위호환 무손상). core 모델/검증은 빈 transcript를 이미 허용.
-    const tx = transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
-    await dawn.saveProject(
-      path,
-      serializeProject(makeProject(mediaPath, tx, timeline, { subtitlePos, subtitleStyle })),
-    );
+    // 작업 현황(오버레이/수기자막/TTS)의 tmp 에셋(PNG/wav)을 .dawn 옆 .assets/로 복사해
+    // 재부팅에도 살아남게 한 뒤(src 바꿔치기), 풀 상태(v3)를 저장한다 — issue #17.
+    const assets = collectAssetPaths(get());
+    const mapping = assets.length ? await dawn.archiveAssets(path, assets) : {};
+    await dawn.saveProject(path, serializeFullProject(get(), mapping));
+    // 매핑된 새 경로를 라이브 상태에도 반영(저장 직후 tmp가 사라져도 미리보기 유지).
+    if (Object.keys(mapping).length) remapAssetPaths(set, get, mapping);
+    await dawn.autosaveClear?.(); // 정식 저장됨 — 구버전 복구 제안 방지
     set({ status: 'saved' });
   },
 
@@ -975,32 +1066,34 @@ export const useEditor = create<EditorState>((set, get) => ({
     const dawn = window.dawn;
     if (!dawn) return;
     const project = deserializeProject(await dawn.openProject(path));
-    set({
-      mediaPath: project.mediaPath,
-      previewPath: project.mediaPath, // 열기는 원본 미리보기(검으면 다시 가져오기로 프록시 생성)
-      proxyBusy: false,
-      hasAudio: true, // 저장된 프로젝트는 이미 전사를 거쳤다고 가정
-      transcribeError: null,
-      transcript: project.transcript,
-      timeline: project.timeline,
-      selected: [],
-      status: 'opened',
-      past: [],
-      future: [],
-      canUndo: false,
-      canRedo: false,
-      playheadUs: 0,
-      playing: false,
-      clipCount: videoClips(project.timeline).length,
-      durationProgramUs: project.timeline.durationProgram,
-      subtitlePos: project.subtitlePos ?? { x: 0.1, y: 0.8, scale: 0.8 },
-      subtitleStyle: project.subtitleStyle ?? {},
-      sourceDurationUs: project.timeline.durationProgram,
-      lastExport: null,
-      silencePreview: null,
-      auditLog: [],
-      autoEnhanceEq: null,
-    });
+    set(restoreFromProject(project));
+  },
+
+  // ── 자동저장 복구(issue #17) ──
+  autosavedAt: null,
+  recovery: null,
+  checkRecovery: async () => {
+    const dawn = window.dawn;
+    if (!dawn?.autosaveRead) return;
+    // 이미 작업 중이면(미디어 열림) 덮어쓰기 제안하지 않는다.
+    if (get().mediaPath) return;
+    const saved = await dawn.autosaveRead();
+    if (saved) set({ recovery: { savedAtMs: saved.savedAtMs } });
+  },
+  recoverAutosave: async () => {
+    const dawn = window.dawn;
+    if (!dawn?.autosaveRead) return;
+    const saved = await dawn.autosaveRead();
+    if (!saved) {
+      set({ recovery: null });
+      return;
+    }
+    const project = deserializeProject(saved.content);
+    set({ ...restoreFromProject(project), recovery: null, status: '작업을 복구했습니다' });
+  },
+  dismissRecovery: () => {
+    void window.dawn?.autosaveClear?.();
+    set({ recovery: null });
   },
 
   addGlossaryPair: (from, to) => {
@@ -1180,5 +1273,57 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
   },
 }));
+
+// ── 자동저장(issue #17) — 편집 변화가 잠잠해지면 2.5s 뒤 userData/autosave.dawn에 기록.
+// 정식 저장(saveProject)·복구 무시(dismissRecovery)가 슬롯을 비운다. 에셋 복사는 하지 않는다
+// (재부팅 전 복구가 목적 — 정식 저장만 .assets/ 아카이브).
+const AUTOSAVE_DEBOUNCE_MS = 2_500;
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let autosaveLast: {
+  timeline: TimelineModel | null;
+  transcript: TranscriptModel | null;
+  overlays: unknown;
+  manualCues: unknown;
+  ttsClips: unknown;
+  subtitleStyle: unknown;
+  subtitlePos: unknown;
+  colorPreset: unknown;
+  reframe: unknown;
+} | null = null;
+
+useEditor.subscribe((s) => {
+  if (!s.timeline || !s.mediaPath || !window.dawn?.autosaveWrite) return;
+  // 관심 필드의 참조 비교 — 무관한 set(재생/플레이헤드 등)에는 반응하지 않는다.
+  const snap = {
+    timeline: s.timeline,
+    transcript: s.transcript,
+    overlays: s.overlays,
+    manualCues: s.manualCues,
+    ttsClips: s.ttsClips,
+    subtitleStyle: s.subtitleStyle,
+    subtitlePos: s.subtitlePos,
+    colorPreset: s.colorPreset,
+    reframe: s.reframe,
+  };
+  if (
+    autosaveLast &&
+    Object.keys(snap).every(
+      (k) => autosaveLast![k as keyof typeof snap] === snap[k as keyof typeof snap],
+    )
+  )
+    return;
+  autosaveLast = snap;
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    const st = useEditor.getState();
+    if (!st.timeline || !st.mediaPath) return;
+    try {
+      const r = await window.dawn!.autosaveWrite!(serializeFullProject(st, {}));
+      useEditor.setState({ autosavedAt: r.savedAtMs });
+    } catch {
+      // 자동저장 실패는 치명적이지 않다(다음 변경에서 재시도).
+    }
+  }, AUTOSAVE_DEBOUNCE_MS);
+});
 
 export { deadSet };

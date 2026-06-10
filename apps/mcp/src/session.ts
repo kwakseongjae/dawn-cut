@@ -23,6 +23,8 @@ import {
   deserializeProject,
   drawSubtitle,
   dryRunCommands,
+  findSilences,
+  findWords,
   makeProject,
   planAndPreview,
   plannerManifest,
@@ -33,9 +35,9 @@ import {
   timelineToEdl,
   verifyAudit,
 } from '@dawn-cut/core';
-import { createCanvas } from '@napi-rs/canvas';
 import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
 import { isLlmAvailable, llmPlanProvider } from '@dawn-cut/sidecar-llm';
+import { createCanvas } from '@napi-rs/canvas';
 
 export interface ApplyResult {
   summary: StateSummary;
@@ -167,6 +169,21 @@ export class DawnSession {
   /** 감사로그 전체(해시체인) — 외부에서 재생/검증용. */
   auditLog(): { entries: AuditEntry[]; verified: boolean } {
     return { entries: this.audit, verified: verifyAudit(this.audit) };
+  }
+
+  /**
+   * NL 셀렉터(read-only) — 외부 에이전트가 µs/wordId를 직접 합성하지 않고
+   * "X 말한 부분"을 핸들로 해소한다(VISION §3.2). 결과는 그대로 deleteWordRange 입력.
+   */
+  findWords(query: string, limit?: number): ReturnType<typeof findWords> {
+    const st = this.require();
+    return findWords(st.transcript, st.timeline, query, limit ? { limit } : undefined);
+  }
+
+  /** 발화 공백(무음) 셀렉터(read-only) — 결과는 그대로 removeSilences.silences 입력. */
+  findSilences(minMs?: number): ReturnType<typeof findSilences> {
+    const st = this.require();
+    return findSilences(st.transcript, st.timeline, minMs != null ? { minMs } : undefined);
   }
 
   /**

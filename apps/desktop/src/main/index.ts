@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readdirSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,13 @@ import {
 } from '@dawn-cut/sidecar-ffmpeg';
 import { isLlmAvailable, llmComplete, shutdownLlm, warmupLlm } from '@dawn-cut/sidecar-llm';
 import { transcribe } from '@dawn-cut/sidecar-stt';
-import { isPiperAvailable, listVoices, synthesizeTts } from '@dawn-cut/sidecar-tts';
+import {
+  CLOUD_VOICES,
+  isPiperAvailable,
+  listVoices,
+  synthesizeCloudTts,
+  synthesizeTts,
+} from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -99,24 +105,72 @@ ipcMain.handle('llm:plan', (_e, prompt: string) => {
   return llmComplete(prompt);
 });
 
+// ── 설정(userData/settings.json) — API 키는 main에만 머물고 렌더러엔 보유 여부만 노출 ──
+type DawnSettings = { openaiApiKey?: string; ttsEngine?: 'local' | 'cloud' };
+const settingsPath = () => join(app.getPath('userData'), 'settings.json');
+async function readSettings(): Promise<DawnSettings> {
+  try {
+    return JSON.parse(await readFile(settingsPath(), 'utf8')) as DawnSettings;
+  } catch {
+    return {};
+  }
+}
+ipcMain.handle('settings:get', async () => {
+  const s = await readSettings();
+  // 키 원문은 절대 렌더러로 보내지 않는다(웹 컨텐츠 노출 면적 최소화).
+  return { ttsEngine: s.ttsEngine ?? 'local', hasOpenaiKey: Boolean(s.openaiApiKey) };
+});
+ipcMain.handle(
+  'settings:set',
+  async (_e, patch: { openaiApiKey?: string | null; ttsEngine?: 'local' | 'cloud' }) => {
+    const s = await readSettings();
+    if (patch.openaiApiKey !== undefined) {
+      // null/빈 문자열 = 키 제거(undefined 대입 — JSON.stringify가 필드를 떨어뜨린다).
+      s.openaiApiKey = patch.openaiApiKey || undefined;
+    }
+    if (patch.ttsEngine) s.ttsEngine = patch.ttsEngine;
+    await writeFile(settingsPath(), JSON.stringify(s, null, 2), 'utf8');
+    return { ttsEngine: s.ttsEngine ?? 'local', hasOpenaiKey: Boolean(s.openaiApiKey) };
+  },
+);
+ipcMain.handle('tts:cloudVoices', () => CLOUD_VOICES.map(({ id, label }) => ({ id, label })));
+
 ipcMain.handle(
   'tts:synthesize',
   async (
     _e,
     text: string,
     voice: string,
-    opts?: { rate?: number; pitch?: number; volume?: number },
+    opts?: { rate?: number; pitch?: number; volume?: number; style?: string },
   ) => {
     const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
     const out = join(dir, 'voice.wav');
-    const res = await synthesizeTts(text, out, { voice, ...opts });
+    // 클라우드 opt-in + 키 보유 시에만 클라우드(BYOK). 실패하면 로컬 say로 폴백하고 사유 전달.
+    const settings = await readSettings();
+    let res: { wavPath: string; engine: string; voice: string };
+    let cloudError: string | undefined;
+    if (settings.ttsEngine === 'cloud' && settings.openaiApiKey) {
+      try {
+        res = await synthesizeCloudTts(text, out, {
+          apiKey: settings.openaiApiKey,
+          voice,
+          rate: opts?.rate,
+          style: opts?.style,
+        });
+      } catch (e) {
+        cloudError = e instanceof Error ? e.message : String(e);
+        res = await synthesizeTts(text, out, { ...opts });
+      }
+    } else {
+      res = await synthesizeTts(text, out, { voice, ...opts });
+    }
     let durationUs = 0;
     try {
       durationUs = (await probeMedia(res.wavPath)).durationUs;
     } catch {
       /* probe 실패 시 0 → UI가 기본 길이로 대체 */
     }
-    return { ...res, durationUs };
+    return { ...res, durationUs, ...(cloudError ? { cloudError } : {}) };
   },
 );
 
@@ -159,6 +213,60 @@ ipcMain.handle('project:save', async (_e, path: string, content: string) => {
 });
 
 ipcMain.handle('project:open', (_e, path: string) => readFile(path, 'utf8'));
+
+// 작업 현황 저장(issue #17) — tmp에 래스터된 오버레이 PNG/TTS wav를 .dawn 옆
+// '<이름>.assets/'로 복사해 재부팅에도 살아남게 한다. {원경로→새경로} 매핑을 돌려주면
+// 렌더러가 src를 바꿔치기해 저장한다. 같은 파일명이 이미 있고 크기가 같으면 재복사 생략(멱등).
+ipcMain.handle('project:archiveAssets', async (_e, dawnPath: string, files: string[]) => {
+  const dir = `${dawnPath.replace(/\.dawn$/i, '')}.assets`;
+  await mkdir(dir, { recursive: true });
+  const mapping: Record<string, string> = {};
+  for (const src of files) {
+    try {
+      const st = await stat(src);
+      if (!st.isFile()) continue;
+      const base = src.split('/').pop()!;
+      let target = join(dir, base);
+      try {
+        const ex = await stat(target);
+        if (ex.size !== st.size) target = join(dir, `${randomUUID().slice(0, 8)}-${base}`);
+      } catch {
+        // 대상 없음 → 그대로 복사
+      }
+      if (target !== src) await copyFile(src, target);
+      mapping[src] = target;
+    } catch {
+      // 원본이 이미 사라진 에셋은 건너뜀(렌더러가 원경로 유지)
+    }
+  }
+  return mapping;
+});
+
+// 자동저장(단일 슬롯) — userData/autosave.dawn. 비정상 종료 후 복구 제안용.
+const autosavePath = () => join(app.getPath('userData'), 'autosave.dawn');
+ipcMain.handle('autosave:write', async (_e, content: string) => {
+  const p = autosavePath();
+  await writeFile(p, content, 'utf8');
+  return { path: p, savedAtMs: Date.now() };
+});
+ipcMain.handle('autosave:read', async () => {
+  try {
+    const p = autosavePath();
+    const st = await stat(p);
+    const content = await readFile(p, 'utf8');
+    return { content, savedAtMs: st.mtimeMs, path: p };
+  } catch {
+    return null;
+  }
+});
+ipcMain.handle('autosave:clear', async () => {
+  try {
+    await rm(autosavePath());
+  } catch {
+    // 이미 없음 — 무시
+  }
+  return { ok: true };
+});
 
 // 내보낸 파일을 Finder/탐색기에서 보여준다(완료 카드 '폴더에서 보기').
 ipcMain.handle('shell:reveal', (_e, path: string) => {

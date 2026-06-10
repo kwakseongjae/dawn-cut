@@ -51,10 +51,24 @@ const bridge = {
   synthesizeTts: (
     text: string,
     voice: string,
-    opts?: { rate?: number; pitch?: number; volume?: number },
-  ): Promise<{ wavPath: string; engine: string; voice: string; durationUs: number }> =>
-    ipcRenderer.invoke('tts:synthesize', text, voice, opts),
+    opts?: { rate?: number; pitch?: number; volume?: number; style?: string },
+  ): Promise<{
+    wavPath: string;
+    engine: string;
+    voice: string;
+    durationUs: number;
+    cloudError?: string;
+  }> => ipcRenderer.invoke('tts:synthesize', text, voice, opts),
   listTtsVoices: (): Promise<{ name: string; lang: string }[]> => ipcRenderer.invoke('tts:voices'),
+  cloudTtsVoices: (): Promise<{ id: string; label: string }[]> =>
+    ipcRenderer.invoke('tts:cloudVoices'),
+  getSettings: (): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }> =>
+    ipcRenderer.invoke('settings:get'),
+  setSettings: (patch: {
+    openaiApiKey?: string | null;
+    ttsEngine?: 'local' | 'cloud';
+  }): Promise<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }> =>
+    ipcRenderer.invoke('settings:set', patch),
   motionStickers: (): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('assets:motionStickers'),
   ttsEngineStatus: (): Promise<{
@@ -66,6 +80,13 @@ const bridge = {
   saveProject: (path: string, content: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('project:save', path, content),
   openProject: (path: string): Promise<string> => ipcRenderer.invoke('project:open', path),
+  archiveAssets: (dawnPath: string, files: string[]): Promise<Record<string, string>> =>
+    ipcRenderer.invoke('project:archiveAssets', dawnPath, files),
+  autosaveWrite: (content: string): Promise<{ path: string; savedAtMs: number }> =>
+    ipcRenderer.invoke('autosave:write', content),
+  autosaveRead: (): Promise<{ content: string; savedAtMs: number; path: string } | null> =>
+    ipcRenderer.invoke('autosave:read'),
+  autosaveClear: (): Promise<{ ok: boolean }> => ipcRenderer.invoke('autosave:clear'),
   openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile'),
   revealItem: (path: string): Promise<void> => ipcRenderer.invoke('shell:reveal', path),

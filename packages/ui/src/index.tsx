@@ -631,10 +631,12 @@ function TextPanel() {
     if (previewing) return;
     setPreviewing(true);
     try {
-      const res = await window.dawn?.synthesizeTts('안녕하세요, 미리듣기입니다.', voice, {
-        rate,
-        pitch,
-      });
+      // 클라우드 on이면 클라우드 보이스 id로(main이 엔진 선택), 아니면 로컬 say 보이스 이름으로.
+      const res = await window.dawn?.synthesizeTts(
+        '안녕하세요, 미리듣기입니다.',
+        cloudOn ? cloudVoice : voice,
+        { rate, pitch, style },
+      );
       if (res?.wavPath) {
         previewAudio.current?.pause();
         const a = new Audio(`file://${encodeURI(res.wavPath)}`);
@@ -677,6 +679,40 @@ function TextPanel() {
       alive = false;
     };
   }, []);
+  // 클라우드 TTS(opt-in, BYOK) — '던' 시그니처 보이스. 기본 off, 키는 main에만 저장.
+  const [cloudCfg, setCloudCfg] = useState<{ ttsEngine: 'local' | 'cloud'; hasOpenaiKey: boolean }>(
+    { ttsEngine: 'local', hasOpenaiKey: false },
+  );
+  const [cloudVoices, setCloudVoices] = useState<{ id: string; label: string }[]>([]);
+  const [keyInput, setKeyInput] = useState('');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [cfg, cvs] = await Promise.all([
+        window.dawn?.getSettings?.() ?? Promise.resolve(null),
+        window.dawn?.cloudTtsVoices?.() ?? Promise.resolve([]),
+      ]);
+      if (!alive) return;
+      if (cfg) setCloudCfg(cfg);
+      setCloudVoices(cvs);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const cloudOn = cloudCfg.ttsEngine === 'cloud' && cloudCfg.hasOpenaiKey;
+  const [cloudVoice, setCloudVoice] = useState('dawn');
+  const setEngine = async (engine: 'local' | 'cloud') => {
+    const next = await window.dawn?.setSettings?.({ ttsEngine: engine });
+    if (next) setCloudCfg(next);
+  };
+  const saveKey = async () => {
+    const k = keyInput.trim();
+    if (!k) return;
+    const next = await window.dawn?.setSettings?.({ openaiApiKey: k, ttsEngine: 'cloud' });
+    if (next) setCloudCfg(next);
+    setKeyInput('');
+  };
   const koAvailable = voices.some((v) => isKoLang(v.lang));
   return (
     <div className="dock-body">
@@ -687,22 +723,80 @@ function TextPanel() {
           className="badge"
           data-testid="tts-engine"
           title={
-            neural
-              ? '뉴럴(Piper) 엔진 사용 중'
-              : 'macOS say 엔진. 뉴럴은 pnpm setup:tts-neural 로 설치(영어 위주 — 한국어 뉴럴은 준비 중)'
+            cloudOn
+              ? "클라우드 TTS(OpenAI gpt-4o-mini-tts) 사용 중 — '던' 시그니처 보이스"
+              : neural
+                ? '뉴럴(Piper) 엔진 사용 중'
+                : 'macOS say 엔진. 뉴럴은 pnpm setup:tts-neural 로 설치(영어 위주 — 한국어 뉴럴은 준비 중)'
           }
         >
-          {neural ? '뉴럴(Piper)' : 'macOS say'}
+          {cloudOn ? '클라우드 · 던' : neural ? '뉴럴(Piper)' : 'macOS say'}
         </span>
       </div>
+      <div className="field">엔진</div>
+      <div className="chip-row" data-testid="tts-engine-row">
+        <button
+          type="button"
+          data-testid="tts-engine-local"
+          className={`tchip${cloudCfg.ttsEngine !== 'cloud' ? ' on' : ''}`}
+          onClick={() => void setEngine('local')}
+          title="100% 로컬(기기 밖으로 아무것도 전송 안 됨)"
+        >
+          로컬
+        </button>
+        <button
+          type="button"
+          data-testid="tts-engine-cloud"
+          className={`tchip${cloudCfg.ttsEngine === 'cloud' ? ' on' : ''}`}
+          onClick={() => void setEngine('cloud')}
+          title="고품질 클라우드 보이스(BYOK — 내 OpenAI 키). 원고 텍스트만 전송, 영상은 전송 안 됨"
+        >
+          클라우드 (던) ✦
+        </button>
+      </div>
+      {cloudCfg.ttsEngine === 'cloud' && !cloudCfg.hasOpenaiKey && (
+        <div
+          className="ov-field"
+          style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}
+        >
+          <input
+            className="input"
+            type="password"
+            data-testid="tts-cloud-key"
+            placeholder="OpenAI API 키 (sk-…) — 내 키로 사용(BYOK)"
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+          />
+          <button type="button" className="btn" data-testid="tts-cloud-key-save" onClick={saveKey}>
+            키 저장
+          </button>
+          <p className="muted-note">
+            ⚠️ 클라우드 보이스는 <b>원고 텍스트가 OpenAI로 전송</b>됩니다. 영상·오디오는 기기를
+            떠나지 않습니다. 키는 이 컴퓨터에만 저장됩니다.
+          </p>
+        </div>
+      )}
       <div className="field">보이스</div>
-      <KSelect
-        testId="tts-voice"
-        flex
-        value={voice}
-        onChange={setVoice}
-        options={voices.map((v) => ({ value: v.name, label: `${v.name} · ${langLabel(v.lang)}` }))}
-      />
+      {cloudOn ? (
+        <KSelect
+          testId="tts-voice"
+          flex
+          value={cloudVoice}
+          onChange={setCloudVoice}
+          options={cloudVoices.map((v) => ({ value: v.id, label: v.label }))}
+        />
+      ) : (
+        <KSelect
+          testId="tts-voice"
+          flex
+          value={voice}
+          onChange={setVoice}
+          options={voices.map((v) => ({
+            value: v.name,
+            label: `${v.name} · ${langLabel(v.lang)}`,
+          }))}
+        />
+      )}
       <div className="field">스타일</div>
       <div className="chip-row" data-testid="tts-styles">
         {VOICE_STYLES.map((s) => (
@@ -780,7 +874,11 @@ function TextPanel() {
           onClick={async () => {
             setBusy(true);
             try {
-              await generateVoiceover(voice, text.trim(), { rate, pitch, style });
+              await generateVoiceover(cloudOn ? cloudVoice : voice, text.trim(), {
+                rate,
+                pitch,
+                style,
+              });
               setText('');
             } finally {
               setBusy(false);
@@ -3257,6 +3355,7 @@ function StatusBar() {
     proxyBusy,
     highlightNotice,
     dismissHighlightNotice,
+    autosavedAt,
   } = useEditor();
   // 프록시 변환 중이면 전역 신호를 '변환 중'으로(끝나면 원래 상태). 그 외엔 한국어 라벨 맵.
   const statusLabel = proxyBusy ? '미리보기 변환 중' : (STATUS_KO[status] ?? status);
@@ -3270,6 +3369,19 @@ function StatusBar() {
         </span>
         <span aria-hidden="true">{statusLabel}</span>
       </span>
+      {autosavedAt != null && (
+        <span
+          className="muted-note"
+          data-testid="autosave-indicator"
+          title="작업 현황이 자동으로 임시 저장됩니다(앱이 갑자기 꺼져도 복구 가능)"
+        >
+          자동저장됨{' '}
+          {new Date(autosavedAt).toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
+      )}
       <span>
         클립 <b data-testid="clip-count">{clipCount}</b>
       </span>
@@ -3531,6 +3643,8 @@ export function AppShell() {
     };
     // 로컬 LLM 가용성 1회 조회(부재/비활성 시 조용히 룰 플래너로 동작).
     void useEditor.getState().detectLlm();
+    // 자동저장 복구 확인 1회 — 비정상 종료된 작업이 있으면 배너 제안(issue #17).
+    void useEditor.getState().checkRecovery();
   }, []);
   const [showHelp, setShowHelp] = useState(false);
   useEffect(() => {
@@ -3636,6 +3750,7 @@ export function AppShell() {
   return (
     <div className="app">
       <Toolbar />
+      {s.recovery && <RecoveryBanner savedAtMs={s.recovery.savedAtMs} />}
       <div className="main">
         <Rail />
         <Dock />
@@ -3646,6 +3761,40 @@ export function AppShell() {
       <StatusBar />
       <ProgressOverlay />
       {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
+    </div>
+  );
+}
+
+// 비정상 종료 후 재시작 시 자동저장본 복구 제안(issue #17). [복구]=autosave를 열고,
+// [무시]=autosave 삭제. 미디어를 이미 연 경우엔 checkRecovery가 배너를 띄우지 않는다.
+function RecoveryBanner({ savedAtMs }: { savedAtMs: number }) {
+  const { recoverAutosave, dismissRecovery } = useEditor();
+  const when = new Date(savedAtMs).toLocaleString('ko-KR', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return (
+    <div className="recovery-banner" data-testid="recovery-banner">
+      <Info size={14} />
+      <span>저장하지 않고 종료된 작업이 있어요 (자동저장 {when}). 이어서 작업할까요?</span>
+      <button
+        type="button"
+        className="btn primary"
+        data-testid="recovery-restore"
+        onClick={() => void recoverAutosave()}
+      >
+        복구
+      </button>
+      <button
+        type="button"
+        className="btn ghost"
+        data-testid="recovery-dismiss"
+        onClick={dismissRecovery}
+      >
+        무시
+      </button>
     </div>
   );
 }

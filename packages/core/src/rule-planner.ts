@@ -12,6 +12,7 @@
 //    안전히 합성 불가 → 만들지 않음. 무음 제거는 store가 detectSilences 후 별도 합성.
 //  - 한국어 표현 다양성(존댓말/반말/어순/조사) 일부 흡수.
 import type { EditCommand, EditorState } from './edit-command.js';
+import { findSilences, findWords } from './selectors.js';
 
 /** applyColorgrade.preset 으로 그대로 흘릴 색보정 프리셋 키. */
 type ColorPreset = 'warm' | 'cool' | 'punch' | 'cinematic' | 'flat';
@@ -80,6 +81,21 @@ const HIGHLIGHT_RULE =
   /(핵심|중요한?|키워드|요점|포인트)\s*(말|단어|문구|부분|구절)?\s*(을|를|만)?\s*(강조|하이라이트|표시)|강조\s*자막/;
 
 /**
+ * 인용 구절 컷 의도 — 따옴표로 감싼 구절 + 제거동사("'그러니까' 라는 말 잘라줘").
+ * 셀렉터(findWords)가 구절을 wordId 핸들로 해소해 deleteWordRange를 합성한다(issue #2).
+ * 따옴표를 요구하는 이유: 비인용 자유문에서 컷 대상을 추측하면 환각 위험 — 전사에 없으면 빈 결과.
+ */
+const CUT_QUOTED = /['"“”‘’「」]([^'"“”‘’「」]{1,40})['"“”‘’「」]/;
+
+/**
+ * 무음/공백 제거 의도 — '무음/공백/죽은 구간/침묵/정적' + 제거동사.
+ * 셀렉터(findSilences, 전사 타이밍 기반)가 소스 구간을 결정적으로 해소 → removeSilences 합성.
+ * 'N초 이상' 패턴이 있으면 임계로 사용(기본 0.5초).
+ */
+const SILENCE_TARGET = /무음|공백|죽은\s*구간|침묵|정적|쉬는\s*(부분|구간)/;
+const SILENCE_MIN_RULE = /([\d.]+)\s*초\s*(이상|넘는|넘게)/;
+
+/**
  * 자동 하이라이트(롱폼→쇼츠) 의도. 'N초로/짧게/요약/하이라이트 (영상·클립·로·만들)/쇼츠로 만들/숏폼'.
  * 키워드 강조('핵심 …강조')와 구분: 여기는 '짧게 만들기' 맥락(초/요약/만들/클립)을 요구한다.
  */
@@ -98,19 +114,22 @@ const SECONDS_RULE = /(\d+)\s*초/;
  * 한 문장이 여러 의도를 담으면(예: "말버릇 빼고 시네마틱하게") 해당 명령을
  * 모두 합성한다(필러 제거 → 색보정 순). 매칭이 하나도 없으면 빈 배열.
  *
+ * 셀렉터 연동 의도(issue #2 — NL 컷 개방, 2026-06-10):
+ *  - 인용 구절 컷: "'X' 잘라줘" → findWords(X)로 wordId 해소 → deleteWordRange[].
+ *    전사에 X가 없으면 합성 안 함(환각 금지). 따옴표 필수.
+ *  - 무음 제거: "무음 빼줘" → findSilences(전사 타이밍 기반)로 소스 구간 해소
+ *    → removeSilences. 감지 0이면 합성 안 함.
+ *
  * 의도적으로 만들지 않는 것(정보부족·환각 위험):
- *  - 무음/공백 제거: 감지된 silence 좌표가 필요 → store가 detectSilences 후
- *    removeSilences를 별도 합성. 여기선 NL만으로 만들 수 없어 제외.
- *  - cutSourceRange / deleteWordRange: 소스 좌표·단어 id가 NL에 없어 제외.
+ *  - cutSourceRange: 소스 좌표가 NL에 없어 제외(비인용 자유 컷도 제외).
  *  - 자막 스타일 프리셋: patch 구조가 복잡(폰트/스트로크/색…)해 단순 룰로
  *    안전히 못 만듦 → 미지원(제외).
  *
  * @param nl    한국어 자연어 지시(존댓말/반말/어순 변형 일부 허용).
- * @param state 현재 편집 상태(현재 룰은 상태에 의존하지 않지만, 향후 대상 클립
- *              선택 등 확장을 위해 시그니처에 포함 — 미사용이어도 인터페이스 안정).
+ * @param state 현재 편집 상태 — 셀렉터(findWords/findSilences)가 wordId·구간 해소에 사용.
  * @returns 합성된 EditCommand[]. 모르면 `[]`(환각 금지).
  */
-export function ruleBasedPlan(nl: string, _state: EditorState): EditCommand[] {
+export function ruleBasedPlan(nl: string, state: EditorState): EditCommand[] {
   // 공백 정규화(연속 공백 1개로) — 정규식 매칭 안정화. 대소문자 무시는 정규식 i 플래그 대신
   // 소문자 사본으로 처리해 한글은 그대로 두고 라틴(warm/cool/flat/punch)만 흡수.
   const text = nl.normalize('NFC').replace(/\s+/g, ' ').trim();
@@ -133,6 +152,30 @@ export function ruleBasedPlan(nl: string, _state: EditorState): EditCommand[] {
     const m = SECONDS_RULE.exec(hay);
     const secs = m ? Number(m[1]) : 60; // 미지정 시 기본 60초.
     commands.push({ type: 'autoHighlight', targetSeconds: secs > 0 ? secs : 60 });
+  }
+
+  // 1.8) 인용 구절 컷 — "'X' 잘라줘". 셀렉터가 전사에서 X를 찾아 wordId 범위로 해소.
+  //      못 찾으면 아무것도 합성하지 않는다(추측 금지). 매치마다 deleteWordRange 1개.
+  const quoted = CUT_QUOTED.exec(text);
+  if (quoted?.[1] && REMOVE_VERB.test(hay)) {
+    for (const r of findWords(state.transcript, state.timeline, quoted[1])) {
+      commands.push({ type: 'deleteWordRange', fromWordId: r.fromWordId, toWordId: r.toWordId });
+    }
+  }
+
+  // 1.9) 무음 제거 — '무음/죽은 구간' + 제거동사. 전사 타이밍 기반 셀렉터로 소스 구간 해소.
+  //      'N초 이상'이 있으면 임계로(기본 0.5초). 감지 0이면 합성 안 함.
+  if (SILENCE_TARGET.test(hay) && REMOVE_VERB.test(hay)) {
+    const m = SILENCE_MIN_RULE.exec(hay);
+    const minMs = m ? Math.round(Number(m[1]) * 1000) : 500;
+    const silences = findSilences(state.transcript, state.timeline, { minMs });
+    if (silences.length > 0) {
+      commands.push({
+        type: 'removeSilences',
+        silences: silences.map(({ start, end }) => ({ start, end })),
+        padUs: 0,
+      });
+    }
   }
 
   // 2) 색보정 프리셋 — 색 키워드 + '편집 지시 게이트'(matchColorPreset) 통과 시에만.

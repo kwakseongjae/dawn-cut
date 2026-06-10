@@ -27,7 +27,22 @@ async function regionRGB(
 ): Promise<[number, number, number]> {
   const { stdout } = (await exec(
     FFMPEG,
-    ['-y', '-ss', atSec, '-i', video, '-vf', `crop=${crop},scale=1:1`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'],
+    [
+      '-y',
+      '-ss',
+      atSec,
+      '-i',
+      video,
+      '-vf',
+      `crop=${crop},scale=1:1`,
+      '-frames:v',
+      '1',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgb24',
+      '-',
+    ],
     { encoding: 'buffer', maxBuffer: 1_000_000 },
   )) as unknown as { stdout: Buffer };
   return [stdout[0] ?? 0, stdout[1] ?? 0, stdout[2] ?? 0];
@@ -61,8 +76,22 @@ describe.skipIf(!existsSync(SAMPLE))('MCP render tool (DawnSession.render, 실�
     const dur = Math.min(probe.durationUs, 2_000_000);
     // 전체 구간을 덮는 2어절 transcript → cue 1개("안녕하세요 반갑습니다")가 0~1.4s 표시.
     const words: Word[] = [
-      { id: 'm:w0', text: '안녕하세요', sourceStart: 0, sourceEnd: 600_000, confidence: 1, mediaId: 'm' },
-      { id: 'm:w1', text: '반갑습니다', sourceStart: 600_000, sourceEnd: 1_400_000, confidence: 1, mediaId: 'm' },
+      {
+        id: 'm:w0',
+        text: '안녕하세요',
+        sourceStart: 0,
+        sourceEnd: 600_000,
+        confidence: 1,
+        mediaId: 'm',
+      },
+      {
+        id: 'm:w1',
+        text: '반갑습니다',
+        sourceStart: 600_000,
+        sourceEnd: 1_400_000,
+        confidence: 1,
+        mediaId: 'm',
+      },
     ];
     const project = makeProject(
       SAMPLE,

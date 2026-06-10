@@ -17,25 +17,46 @@ const OUT_DIR = join(ROOT, 'output/mcp-burn');
 mkdirSync(OUT_DIR, { recursive: true });
 
 async function main() {
-const probe = await probeMedia(SAMPLE);
-const dur = Math.min(probe.durationUs, 3_000_000);
-const words: Word[] = [
-  { id: 'm:w0', text: '에이전트가', sourceStart: 0, sourceEnd: 900_000, confidence: 1, mediaId: 'm' },
-  { id: 'm:w1', text: '직접 만든', sourceStart: 900_000, sourceEnd: 1_800_000, confidence: 1, mediaId: 'm' },
-  { id: 'm:w2', text: '자막입니다', sourceStart: 1_800_000, sourceEnd: 2_700_000, confidence: 1, mediaId: 'm' },
-];
-const project = makeProject(
-  SAMPLE,
-  buildTranscriptModel(words, 'm', 'ko'),
-  createInitialTimeline('m', dur, probe.fps || 30),
-  { subtitleStyle: { preset: 'shorts' } as never },
-);
-const dawnPath = join(OUT_DIR, 'demo.dawn');
-writeFileSync(dawnPath, serializeProject(project), 'utf8');
+  const probe = await probeMedia(SAMPLE);
+  const dur = Math.min(probe.durationUs, 3_000_000);
+  const words: Word[] = [
+    {
+      id: 'm:w0',
+      text: '에이전트가',
+      sourceStart: 0,
+      sourceEnd: 900_000,
+      confidence: 1,
+      mediaId: 'm',
+    },
+    {
+      id: 'm:w1',
+      text: '직접 만든',
+      sourceStart: 900_000,
+      sourceEnd: 1_800_000,
+      confidence: 1,
+      mediaId: 'm',
+    },
+    {
+      id: 'm:w2',
+      text: '자막입니다',
+      sourceStart: 1_800_000,
+      sourceEnd: 2_700_000,
+      confidence: 1,
+      mediaId: 'm',
+    },
+  ];
+  const project = makeProject(
+    SAMPLE,
+    buildTranscriptModel(words, 'm', 'ko'),
+    createInitialTimeline('m', dur, probe.fps || 30),
+    { subtitleStyle: { preset: 'shorts' } as never },
+  );
+  const dawnPath = join(OUT_DIR, 'demo.dawn');
+  writeFileSync(dawnPath, serializeProject(project), 'utf8');
 
-const s = new DawnSession();
-s.open(dawnPath);
-const res = await s.render(join(OUT_DIR, 'demo-burn.mp4'));
-console.log('rendered:', res);
+  const s = new DawnSession();
+  s.open(dawnPath);
+  const res = await s.render(join(OUT_DIR, 'demo-burn.mp4'));
+  console.log('rendered:', res);
 }
 void main();
