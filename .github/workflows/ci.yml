@@ -29,10 +29,18 @@ jobs:
 
       - name: Lint + boundary + build + unit (always)
         run: |
+          mkdir -p artifacts  # 증거 파일 출력 폴더(gitignore — fresh clone엔 없음; e2e도 사용)
           pnpm lint
           pnpm boundary
           pnpm build
           pnpm test:unit
+
+      # whisper.cpp 빌드 + 모델(large-v3-turbo ~1.6GB)은 매 런 비용이 커서 캐싱한다.
+      - name: Cache whisper build + model
+        uses: actions/cache@v4
+        with:
+          path: vendor/whisper.cpp
+          key: whisper-${{ runner.os }}-large-v3-turbo-v1
 
       - name: Setup binaries + fixture (integration)
         run: |

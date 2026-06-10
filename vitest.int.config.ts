@@ -8,6 +8,7 @@ export default defineConfig({
     include: ['tests/integration/**/*.test.ts'],
     exclude: ['**/node_modules/**'],
     environment: 'node',
+    globalSetup: './tests/global-setup.ts', // artifacts/ 보장(CI fresh clone)
     testTimeout: 120_000, // whisper transcription can be slow
     hookTimeout: 120_000,
   },

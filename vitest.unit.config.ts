@@ -13,6 +13,7 @@ export default defineConfig({
     ],
     exclude: ['**/node_modules/**', 'tests/integration/**', 'tests/e2e/**'],
     environment: 'node',
+    globalSetup: './tests/global-setup.ts', // artifacts/ 보장(CI fresh clone)
     coverage: {
       provider: 'v8',
       include: ['packages/core/src/**'],

@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import fc from 'fast-check';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -85,6 +85,8 @@ describe('G4 deleteWordRange — property-based (R2)', () => {
   });
 
   afterAll(() => {
+    // CI 등 artifacts/가 없는 깨끗한 체크아웃에서도 동작(로컬은 gitignore된 폴더가 이미 존재).
+    mkdirSync(resolve(process.cwd(), 'artifacts'), { recursive: true });
     writeFileSync(
       resolve(process.cwd(), 'artifacts/g4-property-report.txt'),
       `deleteWordRange property test\nseed=${FIXED_SEED}\nnumRuns=${NUM_RUNS}\nexecuted=${runs}\ncounterexamples=0\ninvariants: CMD-INV-1, CMD-INV-2, CMD-INV-3, SYNC-INV-1/2/3, TL-INV-1..4\n`,
