@@ -24,7 +24,6 @@ import {
   synthesizeCloudTts,
   synthesizeElevenTts,
   synthesizeOpenRouterTts,
-  synthesizeTts,
 } from '@dawn-cut/sidecar-tts';
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron';
 
@@ -168,57 +167,54 @@ ipcMain.handle(
   ) => {
     const dir = mkdtempSync(join(tmpdir(), 'dawn-voice-'));
     const out = join(dir, 'voice.wav');
-    // 클라우드 opt-in + 키 보유 시에만 클라우드(BYOK). 우선순위: ElevenLabs eleven_v3(프론티어)
-    // → OpenAI gpt-4o-mini-tts(가성비) → 로컬 say(항상 가능). 실패 사유는 cloudError로 전달.
+    // 클라우드 전용(BYOK) — 우선순위: ElevenLabs eleven_v3 → OpenAI → OpenRouter(Gemini 프론티어).
+    // 로컬 say 폴백은 제거(2026-06-11 결정): 조용한 폴백은 "고른 보이스와 다른 음성"을 내
+    // 신뢰를 깎는다. 키가 없거나 전부 실패하면 명시적 에러 → UI가 사유를 보여준다.
     const settings = await readSettings();
     let res: { wavPath: string; engine: string; voice: string } | null = null;
     let cloudError: string | undefined;
-    if (settings.ttsEngine === 'cloud') {
-      if (settings.elevenlabsApiKey) {
-        try {
-          res = await synthesizeElevenTts(text, out, {
-            apiKey: settings.elevenlabsApiKey,
-            voice,
-            rate: opts?.rate,
-            style: opts?.style,
-          });
-        } catch (e) {
-          cloudError = e instanceof Error ? e.message : String(e);
-        }
+    if (settings.elevenlabsApiKey) {
+      try {
+        res = await synthesizeElevenTts(text, out, {
+          apiKey: settings.elevenlabsApiKey,
+          voice,
+          rate: opts?.rate,
+          style: opts?.style,
+        });
+      } catch (e) {
+        cloudError = e instanceof Error ? e.message : String(e);
       }
-      if (!res && settings.openaiApiKey) {
-        try {
-          res = await synthesizeCloudTts(text, out, {
-            apiKey: settings.openaiApiKey,
-            voice,
-            rate: opts?.rate,
-            style: opts?.style,
-          });
-          cloudError = undefined; // 가성비 라인으로 성공 — 프론티어 실패 사유는 덮는다
-        } catch (e) {
-          cloudError = e instanceof Error ? e.message : String(e);
-        }
+    }
+    if (!res && settings.openaiApiKey) {
+      try {
+        res = await synthesizeCloudTts(text, out, {
+          apiKey: settings.openaiApiKey,
+          voice,
+          rate: opts?.rate,
+          style: opts?.style,
+        });
+        cloudError = undefined;
+      } catch (e) {
+        cloudError = e instanceof Error ? e.message : String(e);
       }
-      // OpenRouter — 한 키로 여러 모델(기본 openai/gpt-4o-mini-tts). 직결 키가 없거나 실패했을 때.
-      if (!res && settings.openrouterApiKey) {
-        try {
-          res = await synthesizeOpenRouterTts(text, out, {
-            apiKey: settings.openrouterApiKey,
-            voice,
-            rate: opts?.rate,
-            style: opts?.style,
-          });
-          cloudError = undefined;
-        } catch (e) {
-          cloudError = e instanceof Error ? e.message : String(e);
-        }
+    }
+    if (!res && settings.openrouterApiKey) {
+      try {
+        res = await synthesizeOpenRouterTts(text, out, {
+          apiKey: settings.openrouterApiKey,
+          voice,
+          rate: opts?.rate,
+          style: opts?.style,
+        });
+        cloudError = undefined;
+      } catch (e) {
+        cloudError = e instanceof Error ? e.message : String(e);
       }
     }
     if (!res) {
-      res = await synthesizeTts(text, out, {
-        ...(settings.ttsEngine === 'cloud' ? {} : { voice }),
-        ...opts,
-      });
+      throw new Error(
+        cloudError ?? '클라우드 보이스 키가 없습니다 — 음성·TTS 패널에서 API 키를 등록하세요.',
+      );
     }
     let durationUs = 0;
     try {

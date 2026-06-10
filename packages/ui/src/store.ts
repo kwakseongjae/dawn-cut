@@ -696,7 +696,14 @@ export const useEditor = create<EditorState>((set, get) => ({
     const dawn = window.dawn;
     if (!dawn) return;
     set({ status: 'synthesizing voice' });
-    const res = await dawn.synthesizeTts(text, voice, opts);
+    let res: Awaited<ReturnType<typeof dawn.synthesizeTts>>;
+    try {
+      res = await dawn.synthesizeTts(text, voice, opts);
+    } catch (e) {
+      // 클라우드 전용 — 키 부재/네트워크 실패는 명시적 에러(조용한 로컬 폴백 금지, 2026-06-11).
+      set({ status: 'voice failed' });
+      throw e;
+    }
     // 플레이헤드에서 시작, 길이는 실제 음성 길이(probe). 프로그램 끝을 넘지 않게 클램프.
     const { playheadUs, durationProgramUs } = get();
     const len = res.durationUs > 0 ? res.durationUs : DEFAULT_TTS_LEN_US;

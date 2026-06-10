@@ -629,112 +629,41 @@ function MediaPanel() {
   );
 }
 
-// 비-macOS/테스트 등 보이스 목록을 못 받을 때의 폴백(한국어 우선).
-const FALLBACK_VOICES = [
-  { name: 'Yuna', lang: 'ko_KR' },
-  { name: 'Samantha', lang: 'en_US' },
+// 보이스 스타일 프리셋 — 클라우드 모델의 말투 지시문(instructions)으로 변환된다.
+const VOICE_STYLES: { id: string; label: string; rate: number }[] = [
+  { id: 'calm', label: '차분', rate: 145 },
+  { id: 'normal', label: '보통', rate: 180 },
+  { id: 'lively', label: '활기참', rate: 235 },
 ];
-const VOICE_LANG_KO: Record<string, string> = {
-  ko: '한국어',
-  en: '영어',
-  ja: '일본어',
-  zh: '중국어',
-  es: '스페인어',
-  fr: '프랑스어',
-  de: '독일어',
-  it: '이탈리아어',
-  pt: '포르투갈어',
-  ru: '러시아어',
-};
-const isKoLang = (lang: string) => lang.toLowerCase().startsWith('ko');
-const langLabel = (lang: string) => VOICE_LANG_KO[lang.slice(0, 2).toLowerCase()] ?? lang;
 
-// 보이스 스타일 = say의 속도(wpm)·톤(pbas) 조합 프리셋. 진짜 감정형은 아니지만 '느낌'을 바꾼다.
-const VOICE_STYLES: { id: string; label: string; rate: number; pitch: number }[] = [
-  { id: 'calm', label: '차분', rate: 145, pitch: 38 },
-  { id: 'normal', label: '보통', rate: 180, pitch: 50 },
-  { id: 'lively', label: '활기참', rate: 235, pitch: 64 },
-];
+// AI 보이스 = 클라우드 전용('던' 카탈로그). 로컬 say/Piper는 사용자 표면에서 제거했다 —
+// 클라우드 실패 시 로컬로 조용히 폴백하면 "선택한 보이스와 다른 음성"이 나와 신뢰를 깎는다(2026-06-11 결정).
 function TextPanel() {
   const { ttsClips, generateVoiceover, selectedVoiceId, selectVoice, removeTts } = useEditor();
-  const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
-  const [voice, setVoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
-  const [rate, setRate] = useState(180); // wpm
-  const [pitch, setPitch] = useState(50); // pbas 0~100
-  const [style, setStyle] = useState('normal'); // 선택된 스타일 칩 id('custom'=슬라이더 수동)
+  const [rate, setRate] = useState(180); // wpm — 지시문('느긋하게/빠르게')으로 변환
+  const [style, setStyle] = useState('normal');
   const [previewing, setPreviewing] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
   const previewAudio = useRef<HTMLAudioElement | null>(null);
   const pickStyle = (s: (typeof VOICE_STYLES)[number]) => {
     setStyle(s.id);
     setRate(s.rate);
-    setPitch(s.pitch);
   };
-  const previewVoice = async () => {
-    if (previewing) return;
-    setPreviewing(true);
-    try {
-      // 클라우드 on이면 클라우드 보이스 id로(main이 엔진 선택), 아니면 로컬 say 보이스 이름으로.
-      const res = await window.dawn?.synthesizeTts(
-        '안녕하세요, 미리듣기입니다.',
-        cloudOn ? cloudVoice : voice,
-        { rate, pitch, style },
-      );
-      if (res?.wavPath) {
-        previewAudio.current?.pause();
-        const a = new Audio(`file://${encodeURI(res.wavPath)}`);
-        previewAudio.current = a;
-        await a.play().catch(() => {});
-      }
-    } finally {
-      setPreviewing(false);
-    }
-  };
-  // 설치된 보이스를 동적으로 채운다(이전엔 Aria/Nova 같은 미설치 가짜 이름이라 무음이었음).
-  // 한국어 보이스를 맨 위 + 기본 선택으로 둬서 한국어가 바로 된다.
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const list = (await window.dawn?.listTtsVoices?.()) ?? [];
-      const vs = (list.length ? list : FALLBACK_VOICES)
-        .slice()
-        .sort(
-          (a, b) =>
-            (isKoLang(b.lang) ? 1 : 0) - (isKoLang(a.lang) ? 1 : 0) || a.name.localeCompare(b.name),
-        );
-      if (!alive) return;
-      setVoices(vs);
-      setVoice((vs.find((v) => isKoLang(v.lang)) ?? vs[0])?.name ?? '');
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-  // TTS 엔진 상태 — 뉴럴(Piper) 설치 시 배지 표시, 아니면 macOS say(기본).
-  const [neural, setNeural] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const st = await window.dawn?.ttsEngineStatus?.();
-      if (alive) setNeural(Boolean(st?.available));
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-  // 클라우드 TTS(opt-in, BYOK) — '던' 시그니처 보이스. 기본 off, 키는 main에만 저장.
-  // ElevenLabs(eleven_v3, 프론티어 음질) 키가 있으면 우선, 없으면 OpenAI(가성비) 사용.
+
+  // BYOK 키 상태 — 키 원문은 main에만, 여기는 보유 여부만.
   const [cloudCfg, setCloudCfg] = useState<{
-    ttsEngine: 'local' | 'cloud';
     hasOpenaiKey: boolean;
     hasElevenKey?: boolean;
     hasOpenrouterKey?: boolean;
-  }>({ ttsEngine: 'local', hasOpenaiKey: false, hasElevenKey: false, hasOpenrouterKey: false });
+  }>({ hasOpenaiKey: false, hasElevenKey: false, hasOpenrouterKey: false });
   const [cloudVoices, setCloudVoices] = useState<{ id: string; label: string }[]>([]);
+  const [cloudVoice, setCloudVoice] = useState('dawn');
   const [keyInput, setKeyInput] = useState('');
   const [elevenKeyInput, setElevenKeyInput] = useState('');
   const [orKeyInput, setOrKeyInput] = useState('');
+  const [showKeys, setShowKeys] = useState(false);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -752,13 +681,14 @@ function TextPanel() {
   }, []);
   const hasAnyCloudKey =
     cloudCfg.hasOpenaiKey || Boolean(cloudCfg.hasElevenKey) || Boolean(cloudCfg.hasOpenrouterKey);
-  const cloudOn = cloudCfg.ttsEngine === 'cloud' && hasAnyCloudKey;
-  const frontier = Boolean(cloudCfg.hasElevenKey); // 프론티어(eleven_v3) 경로 활성?
-  const [cloudVoice, setCloudVoice] = useState('dawn');
-  const setEngine = async (engine: 'local' | 'cloud') => {
-    const next = await window.dawn?.setSettings?.({ ttsEngine: engine });
-    if (next) setCloudCfg(next);
-  };
+  // 활성 제공자 라벨(우선순위 = main의 폴백 체인 순서와 동일).
+  const providerLabel = cloudCfg.hasElevenKey
+    ? '11L v3'
+    : cloudCfg.hasOpenaiKey
+      ? '4o-mini'
+      : cloudCfg.hasOpenrouterKey
+        ? 'Gemini'
+        : null;
   const saveKeys = async () => {
     const openai = keyInput.trim();
     const eleven = elevenKeyInput.trim();
@@ -774,8 +704,29 @@ function TextPanel() {
     setKeyInput('');
     setElevenKeyInput('');
     setOrKeyInput('');
+    setShowKeys(false);
   };
-  const koAvailable = voices.some((v) => isKoLang(v.lang));
+  const previewVoice = async () => {
+    if (previewing || !hasAnyCloudKey) return;
+    setPreviewing(true);
+    setTtsError(null);
+    try {
+      const res = await window.dawn?.synthesizeTts('안녕하세요, 미리듣기입니다.', cloudVoice, {
+        rate,
+        style,
+      });
+      if (res?.wavPath) {
+        previewAudio.current?.pause();
+        const a = new Audio(`file://${encodeURI(res.wavPath)}`);
+        previewAudio.current = a;
+        await a.play().catch(() => {});
+      }
+    } catch (e) {
+      setTtsError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreviewing(false);
+    }
+  };
   return (
     <div className="dock-body">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -790,46 +741,27 @@ function TextPanel() {
           className="badge"
           data-testid="tts-engine"
           title={
-            cloudOn
-              ? frontier
-                ? "클라우드 TTS — ElevenLabs eleven_v3(프론티어 음질) 우선, '던' 시그니처 보이스"
-                : "클라우드 TTS — OpenAI gpt-4o-mini-tts(가성비), '던' 시그니처 보이스"
-              : neural
-                ? '뉴럴(Piper) 엔진 사용 중'
-                : 'macOS say 엔진. 뉴럴은 pnpm setup:tts-neural 로 설치(영어 위주 — 한국어 뉴럴은 준비 중)'
+            providerLabel
+              ? `클라우드 보이스 사용 중 — ${providerLabel}. 원고 텍스트만 전송됩니다.`
+              : 'API 키를 등록하면 고품질 클라우드 보이스가 활성화됩니다'
           }
         >
-          {cloudOn
-            ? frontier
-              ? '클라우드 · 던 (v3)'
-              : '클라우드 · 던'
-            : neural
-              ? '뉴럴(Piper)'
-              : 'macOS say'}
+          {providerLabel ? `던 · ${providerLabel}` : '키 필요'}
         </span>
+        {hasAnyCloudKey && (
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="tts-keys-edit"
+            onClick={() => setShowKeys((v) => !v)}
+            style={{ marginLeft: 'auto', fontSize: 10.5, padding: '2px 7px' }}
+            title="API 키 추가/변경"
+          >
+            <Settings size={11} /> 키
+          </button>
+        )}
       </div>
-      <div className="field">엔진</div>
-      <div className="chip-row" data-testid="tts-engine-row">
-        <button
-          type="button"
-          data-testid="tts-engine-local"
-          className={`tchip${cloudCfg.ttsEngine !== 'cloud' ? ' on' : ''}`}
-          onClick={() => void setEngine('local')}
-          title="100% 로컬(기기 밖으로 아무것도 전송 안 됨)"
-        >
-          로컬
-        </button>
-        <button
-          type="button"
-          data-testid="tts-engine-cloud"
-          className={`tchip${cloudCfg.ttsEngine === 'cloud' ? ' on' : ''}`}
-          onClick={() => void setEngine('cloud')}
-          title="고품질 클라우드 보이스(BYOK — 내 OpenAI 키). 원고 텍스트만 전송, 영상은 전송 안 됨"
-        >
-          클라우드 (던) ✦
-        </button>
-      </div>
-      {cloudCfg.ttsEngine === 'cloud' && !hasAnyCloudKey && (
+      {(!hasAnyCloudKey || showKeys) && (
         <div
           className="ov-field"
           style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}
@@ -837,8 +769,16 @@ function TextPanel() {
           <input
             className="input"
             type="password"
+            data-testid="tts-cloud-key-openrouter"
+            placeholder="OpenRouter API 키 (sk-or-…) — Gemini 프론티어, 권장"
+            value={orKeyInput}
+            onChange={(e) => setOrKeyInput(e.target.value)}
+          />
+          <input
+            className="input"
+            type="password"
             data-testid="tts-cloud-key-eleven"
-            placeholder="ElevenLabs API 키 — 프론티어 음질(eleven_v3), 권장"
+            placeholder="ElevenLabs API 키 — 감정 연출·보이스 라이브러리"
             value={elevenKeyInput}
             onChange={(e) => setElevenKeyInput(e.target.value)}
           />
@@ -846,49 +786,27 @@ function TextPanel() {
             className="input"
             type="password"
             data-testid="tts-cloud-key"
-            placeholder="OpenAI API 키 (sk-…) — 가성비(4o-mini-tts)"
+            placeholder="OpenAI API 키 (sk-…)"
             value={keyInput}
             onChange={(e) => setKeyInput(e.target.value)}
-          />
-          <input
-            className="input"
-            type="password"
-            data-testid="tts-cloud-key-openrouter"
-            placeholder="OpenRouter API 키 (sk-or-…) — 한 키로 여러 모델"
-            value={orKeyInput}
-            onChange={(e) => setOrKeyInput(e.target.value)}
           />
           <button type="button" className="btn" data-testid="tts-cloud-key-save" onClick={saveKeys}>
             키 저장 (하나만 있어도 됩니다)
           </button>
           <p className="muted-note">
-            ⚠️ 클라우드 보이스는 <b>원고 텍스트만 외부로 전송</b>됩니다. 영상·오디오는 기기를 떠나지
-            않습니다. 키는 이 컴퓨터에만 저장됩니다. 우선순위: ElevenLabs(프론티어 음질) → OpenAI →
-            OpenRouter → 로컬 자동 폴백.
+            ⚠️ 보이스 합성 시 <b>원고 텍스트만 외부로 전송</b>됩니다. 영상·오디오는 기기를 떠나지
+            않습니다. 키는 이 컴퓨터에만 저장됩니다.
           </p>
         </div>
       )}
       <div className="field">보이스</div>
-      {cloudOn ? (
-        <KSelect
-          testId="tts-voice"
-          flex
-          value={cloudVoice}
-          onChange={setCloudVoice}
-          options={cloudVoices.map((v) => ({ value: v.id, label: v.label }))}
-        />
-      ) : (
-        <KSelect
-          testId="tts-voice"
-          flex
-          value={voice}
-          onChange={setVoice}
-          options={voices.map((v) => ({
-            value: v.name,
-            label: `${v.name} · ${langLabel(v.lang)}`,
-          }))}
-        />
-      )}
+      <KSelect
+        testId="tts-voice"
+        flex
+        value={cloudVoice}
+        onChange={setCloudVoice}
+        options={cloudVoices.map((v) => ({ value: v.id, label: v.label }))}
+      />
       <div className="field">스타일</div>
       <div className="chip-row" data-testid="tts-styles">
         {VOICE_STYLES.map((s) => (
@@ -917,20 +835,6 @@ function TextPanel() {
           }}
         />
       </label>
-      <label className="sub-slider">
-        <span>톤 · {pitch <= 40 ? '낮게' : pitch >= 62 ? '높게' : '보통'}</span>
-        <input
-          type="range"
-          min={30}
-          max={70}
-          value={pitch}
-          data-testid="tts-pitch"
-          onChange={(e) => {
-            setPitch(Number(e.target.value));
-            setStyle('custom');
-          }}
-        />
-      </label>
       <label className="field" htmlFor="tts-text">
         대본
       </label>
@@ -946,9 +850,9 @@ function TextPanel() {
           type="button"
           className="btn"
           data-testid="tts-preview"
-          disabled={previewing}
+          disabled={previewing || !hasAnyCloudKey}
           onClick={previewVoice}
-          title="현재 보이스·속도·톤으로 짧게 들어보기"
+          title={hasAnyCloudKey ? '현재 보이스·스타일로 짧게 들어보기' : '먼저 API 키를 등록하세요'}
         >
           {previewing ? (
             <span className="spinner sm" />
@@ -961,17 +865,17 @@ function TextPanel() {
           type="button"
           className="btn primary"
           data-testid="generate-voiceover"
-          disabled={!text.trim() || busy}
+          disabled={!text.trim() || busy || !hasAnyCloudKey}
           style={{ flex: 1, justifyContent: 'center' }}
+          title={hasAnyCloudKey ? undefined : '먼저 API 키를 등록하세요'}
           onClick={async () => {
             setBusy(true);
+            setTtsError(null);
             try {
-              await generateVoiceover(cloudOn ? cloudVoice : voice, text.trim(), {
-                rate,
-                pitch,
-                style,
-              });
+              await generateVoiceover(cloudVoice, text.trim(), { rate, style });
               setText('');
+            } catch (e) {
+              setTtsError(e instanceof Error ? e.message : String(e));
             } finally {
               setBusy(false);
             }
@@ -986,10 +890,9 @@ function TextPanel() {
           )}
         </button>
       </div>
-      {!koAvailable && (
-        <p className="muted-note" data-testid="tts-no-korean" style={{ color: '#ffb86b' }}>
-          한국어 보이스가 설치돼 있지 않아요. 시스템 설정 ▸ 손쉬운 사용 ▸ 음성 콘텐츠 ▸ 시스템 음성
-          ▸ 음성 관리에서 <b>한국어(유나)</b>를 받으면 한국어 음성이 됩니다.
+      {ttsError && (
+        <p className="muted-note" data-testid="tts-error" style={{ color: '#ff7b7b' }}>
+          합성 실패: {ttsError.slice(0, 160)}
         </p>
       )}
       {ttsClips.map((c) => (
@@ -1000,7 +903,7 @@ function TextPanel() {
         >
           <Volume2 size={15} style={{ flex: '0 0 auto', color: 'var(--ok)' }} />
           <div className="t">
-            {c.voice}
+            {cloudVoices.find((v) => v.id === c.voice)?.label.split(' ')[0] ?? c.voice}
             <small>
               {fmt(c.startUs)} · {c.text.slice(0, 34)}
               {c.text.length > 34 ? '…' : ''}
@@ -1021,8 +924,8 @@ function TextPanel() {
         </div>
       ))}
       <p className="muted-note">
-        텍스트를 실제 음성으로 합성해 <b>내보낼 때 영상에 믹스</b>합니다. 한글이면 한국어 보이스로
-        자동 전환돼요. 타임라인에서 위치·길이를 드래그로 맞출 수 있습니다.
+        텍스트를 실제 음성으로 합성해 <b>내보낼 때 영상에 믹스</b>합니다. 타임라인에서 위치·길이를
+        드래그로 맞출 수 있습니다.
       </p>
     </div>
   );
@@ -3636,6 +3539,7 @@ const BUSY_LABEL: Record<string, string> = {
 const STATUS_KO: Record<string, string> = {
   idle: '대기',
   ready: '준비됨',
+  'voice failed': '음성 합성 실패',
   exported: '내보냄 완료',
   'gif exported': 'GIF 내보냄 완료',
   'srt exported': '자막 저장 완료',
