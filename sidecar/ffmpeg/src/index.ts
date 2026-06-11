@@ -336,10 +336,19 @@ export async function renderEdl(
       ? buildOverlayFilter(baseLabel, overlays, ovW, ovH, 1)
       : { inputs: [] as string[], filter: '', out: `[${baseLabel}]` };
 
-  // animated GIFs need -ignore_loop 0 so they loop for the whole clip
+  // animated GIFs need -ignore_loop 0 so they loop for the whole clip.
+  // ★정지 이미지(png/jpg)는 -loop 1 + '-t 총길이'로 '유한한' 프레임 스트림으로 만든다
+  // (사이클 8): 1프레임 입력에선 scale의 eval=frame 식이 한 번만 평가돼 스케일 키프레임
+  // 애니가 조용히 무시됐다(위치 애니는 overlay 필터라 정상 — 팝인이 익스포트에서만 죽던
+  // 잠복 버그). -shortest로 묶지 않는 이유: 짧은 자막 소프트트랙이 영상을 자르는 부작용
+  // (QA F8이 회귀로 잡음) — 유한화는 -t로 한다.
+  const totalSecAll = (
+    edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6
+  ).toFixed(6);
   const pushOverlayInputs = (arr: string[]) => {
     for (const ip of ovf.inputs) {
       if (/\.gif$/i.test(ip)) arr.push('-ignore_loop', '0');
+      else if (/\.(png|jpe?g)$/i.test(ip)) arr.push('-loop', '1', '-t', totalSecAll);
       arr.push('-i', ip);
     }
   };

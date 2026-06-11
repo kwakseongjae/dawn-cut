@@ -60,7 +60,18 @@ async function main() {
     `✅ ${outMp4} — ${(r.durationUs / 1e6).toFixed(1)}s (원본 ${(probe.durationUs / 1e6).toFixed(1)}s) · 자막 프레임 ${r.burnedSubtitleFrames}`,
   );
   for (const sec of [3, 20]) {
-    await exec('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(sec), '-i', outMp4, '-frames:v', '1', join(OUT, `poster-${sec}s.png`)]);
+    await exec('ffmpeg', [
+      '-y',
+      '-loglevel',
+      'error',
+      '-ss',
+      String(sec),
+      '-i',
+      outMp4,
+      '-frames:v',
+      '1',
+      join(OUT, `poster-${sec}s.png`),
+    ]);
   }
 }
 void main();

@@ -86,7 +86,7 @@ export interface OverlayClip {
     x?: number;
     y?: number;
     scale?: number;
-    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'back';
   };
   /**
    * Multi-keyframe motion path. Each entry has `u` in [0,1] (normalized progress
@@ -97,7 +97,7 @@ export interface OverlayClip {
     x?: number;
     y?: number;
     scale?: number;
-    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'back';
   }>;
   /** Constant rotation in degrees (optional). */
   rotation?: number;

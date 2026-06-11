@@ -29,3 +29,23 @@ describe('easing', () => {
     expect(easeExpr('easeInOut', u)).toContain('3*pow');
   });
 });
+
+describe('back(오버슈트) 이징 — 사이클 8', () => {
+  it('중간 구간에서 1을 초과(오버슈트)했다가 1로 정착한다', () => {
+    expect(easeNumber('back', 0)).toBeCloseTo(0, 6);
+    expect(easeNumber('back', 1)).toBeCloseTo(1, 6);
+    // easeOutBack은 u≈0.7 부근에서 최대 오버슈트(>1)
+    expect(easeNumber('back', 0.7)).toBeGreaterThan(1);
+    expect(easeNumber('back', 0.7)).toBeLessThan(1.15);
+  });
+
+  it('ffmpeg 표현식과 수치 참조구현이 일치한다(샘플 5점)', () => {
+    for (const u of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      // 표현식을 JS로 평가해 교차검증(pow → **)
+      const expr = easeExpr('back', String(u)).replace(/pow\(([^,]+),([^)]+)\)/g, '(($1)**($2))');
+      // biome-ignore lint/security/noGlobalEval: 테스트 한정 교차검증
+      const v = eval(expr) as number;
+      expect(v).toBeCloseTo(easeNumber('back', u), 6);
+    }
+  });
+});
