@@ -75,6 +75,37 @@ export function cutSourceRange(
 }
 
 /**
+ * splitClipAt — 프로그램 시각의 클립을 두 클립으로 나눈다(CapCut Cmd+B, issue #6).
+ * 길이·내용 불변(렌더 산출물 동일) — 이후 Q/W(부분 삭제)·세그먼트 단위 조작의 토대.
+ * 경계(프레임 스냅 후 클립 양끝)와 빈 타임라인은 no-op(클론 반환). Pure.
+ */
+export function splitClipAt(timeline: TimelineModel, programUs: number): TimelineModel {
+  const clips = videoClips(timeline);
+  const target = clips.find(
+    (c) =>
+      programUs >= c.timelineStart && programUs < c.timelineStart + (c.sourceEnd - c.sourceStart),
+  );
+  if (!target) return clone(timeline);
+  const srcAt = clampSnap(
+    target.sourceStart + (programUs - target.timelineStart),
+    timeline.fps,
+    target.sourceStart,
+    target.sourceEnd,
+  );
+  if (srcAt <= target.sourceStart || srcAt >= target.sourceEnd) return clone(timeline); // 경계 = no-op
+  const rebuilt: Clip[] = [];
+  for (const c of clips) {
+    if (c.id !== target.id) {
+      rebuilt.push(c);
+      continue;
+    }
+    rebuilt.push({ ...c, id: `${c.id}-a`, sourceEnd: srcAt });
+    rebuilt.push({ ...c, id: `${c.id}-b`, sourceStart: srcAt });
+  }
+  return rebuildGapless(timeline, rebuilt);
+}
+
+/**
  * deleteWordRange — the core of text-based editing (R2). (01-POC-DESIGN §6)
  * Unions the source interval [a,b) of words [fromWordId..toWordId] and cuts it.
  * Does NOT mutate input.

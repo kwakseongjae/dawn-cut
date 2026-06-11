@@ -7,7 +7,7 @@
 // 런타임 가드(safeParse), (c) JSON-Schema/MCP 매니페스트(z.toJSONSchema) 모두 파생.
 // Zod는 순수 TS라 packages/core 이식성 경계(dependency-cruiser)를 통과한다.
 import { z } from 'zod';
-import { cutSourceRange, deleteWordRange, removeSilences } from './commands.js';
+import { cutSourceRange, deleteWordRange, removeSilences, splitClipAt } from './commands.js';
 import type { SubtitleStyle } from './draw.js';
 import type { ClipEffect } from './effects.js';
 import { detectFillers } from './fillers.js';
@@ -104,6 +104,14 @@ const CommandSchemas = {
     preset: z.enum(['warm', 'cool', 'punch', 'cinematic', 'flat', 'vivid']),
     intensity: z.number().min(0).max(1).optional(),
   }),
+  /**
+   * 플레이헤드 분할(CapCut Cmd+B) — 프로그램 시각의 클립을 둘로. 길이·렌더 불변.
+   * '외부전용'(µs 좌표 필요 — GUI 플레이헤드/에이전트 셀렉터가 공급, 플래너 제외).
+   */
+  splitAt: z.object({
+    type: z.literal('splitAt'),
+    programUs: z.number().int().nonnegative(),
+  }),
   /** 펀치인 줌을 클립에 적용(clipId 생략 시 전 비디오클립). 길이 불변=비파괴. */
   applyZoom: z.object({
     type: z.literal('applyZoom'),
@@ -155,6 +163,7 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.removeSilences,
   CommandSchemas.removeFillers,
   CommandSchemas.cutSourceRange,
+  CommandSchemas.splitAt,
   CommandSchemas.applyGlossary,
   CommandSchemas.setSubtitleStyle,
   CommandSchemas.replaceSubtitleStyle,
@@ -252,6 +261,9 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       const timeline = cutSourceRange(state.timeline, cmd.mediaId, cmd.sourceStart, cmd.sourceEnd);
       return { ...state, timeline };
     }
+    case 'splitAt':
+      // 길이·렌더 불변 — 클립 경계만 삽입(CapCut Cmd+B). 경계/빈 타임라인은 no-op.
+      return { ...state, timeline: splitClipAt(state.timeline, cmd.programUs) };
     case 'applyGlossary': {
       // transcript 변환(단어 텍스트 치환) — 타임스탬프/id 보존이라 sync 불변식 유지.
       const words = state.transcript.order.map((id) => state.transcript.words[id]!);

@@ -1250,6 +1250,7 @@ function Preview() {
     proxyBusy,
     playheadUs,
     playing,
+    playbackRate,
     setPlayhead,
     setPlaying,
     durationProgramUs,
@@ -1353,6 +1354,7 @@ function Preview() {
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !edl) return;
+    v.playbackRate = playbackRate; // JKL 셔틀 배속(issue #6)
     if (playing) {
       if (playheadUs >= edl.totalDuration - 1)
         v.currentTime = (edl.segments[0]?.sourceStart ?? 0) / US;
@@ -1360,7 +1362,7 @@ function Preview() {
     } else {
       v.pause();
     }
-  }, [playing, edl, playheadUs]);
+  }, [playing, edl, playheadUs, playbackRate]);
 
   // Seek the video element when playhead changes externally (arrow keys / scrub).
   useEffect(() => {
@@ -3809,6 +3811,12 @@ export function AppShell() {
       }
       if ((e.metaKey || e.ctrlKey) && !e.altKey) {
         const k = e.key.toLowerCase();
+        if (k === 'b' && useEditor.getState().timeline) {
+          // CapCut Cmd+B — 플레이헤드에서 클립 분할(길이 불변, undo 가능).
+          e.preventDefault();
+          useEditor.getState().splitAtPlayhead();
+          return;
+        }
         if (k === 's' && useEditor.getState().timeline) {
           e.preventDefault();
           (async () => {
@@ -3852,6 +3860,45 @@ export function AppShell() {
         if (!st.timeline) return;
         e.preventDefault();
         st.setPlaying(!st.playing);
+        return;
+      }
+      // CapCut 표준 키맵(issue #6): Q/W 플레이헤드 리플 삭제 · J/K/L 셔틀.
+      if (e.key === 'q' || e.key === 'Q') {
+        if (!st.timeline) return;
+        e.preventDefault();
+        st.rippleDeleteAtPlayhead('left');
+        return;
+      }
+      if (e.key === 'w' || e.key === 'W') {
+        if (!st.timeline) return;
+        e.preventDefault();
+        st.rippleDeleteAtPlayhead('right');
+        return;
+      }
+      if (e.key === 'j' || e.key === 'J') {
+        if (!dur) return;
+        e.preventDefault();
+        st.setPlayhead(Math.max(0, st.playheadUs - 3_000_000)); // 3초 뒤로
+        return;
+      }
+      if (e.key === 'k' || e.key === 'K') {
+        if (!st.timeline) return;
+        e.preventDefault();
+        st.setPlaybackRate(1);
+        st.setPlaying(false);
+        return;
+      }
+      if (e.key === 'l' || e.key === 'L') {
+        if (!st.timeline) return;
+        e.preventDefault();
+        if (!st.playing) {
+          st.setPlaybackRate(1);
+          st.setPlaying(true);
+        } else {
+          // L 반복 = 1× → 1.5× → 2× → 1× 배속 순환(CapCut 셔틀 관습).
+          const next = st.playbackRate >= 2 ? 1 : st.playbackRate >= 1.5 ? 2 : 1.5;
+          st.setPlaybackRate(next);
+        }
         return;
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
@@ -3953,6 +4000,9 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
     [`${mod} S`, 'Save project (.dawn)'],
     [`${mod} O`, 'Open project (.dawn)'],
     [`${mod} E`, 'Export MP4'],
+    [`${mod} B`, '플레이헤드에서 클립 분할 (CapCut)'],
+    ['Q / W', '클립 시작→플레이헤드 / 플레이헤드→클립 끝 삭제'],
+    ['J / K / L', '3초 뒤로 / 일시정지 / 재생·배속(1→1.5→2×)'],
     ['Space', 'Play / pause'],
     ['← / →', 'Seek ±0.1s'],
     ['Home / End', 'Jump to start / end'],

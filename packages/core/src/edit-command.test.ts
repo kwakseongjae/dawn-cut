@@ -7,7 +7,7 @@ import {
   safeParseEditCommand,
 } from './edit-command.js';
 import { validateSync } from './sync.js';
-import { createInitialTimeline } from './timeline.js';
+import { createInitialTimeline, videoClips } from './timeline.js';
 import { buildTranscriptModel } from './transcript.js';
 import type { Word } from './types.js';
 
@@ -276,10 +276,42 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'removeSilences',
       'replaceSubtitleStyle',
       'setSubtitleStyle',
+      'splitAt',
     ]);
     for (const entry of m) {
       expect(entry.inputSchema).toBeTruthy();
       expect(typeof entry.inputSchema).toBe('object');
     }
+  });
+});
+
+describe('splitAt verb — 플레이헤드 분할 (issue #6)', () => {
+  const base = () =>
+    scene([
+      ['안녕하세요', 0, 0.5],
+      ['던컷입니다', 0.5, 1.0],
+    ]);
+
+  it('클립을 둘로 나누되 길이는 불변(비파괴)', () => {
+    const state = base();
+    const out = applyCommand(state, { type: 'splitAt', programUs: 500_000 });
+    expect(videoClips(out.after.timeline).length).toBe(2);
+    expect(out.removedProgramUs).toBe(0);
+    expect(out.after.timeline.durationProgram).toBe(state.timeline.durationProgram);
+  });
+
+  it('경계(0)는 no-op', () => {
+    const out = applyCommand(base(), { type: 'splitAt', programUs: 0 });
+    expect(videoClips(out.after.timeline).length).toBe(1);
+  });
+
+  it('분할 후 deleteWordRange 등 후속 컷이 정상 동작(불변식 유지)', () => {
+    const state = base();
+    const split = applyCommand(state, { type: 'splitAt', programUs: 500_000 });
+    const cut = applyCommand(
+      { ...state, timeline: split.after.timeline },
+      { type: 'deleteWordRange', fromWordId: 'm1:w1', toWordId: 'm1:w1' },
+    );
+    expect(cut.removedProgramUs).toBeGreaterThan(400_000);
   });
 });

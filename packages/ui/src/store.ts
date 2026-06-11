@@ -115,6 +115,11 @@ interface EditorState {
   autoEnhanceEq: ColorEq | null; // 마지막 적용 eq(프리뷰 CSS 근사용; 실제 렌더는 timeline 이펙트)
   autoEnhance: () => Promise<void>;
   correctWord: (wordId: string, text: string) => void; // STT 오인식 어절 교정(검수)
+  // CapCut 표준 키맵(issue #6) — 플레이헤드 기준 편집. 전부 command bus(undo·감사) 경유.
+  splitAtPlayhead: () => void; // Cmd+B — 클립 분할(길이 불변)
+  rippleDeleteAtPlayhead: (side: 'left' | 'right') => void; // Q/W — 클립 시작↔플레이헤드↔끝 삭제
+  playbackRate: number; // JKL 셔틀 — 미리보기 재생 배속(1/1.5/2)
+  setPlaybackRate: (r: number) => void;
   autoHighlight: (targetSeconds: number) => void; // 롱폼→쇼츠: 핵심만 남겨 ~targetSeconds로 컷
   // 자동 하이라이트 결과 알림(컷됨/이미 짧음). 사용자가 닫을 때까지 유지.
   highlightNotice: {
@@ -617,6 +622,62 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...derive(after.timeline),
     });
   },
+  // ── CapCut 표준 키맵(issue #6) ──
+  splitAtPlayhead: () => {
+    const { timeline, playheadUs } = get();
+    if (!timeline) return;
+    // 자막 생성 전에도 동작해야 한다(분할은 transcript 무관) — 빈 transcript 합성(저장과 동일 패턴).
+    const transcript = get().transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+    const cmd = { type: 'splitAt', programUs: Math.round(playheadUs) } as const;
+    const { after } = applyCommand({ timeline, transcript }, cmd);
+    if (videoClips(after.timeline).length === videoClips(timeline).length) return; // 경계 no-op
+    set({
+      timeline: after.timeline,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      auditLog: appendAudit(get().auditLog, cmd, 0),
+      ...derive(after.timeline),
+    });
+  },
+  rippleDeleteAtPlayhead: (side) => {
+    // Q(left)=클립 시작→플레이헤드 삭제 · W(right)=플레이헤드→클립 끝 삭제 (CapCut 문법).
+    const { timeline, playheadUs } = get();
+    if (!timeline) return;
+    const transcript = get().transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+    const clip = videoClips(timeline).find(
+      (c) =>
+        playheadUs >= c.timelineStart &&
+        playheadUs < c.timelineStart + (c.sourceEnd - c.sourceStart),
+    );
+    if (!clip) return;
+    const srcAt = clip.sourceStart + (playheadUs - clip.timelineStart);
+    const [a, b] = side === 'left' ? [clip.sourceStart, srcAt] : [srcAt, clip.sourceEnd];
+    if (b - a < 33_334) return; // 1프레임 미만 — 의미 없는 컷 방지
+    const cmd = {
+      type: 'cutSourceRange',
+      mediaId: clip.mediaId,
+      sourceStart: Math.round(a),
+      sourceEnd: Math.round(b),
+    } as const;
+    const { after, removedProgramUs } = applyCommand({ timeline, transcript }, cmd);
+    set({
+      timeline: after.timeline,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      selected: [],
+      playheadUs:
+        side === 'left' ? clip.timelineStart : Math.min(playheadUs, after.timeline.durationProgram),
+      auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
+      ...derive(after.timeline),
+    });
+  },
+  playbackRate: 1,
+  setPlaybackRate: (r) => set({ playbackRate: r }),
+
   dismissHighlightNotice: () => set({ highlightNotice: null }),
 
   // 오버레이/보이스 선택은 상호 배타 — Delete 키가 어느 쪽을 지울지 모호하지 않게.
