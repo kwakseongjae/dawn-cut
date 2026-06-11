@@ -40,3 +40,14 @@ seeds dawncut1 / dawncut2), which serves photos under the Unsplash License
 attribution appreciated. These are test fixtures only and are regenerable with
 `pnpm demo:assets`; the script falls back to self-generated CC0 color cards
 when offline. No third-party photo is required for dawn-cut to build or run.
+
+## Bundled binaries (issue #19, 2026-06-11)
+- ffmpeg / ffprobe (Resources/bin): built from FFmpeg n7.1 source with
+  `--disable-gpl --disable-nonfree` (LGPL v2.1+ core only, no external GPL
+  libraries; H.264 encoding via Apple VideoToolbox). Build script:
+  scripts/build-ffmpeg-lgpl.sh. FFmpeg source: https://ffmpeg.org
+- whisper-cli (Resources/bin): whisper.cpp (MIT), static build
+  (BUILD_SHARED_LIBS=OFF). https://github.com/ggml-org/whisper.cpp
+- The whisper model (ggml-large-v3-turbo) is downloaded on first use from
+  Hugging Face (ggerganov/whisper.cpp) into the user data directory; it is
+  not distributed inside the app bundle.

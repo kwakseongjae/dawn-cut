@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readdirSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -150,6 +150,75 @@ ipcMain.handle('llm:plan', async (_e, prompt: string) => {
     }
   }
   return llmComplete(prompt);
+});
+
+// ── 바이너리 자급자족(issue #19) ─────────────────────────────────────
+// 패키징 앱: Resources/bin의 동봉 ffmpeg/ffprobe/whisper-cli 경로를 env로 주입.
+// 사이드카는 env를 '호출 시점'에 읽으므로(lazy) whenReady에서 주입해도 적용된다.
+function wireBundledBinaries(): void {
+  if (app.isPackaged) {
+    const bin = join(process.resourcesPath, 'bin');
+    const setIf = (envName: string, file: string) => {
+      const p = join(bin, file);
+      if (existsSync(p) && !process.env[envName]) process.env[envName] = p;
+    };
+    setIf('DAWN_FFMPEG', 'ffmpeg');
+    setIf('DAWN_FFPROBE', 'ffprobe');
+    setIf('DAWN_WHISPER_BIN', 'whisper-cli');
+  }
+  // 모델: 온보딩 다운로드 위치(userData/models)가 있으면 우선(dev/packaged 공통).
+  const m = downloadedModelPath();
+  if (existsSync(m) && !process.env.DAWN_WHISPER_MODEL_PATH)
+    process.env.DAWN_WHISPER_MODEL_PATH = m;
+}
+
+// whisper 모델 온보딩 — 1.6GB라 동봉 불가 → 첫 자막 생성 전에 다운로드(진행률 IPC).
+const WHISPER_MODEL_FILE = 'ggml-large-v3-turbo.bin';
+const WHISPER_MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${WHISPER_MODEL_FILE}`;
+const downloadedModelPath = () => join(app.getPath('userData'), 'models', WHISPER_MODEL_FILE);
+function resolveModelPath(): string | null {
+  const candidates = [
+    process.env.DAWN_WHISPER_MODEL_PATH,
+    downloadedModelPath(),
+    resolve(process.cwd(), 'vendor/whisper.cpp/models', WHISPER_MODEL_FILE), // dev
+  ].filter((p): p is string => Boolean(p));
+  return candidates.find((p) => existsSync(p)) ?? null;
+}
+ipcMain.handle('stt:modelStatus', () => {
+  const path = resolveModelPath();
+  return { present: Boolean(path), path, sizeMb: 1624 };
+});
+ipcMain.handle('stt:downloadModel', async (e) => {
+  const dest = downloadedModelPath();
+  await mkdir(join(app.getPath('userData'), 'models'), { recursive: true });
+  const res = await fetch(WHISPER_MODEL_URL);
+  if (!res.ok || !res.body) throw new Error(`모델 다운로드 실패(${res.status})`);
+  const total = Number(res.headers.get('content-length') ?? 0);
+  const tmp = `${dest}.part`;
+  const out = createWriteStream(tmp);
+  let received = 0;
+  let lastSent = 0;
+  const reader = res.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    await new Promise<void>((ok, bad) =>
+      out.write(Buffer.from(value), (err) => (err ? bad(err) : ok())),
+    );
+    // 진행률은 ~0.5s 간격으로만 송신(IPC 폭주 방지).
+    if (Date.now() - lastSent > 500) {
+      lastSent = Date.now();
+      e.sender.send('model:progress', { receivedMb: received >> 20, totalMb: total >> 20 });
+    }
+  }
+  await new Promise<void>((ok) => out.end(ok));
+  await rm(dest).catch(() => {});
+  await copyFile(tmp, dest);
+  await rm(tmp).catch(() => {});
+  process.env.DAWN_WHISPER_MODEL_PATH = dest;
+  e.sender.send('model:progress', { receivedMb: total >> 20, totalMb: total >> 20, done: true });
+  return { path: dest };
 });
 
 // ── 설정(userData/settings.json) — API 키는 main에만 머물고 렌더러엔 보유 여부만 노출 ──
@@ -441,6 +510,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  wireBundledBinaries(); // 동봉 바이너리/모델 env 주입(issue #19) — 첫 IPC 전에
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

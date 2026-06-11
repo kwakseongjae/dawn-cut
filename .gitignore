@@ -30,3 +30,5 @@ release/
 
 # real-media test outputs (human inspection, not committed)
 output/
+vendor/ffmpeg-src/
+vendor/dist-bin/

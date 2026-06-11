@@ -110,6 +110,18 @@ const bridge = {
     ipcRenderer.invoke('llm:warmup'),
   llmPlan: (prompt: string): Promise<{ text: string; ms: number }> =>
     ipcRenderer.invoke('llm:plan', prompt),
+  // whisper 모델 온보딩(issue #19) — 1.6GB라 동봉 불가, 첫 자막 생성 전에 다운로드.
+  modelStatus: (): Promise<{ present: boolean; path: string | null; sizeMb: number }> =>
+    ipcRenderer.invoke('stt:modelStatus'),
+  downloadModel: (): Promise<{ path: string }> => ipcRenderer.invoke('stt:downloadModel'),
+  onModelProgress: (
+    cb: (p: { receivedMb: number; totalMb: number; done?: boolean }) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, p: { receivedMb: number; totalMb: number; done?: boolean }) =>
+      cb(p);
+    ipcRenderer.on('model:progress', handler);
+    return () => ipcRenderer.removeListener('model:progress', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('dawn', bridge);

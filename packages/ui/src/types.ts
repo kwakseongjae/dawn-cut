@@ -120,6 +120,12 @@ export interface DawnBridge {
   llmAvailable: () => Promise<LlmStatus>;
   llmWarmup: () => Promise<{ ready: boolean; ms: number; reason?: string }>;
   llmPlan: (prompt: string) => Promise<{ text: string; ms: number }>;
+  /** whisper 모델 온보딩(issue #19) — 패키징 앱 첫 실행용. */
+  modelStatus?: () => Promise<{ present: boolean; path: string | null; sizeMb: number }>;
+  downloadModel?: () => Promise<{ path: string }>;
+  onModelProgress?: (
+    cb: (p: { receivedMb: number; totalMb: number; done?: boolean }) => void,
+  ) => () => void;
 }
 
 declare global {

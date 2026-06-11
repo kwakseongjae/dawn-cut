@@ -2073,3 +2073,35 @@ body {
   opacity: 0.5;
   font-size: 10.5px;
 }
+
+/* ── whisper 모델 온보딩 (issue #19) ── */
+.model-onboarding {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 10px);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  background: color-mix(in srgb, var(--accent, #4f7cff) 8%, transparent);
+  text-align: left;
+  font-size: 12.5px;
+}
+.model-progress {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg, #0b0c10);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+.model-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent, #4f7cff);
+  opacity: 0.45;
+  transition: width 0.4s;
+}
+.model-progress span {
+  position: relative;
+}

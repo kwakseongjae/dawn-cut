@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
-const FFMPEG = process.env.DAWN_FFMPEG ?? 'ffmpeg';
+const FFMPEG = () => process.env.DAWN_FFMPEG ?? 'ffmpeg'; // lazy — 패키징 동봉 경로 주입 대응
 
 export interface PiperStatus {
   available: boolean; // Piper 뉴럴 엔진(바이너리+모델)이 설치돼 쓸 수 있는가
@@ -151,7 +151,18 @@ export async function synthesizeTts(
   const aiff = join(dir, 'voice.aiff');
   const sayText = buildInlinePrefix(opts.pitch, opts.volume) + text;
   await exec('say', [...buildSayArgs(voice, aiff, opts.rate), sayText]);
-  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', aiff, '-ar', '16000', '-ac', '1', outWav]);
+  await exec(FFMPEG(), [
+    '-y',
+    '-loglevel',
+    'error',
+    '-i',
+    aiff,
+    '-ar',
+    '16000',
+    '-ac',
+    '1',
+    outWav,
+  ]);
   return { wavPath: outWav, engine: 'say', voice };
 }
 

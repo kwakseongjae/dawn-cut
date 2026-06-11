@@ -6,8 +6,10 @@ import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
 
 const exec = promisify(execFile);
 
-const FFMPEG = process.env.DAWN_FFMPEG ?? 'ffmpeg';
-const FFPROBE = process.env.DAWN_FFPROBE ?? 'ffprobe';
+// 호출 시점 해석(lazy) — 패키징 앱은 main 부팅 시 동봉 경로(Resources/bin)를
+// DAWN_FFMPEG/DAWN_FFPROBE env로 주입한다(ESM import 호이스팅보다 늦어도 적용되게).
+const FFMPEG = () => process.env.DAWN_FFMPEG ?? 'ffmpeg';
+const FFPROBE = () => process.env.DAWN_FFPROBE ?? 'ffprobe';
 
 export interface ProbeResult {
   durationUs: number;
@@ -23,7 +25,7 @@ export interface ProbeResult {
 
 /** ffprobe → duration (µs), video fps, frame size, audio presence, codec/level. (IPC `media:probe`) */
 export async function probeMedia(path: string): Promise<ProbeResult> {
-  const { stdout } = await exec(FFPROBE, [
+  const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
     '-show_entries',
@@ -74,7 +76,23 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
  */
 export async function makePreviewProxy(src: string, out: string, maxDim = 1280): Promise<string> {
   const cap = Math.max(160, Math.min(2160, Math.round(maxDim)));
-  await exec(FFMPEG, [
+  const enc = await detectH264Encoder();
+  const encArgs =
+    enc === 'libx264'
+      ? [
+          '-c:v',
+          'libx264',
+          '-profile:v',
+          'main',
+          '-level',
+          '4.0',
+          '-preset',
+          'veryfast',
+          '-crf',
+          '24',
+        ]
+      : ['-c:v', 'h264_videotoolbox', '-profile:v', 'main', '-q:v', vtbQualityForCrf(24)];
+  await exec(FFMPEG(), [
     '-y',
     '-loglevel',
     'error',
@@ -83,16 +101,7 @@ export async function makePreviewProxy(src: string, out: string, maxDim = 1280):
     '-vf',
     // 긴 변을 cap 이하로 축소(비율 유지) + 짝수 치수 보장(yuv420p).
     `scale='min(${cap},iw)':'min(${cap},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`,
-    '-c:v',
-    'libx264',
-    '-profile:v',
-    'main',
-    '-level',
-    '4.0',
-    '-preset',
-    'veryfast',
-    '-crf',
-    '24',
+    ...encArgs,
     '-pix_fmt',
     'yuv420p',
     '-movflags',
@@ -128,7 +137,7 @@ export async function analyzeVideo(
 ): Promise<VideoStats> {
   const sampleSec = Math.min(60, Math.max(0.5, opts.sampleSec ?? 6));
   const sampleFps = Math.min(10, Math.max(0.5, opts.sampleFps ?? 2));
-  const { stderr } = await exec(FFMPEG, [
+  const { stderr } = await exec(FFMPEG(), [
     '-hide_banner',
     '-t',
     String(sampleSec),
@@ -174,7 +183,7 @@ export async function extractAudio(
   inputPath: string,
   outWavPath: string,
 ): Promise<{ wavPath: string }> {
-  await exec(FFMPEG, [
+  await exec(FFMPEG(), [
     '-y',
     '-loglevel',
     'error',
@@ -236,6 +245,36 @@ export interface RenderOpts {
 /** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
 export function crfForQuality(q: NonNullable<RenderOpts['quality']>): string {
   return q === 'high' ? '18' : q === 'small' ? '28' : '23';
+}
+
+// ── H.264 인코더 폴백(issue #19) ─────────────────────────────────────
+// 동봉용 LGPL ffmpeg에는 libx264(GPL)가 없다 → macOS 하드웨어 인코더
+// h264_videotoolbox로 폴백한다. dev(brew GPL 빌드)에선 libx264 유지(기존 산출물 동일).
+let h264Cache: 'libx264' | 'h264_videotoolbox' | null = null;
+export async function detectH264Encoder(): Promise<'libx264' | 'h264_videotoolbox'> {
+  if (h264Cache) return h264Cache;
+  try {
+    const { stdout } = await exec(FFMPEG(), ['-hide_banner', '-encoders']);
+    h264Cache = stdout.includes('libx264') ? 'libx264' : 'h264_videotoolbox';
+  } catch {
+    h264Cache = 'libx264';
+  }
+  return h264Cache;
+}
+/** 테스트용 — 감지 캐시 리셋(env로 ffmpeg를 바꿔치기하는 테스트가 사용). */
+export function resetEncoderCache(): void {
+  h264Cache = null;
+}
+/** CRF(libx264) ↔ -q:v(videotoolbox, 0~100 높을수록 고화질) 결정적 매핑(순수). */
+export function vtbQualityForCrf(crf: number): string {
+  // 선형 매핑: crf18→q75(고화질) · 23→q62(보통) · 28→q48(고압축) · 프록시24→q58.
+  return String(Math.max(30, Math.min(85, Math.round(123.6 - 2.7 * crf))));
+}
+/** 인코더별 비디오 인자(순수 조립). */
+export function vencArgs(enc: 'libx264' | 'h264_videotoolbox', crf: number): string[] {
+  return enc === 'libx264'
+    ? ['-c:v', 'libx264', '-crf', String(crf)]
+    : ['-c:v', 'h264_videotoolbox', '-q:v', vtbQualityForCrf(crf)];
 }
 
 /** 소스 w×h를 목표 종횡비로 중앙 크롭할 짝수 치수(짝수=yuv420p 안전). */
@@ -314,7 +353,7 @@ export async function renderEdl(
     const gargs = ['-y', '-loglevel', 'error', '-i', input];
     pushOverlayInputs(gargs);
     gargs.push('-filter_complex', filter, '-map', '[v]', '-loop', '0', outPath);
-    await exec(FFMPEG, gargs, { maxBuffer: 64 * 1024 * 1024 });
+    await exec(FFMPEG(), gargs, { maxBuffer: 64 * 1024 * 1024 });
     return { outPath };
   }
 
@@ -354,10 +393,12 @@ export async function renderEdl(
   // a looping GIF overlay is an infinite input → bound output to the finite base.
   // (only when a GIF overlay is present, so a short subtitle track can't trim the video.)
   if (ovf.inputs.some((p) => /\.gif$/i.test(p))) args.push('-shortest');
-  if (opts.quality) args.push('-c:v', 'libx264', '-crf', crfForQuality(opts.quality));
+  const enc = await detectH264Encoder();
+  if (opts.quality) args.push(...vencArgs(enc, Number(crfForQuality(opts.quality))));
+  else if (enc !== 'libx264') args.push(...vencArgs(enc, 23)); // LGPL 빌드 기본이 mpeg4가 되는 것 방지
   args.push('-r', String(edl.fps), '-pix_fmt', 'yuv420p', outPath);
 
-  await exec(FFMPEG, args, { maxBuffer: 32 * 1024 * 1024 });
+  await exec(FFMPEG(), args, { maxBuffer: 32 * 1024 * 1024 });
   return { outPath };
 }
 
@@ -383,7 +424,7 @@ export async function renderAudioOnly(
   const filter = `${parts.join(';')};${labels.join('')}concat=n=${edl.segments.length}:v=0:a=1[a]`;
   const codec = format === 'mp3' ? ['-c:a', 'libmp3lame', '-q:a', '2'] : ['-c:a', 'pcm_s16le'];
   await exec(
-    FFMPEG,
+    FFMPEG(),
     [
       '-y',
       '-loglevel',
@@ -404,7 +445,7 @@ export async function renderAudioOnly(
 
 /** True if the file contains at least one subtitle stream (ffprobe). */
 export async function hasSubtitleStream(path: string): Promise<boolean> {
-  const { stdout } = await exec(FFPROBE, [
+  const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
     '-select_streams',
@@ -434,7 +475,7 @@ export async function detectSilences(
   const noiseDb = opts.noiseDb ?? -30;
   const minSilenceSec = (opts.minSilenceUs ?? 500_000) / 1_000_000;
   // silencedetect writes to stderr; -f null discards output.
-  const { stderr } = await exec(FFMPEG, [
+  const { stderr } = await exec(FFMPEG(), [
     '-i',
     path,
     '-af',
@@ -462,7 +503,7 @@ export async function detectSilences(
 export async function probeAudioStream(
   path: string,
 ): Promise<{ sampleRate: number; channels: number; codec: string; durationUs: number }> {
-  const { stdout } = await exec(FFPROBE, [
+  const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
     '-select_streams',

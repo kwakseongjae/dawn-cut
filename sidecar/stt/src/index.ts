@@ -8,10 +8,12 @@ import { type WhisperNaturalJson, type Word, whisperNaturalToWords } from '@dawn
 
 const exec = promisify(execFile);
 
-const WHISPER_BIN = process.env.DAWN_WHISPER_BIN ?? 'vendor/whisper.cpp/build/bin/whisper-cli';
+// 호출 시점 해석(lazy) — 패키징 앱은 main이 동봉 바이너리/다운로드 모델 경로를 env로 주입.
+const WHISPER_BIN = () =>
+  process.env.DAWN_WHISPER_BIN ?? 'vendor/whisper.cpp/build/bin/whisper-cli';
 // 기본 = large-v3-turbo (Cycle-0 실측: base는 '무음→몸' 오인, turbo는 교정).
 // 가벼운 셋업/저사양은 DAWN_WHISPER_MODEL_PATH로 ggml-base.bin 오버라이드.
-const WHISPER_MODEL =
+const WHISPER_MODEL = () =>
   process.env.DAWN_WHISPER_MODEL_PATH ?? 'vendor/whisper.cpp/models/ggml-large-v3-turbo.bin';
 
 export interface TranscribeResult {
@@ -40,7 +42,7 @@ export async function transcribe(
 
   const args = [
     '-m',
-    WHISPER_MODEL,
+    WHISPER_MODEL(),
     '-f',
     wavPath,
     '-oj',
@@ -54,7 +56,7 @@ export async function transcribe(
   // 전사를 낸다(크래시 아님 — 조용한 오염). DAWN_WHISPER_NO_GPU=1이면 CPU 강제(-ng).
   if (process.env.DAWN_WHISPER_NO_GPU === '1') args.push('-ng');
 
-  await exec(WHISPER_BIN, args, { maxBuffer: 32 * 1024 * 1024 });
+  await exec(WHISPER_BIN(), args, { maxBuffer: 32 * 1024 * 1024 });
 
   const json = JSON.parse(await readFile(`${outBase}.json`, 'utf8')) as WhisperNaturalJson;
   const language = json.result?.language ?? opts.lang ?? 'auto';

@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
-const FFMPEG = process.env.DAWN_FFMPEG ?? 'ffmpeg';
+const FFMPEG = () => process.env.DAWN_FFMPEG ?? 'ffmpeg'; // lazy — 패키징 동봉 경로 주입 대응
 
 export interface CloudVoice {
   /** dawn-cut 보이스 id(UI/프로젝트에 저장되는 값). */
@@ -189,7 +189,7 @@ export async function synthesizeOpenRouterTts(
     // Gemini: raw PCM s16le 24kHz mono → 표준 16kHz wav.
     const raw = join(dir, 'voice-raw.pcm');
     await writeFile(raw, buf);
-    await exec(FFMPEG, [
+    await exec(FFMPEG(), [
       '-y',
       '-loglevel',
       'error',
@@ -210,7 +210,18 @@ export async function synthesizeOpenRouterTts(
   } else {
     const raw = join(dir, 'voice-raw.mp3');
     await writeFile(raw, buf);
-    await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+    await exec(FFMPEG(), [
+      '-y',
+      '-loglevel',
+      'error',
+      '-i',
+      raw,
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      outWav,
+    ]);
   }
   return {
     wavPath: outWav,
@@ -293,7 +304,7 @@ export async function synthesizeElevenTts(
   const dir = mkdtempSync(join(tmpdir(), 'dawn-eleven-tts-'));
   const raw = join(dir, 'voice-raw.mp3');
   await writeFile(raw, buf);
-  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  await exec(FFMPEG(), ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
   return {
     wavPath: outWav,
     engine: 'cloud',
@@ -329,7 +340,7 @@ export async function synthesizeCloudTts(
   const dir = mkdtempSync(join(tmpdir(), 'dawn-cloud-tts-'));
   const raw = join(dir, 'voice-raw.wav');
   await writeFile(raw, buf);
-  await exec(FFMPEG, ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
+  await exec(FFMPEG(), ['-y', '-loglevel', 'error', '-i', raw, '-ar', '16000', '-ac', '1', outWav]);
   return {
     wavPath: outWav,
     engine: 'cloud',

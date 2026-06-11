@@ -2119,6 +2119,74 @@ function GlossaryAdd({ onAdd }: { onAdd: (from: string, to: string) => void }) {
   );
 }
 
+// whisper 모델 온보딩(issue #19) — 패키징 앱 첫 실행: 모델(1.6GB)이 없으면 자막 생성 전에
+// 다운로드를 안내한다. dev(vendor/ 모델 존재)에서는 자동으로 사라진다.
+function ModelOnboarding() {
+  const [state, setState] = useState<'checking' | 'absent' | 'downloading' | 'ready'>('checking');
+  const [prog, setProg] = useState<{ receivedMb: number; totalMb: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const st = await window.dawn?.modelStatus?.();
+      if (alive) setState(st?.present ? 'ready' : st ? 'absent' : 'ready');
+    })();
+    const off = window.dawn?.onModelProgress?.((p) => {
+      setProg(p);
+      if (p.done) setState('ready');
+    });
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, []);
+  if (state === 'ready' || state === 'checking') return null;
+  return (
+    <div className="model-onboarding" data-testid="model-onboarding">
+      <strong>음성 인식 모델이 필요합니다</strong>
+      <p className="muted-note" style={{ margin: '6px 0' }}>
+        한국어 자막 생성에 whisper 모델(약 1.6GB, 최초 1회)이 필요해요. 받은 뒤엔 완전히
+        오프라인으로 동작합니다.
+      </p>
+      {state === 'absent' && (
+        <button
+          type="button"
+          className="btn primary"
+          data-testid="model-download"
+          onClick={async () => {
+            setState('downloading');
+            setErr(null);
+            try {
+              await window.dawn?.downloadModel?.();
+            } catch (e) {
+              setErr(e instanceof Error ? e.message : String(e));
+              setState('absent');
+            }
+          }}
+        >
+          모델 받기 (1.6GB)
+        </button>
+      )}
+      {state === 'downloading' && (
+        <div className="model-progress" data-testid="model-progress">
+          <div
+            className="model-progress-bar"
+            style={{
+              width: prog && prog.totalMb > 0 ? `${(prog.receivedMb / prog.totalMb) * 100}%` : '8%',
+            }}
+          />
+          <span>{prog ? `${prog.receivedMb} / ${prog.totalMb} MB` : '다운로드 시작 중…'}</span>
+        </div>
+      )}
+      {err && (
+        <p className="muted-note" style={{ color: '#ff8a8a' }}>
+          다운로드 실패: {err.slice(0, 120)} — 네트워크 확인 후 다시 시도하세요.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Transcript() {
   const {
     transcript,
@@ -2856,6 +2924,7 @@ function Transcript() {
           )}
           {!transcript && mediaPath && (
             <div className="empty-transcript">
+              <ModelOnboarding />
               <button
                 type="button"
                 className="btn primary"
