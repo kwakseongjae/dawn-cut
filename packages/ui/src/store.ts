@@ -80,7 +80,7 @@ interface EditorState {
   redo: () => void;
   exportTo: (
     path: string,
-    preset?: { outHeight?: number; quality?: 'high' | 'medium' | 'small' },
+    preset?: { outHeight?: number; quality?: 'high' | 'medium' | 'small'; outFps?: number },
   ) => Promise<void>;
   exportVideo: (path: string, format: 'mp4' | 'gif') => Promise<void>;
   exportAudio: (path: string, format: 'mp3' | 'wav') => Promise<void>; // 오디오만(팟캐스트/녹취)
@@ -194,14 +194,14 @@ export interface Overlay {
     x?: number;
     y?: number;
     scale?: number;
-    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'back';
   };
   keyframes?: Array<{
     u: number;
     x?: number;
     y?: number;
     scale?: number;
-    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut';
+    easing?: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'back';
   }>;
   rotation?: number;
   blend?: 'normal' | 'screen' | 'multiply' | 'overlay' | 'lighten' | 'darken';
@@ -1078,6 +1078,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...(reframe !== 'source' ? { reframe } : {}),
       ...(preset?.outHeight ? { outHeight: preset.outHeight } : {}),
       ...(preset?.quality ? { quality: preset.quality } : {}),
+      ...(preset?.outFps ? { outFps: preset.outFps } : {}),
     });
     set({
       status: 'exported',

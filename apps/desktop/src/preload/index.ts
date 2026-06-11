@@ -14,6 +14,7 @@ type RenderOpts = {
   outHeight?: number;
   quality?: 'high' | 'medium' | 'small';
   inputHasAudio?: boolean;
+  outFps?: number;
 };
 
 // Typed bridge. contextIsolation=true, nodeIntegration=false. Mirrors DawnBridge in @dawn-cut/ui.

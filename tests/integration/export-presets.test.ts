@@ -87,3 +87,18 @@ describe.skipIf(!existsSync(SAMPLE))('무음 입력 내보내기 (inputHasAudio=
     expect(Math.abs(p2.durationUs - probe.durationUs)).toBeLessThan(150_000);
   }, 60_000);
 });
+
+describe.skipIf(!existsSync(SAMPLE))('출력 fps 옵션 (outFps)', () => {
+  it('outFps=60/24가 산출물 fps에 정확히 반영된다', async () => {
+    const probe = await probeMedia(SAMPLE);
+    const dur = Math.min(probe.durationUs, 2_000_000);
+    const edl = timelineToEdl(createInitialTimeline('m', dur, probe.fps || 30), SAMPLE);
+    const dir = mkdtempSync(join(tmpdir(), 'dawn-fps-'));
+    for (const fps of [60, 24]) {
+      const out = join(dir, `f${fps}.mp4`);
+      await renderEdl(edl, out, { outFps: fps });
+      const p = await probeMedia(out);
+      expect(Math.round(p.fps)).toBe(fps);
+    }
+  }, 90_000);
+});

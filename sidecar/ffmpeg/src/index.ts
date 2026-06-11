@@ -240,6 +240,8 @@ export interface RenderOpts {
    * (실측 2026-06-11: 미지정 상태로 무음 입력을 주면 ffmpeg가 [0:a]에서 즉사했다.)
    */
   inputHasAudio?: boolean;
+  /** 출력 프레임레이트(기본 = 타임라인 fps). 예: 60fps 원본을 30으로, 또는 60 업샘플. */
+  outFps?: number;
 }
 
 /** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
@@ -407,7 +409,13 @@ export async function renderEdl(
   const enc = await detectH264Encoder();
   if (opts.quality) args.push(...vencArgs(enc, Number(crfForQuality(opts.quality))));
   else if (enc !== 'libx264') args.push(...vencArgs(enc, 23)); // LGPL 빌드 기본이 mpeg4가 되는 것 방지
-  args.push('-r', String(edl.fps), '-pix_fmt', 'yuv420p', outPath);
+  args.push(
+    '-r',
+    String(opts.outFps && opts.outFps > 0 ? opts.outFps : edl.fps),
+    '-pix_fmt',
+    'yuv420p',
+    outPath,
+  );
 
   await exec(FFMPEG(), args, { maxBuffer: 32 * 1024 * 1024 });
   return { outPath };

@@ -56,6 +56,7 @@ export interface DawnBridge {
       outHeight?: number;
       quality?: 'high' | 'medium' | 'small';
       inputHasAudio?: boolean;
+      outFps?: number;
     },
   ) => Promise<{ outPath: string; actualDurationUs: number }>;
   writeSrt: (path: string, content: string) => Promise<{ path: string }>;

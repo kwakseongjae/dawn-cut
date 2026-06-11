@@ -362,6 +362,24 @@ function Toolbar() {
               </button>
               <button
                 type="button"
+                data-testid="export-30fps"
+                onClick={() => exportAs((p) => s.exportTo(p, { outFps: 30 }))}
+                title="프레임레이트를 30fps로 (60fps 원본 다운샘플)"
+              >
+                <span>영상 — MP4 · 30fps</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-60fps"
+                onClick={() => exportAs((p) => s.exportTo(p, { outFps: 60 }))}
+                title="프레임레이트를 60fps로"
+              >
+                <span>영상 — MP4 · 60fps</span>
+                <span className="k badge live">바로</span>
+              </button>
+              <button
+                type="button"
                 data-testid="export-small"
                 onClick={() => exportAs((p) => s.exportTo(p, { quality: 'small' }))}
                 title="화질을 약간 낮춰 파일을 작게 (메신저/메일 공유용)"
