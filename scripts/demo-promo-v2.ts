@@ -24,7 +24,7 @@ import {
 } from '@dawn-cut/core';
 import { probeMedia, renderEdl } from '@dawn-cut/sidecar-ffmpeg';
 import { synthesizeOpenRouterTts } from '@dawn-cut/sidecar-tts';
-import { createCanvas } from '@napi-rs/canvas';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { makeImageCard } from './lib-image-card.js';
 
 const exec = promisify(execFile);
@@ -80,7 +80,6 @@ async function main() {
   const u = (sec: number) => Math.round(sec * 1e6);
 
   console.log('3) 이미지 → 디자이너 카드 전처리…');
-  const card1 = await makeImageCard(HERO, join(OUT, 'card-hero.png'), { tiltDeg: -3.5 });
   const card2 = await makeImageCard(LIFE, join(OUT, 'card-life.png'), { tiltDeg: 3 });
 
   // 비네트 — 하단 그라데이션(자막 대비) + 상단 살짝(밀폐감). 풀스크린 PNG.
@@ -113,59 +112,59 @@ async function main() {
     opacity: 1,
     startUs: 0,
     endUs: u(totalSec),
-    z: 5,
+    z: 10, // 풀블리드 히어로(z8) 위, 전경(z30+) 아래 — 자막 대비 유지
   });
 
-  // 카드 1 — back 팝인(오버슈트) 후 Ken Burns 드리프트. 중앙 정렬은 x=(1-scale)/2.
-  const c1Scale = 1.16; // PNG에 그림자 패딩이 있어 실표시는 ~85% 폭
+  // 히어로 — '풀블리드' Ken Burns: 원본 이미지가 화면 '높이'를 덮도록 폭 스케일을
+  // 이미지 비율에서 동적 계산(가로형이면 2.5+ — 좌우는 잘리는 게 정상, 쇼츠 문법).
   const cx = (sc: number) => (1 - sc) / 2;
+  const heroImg = await loadImage(HERO);
+  const coverScale = (H / W) * (heroImg.width / heroImg.height); // 높이 100% 커버 폭배율
+  const heroS = coverScale * 1.06; // 6% 여유(드리프트 중에도 빈틈 없음)
   overlays.push({
-    id: 'card1',
+    id: 'hero',
     kind: 'image',
-    src: card1.outPath,
-    x: cx(c1Scale),
-    y: 0.12,
-    scale: c1Scale * 0.55,
+    src: HERO,
+    x: cx(heroS),
+    y: -0.04,
+    scale: heroS,
     opacity: 1,
-    startUs: u(snap(0.8)),
+    startUs: 0,
     endUs: u(snap(6.0)),
-    z: 30,
-    keyframes: [
-      { u: 0.16, scale: c1Scale, x: cx(c1Scale), easing: 'back' }, // 통통 팝인
-      { u: 1, scale: c1Scale * 1.05, x: cx(c1Scale * 1.05), y: 0.1, easing: 'linear' }, // 드리프트
-    ],
+    z: 8,
+    keyframes: [{ u: 1, scale: heroS * 1.12, x: cx(heroS * 1.12), y: -0.07, easing: 'easeInOut' }],
   });
-  // 카드 2 — 반대 기울기·살짝 아래로 드리프트(시각 리듬).
-  const c2Scale = 1.12;
+  // 카드 2 — 화면 폭을 '넘치는' 블리드(1.35) + 통통 팝인 + 드리프트. 소극적 배치 금지.
+  const c2Scale = 1.35;
   overlays.push({
     id: 'card2',
     kind: 'image',
     src: card2.outPath,
     x: cx(c2Scale),
-    y: 0.15,
-    scale: c2Scale * 0.55,
+    y: 0.13,
+    scale: c2Scale * 0.6,
     opacity: 1,
     startUs: u(snap(6.0)),
     endUs: u(snap(11.2)),
     z: 30,
     keyframes: [
-      { u: 0.16, scale: c2Scale, x: cx(c2Scale), easing: 'back' },
-      { u: 1, scale: c2Scale * 1.05, x: cx(c2Scale * 1.05), y: 0.17, easing: 'linear' },
+      { u: 0.14, scale: c2Scale, x: cx(c2Scale), easing: 'back' },
+      { u: 1, scale: c2Scale * 1.06, x: cx(c2Scale * 1.06), y: 0.08, easing: 'linear' },
     ],
   });
-  // 구독 v2 — CTA 구간, back 팝인.
+  // 구독 — 30fps 알파 비디오(ProRes4444) — GIF 팔레트·12fps 버벅임 제거(사이클 9).
   overlays.push({
     id: 'sub',
-    kind: 'gif',
-    src: join(ROOT, 'assets/gif/zoom-subscribe.gif'),
-    x: 0.24,
-    y: 0.5,
-    scale: 0.26,
+    kind: 'video',
+    src: join(ROOT, 'assets/gif/zoom-subscribe.mov'),
+    x: 0.225,
+    y: 0.46,
+    scale: 0.3,
     opacity: 1,
     startUs: u(snap(totalSec - 3.2)),
     endUs: u(totalSec - 0.1),
     z: 40,
-    keyframes: [{ u: 0.2, scale: 0.52, x: 0.24, easing: 'back' }],
+    keyframes: [{ u: 0.18, scale: 0.55, x: 0.225, easing: 'back' }],
   });
 
   // 자막 — 쇼츠 프리셋 + pop 애니(cue별 통통). 비트에 맞춘 cue 타이밍.
@@ -184,7 +183,7 @@ async function main() {
     null,
     createInitialTimeline('m', u(totalSec), 30),
     style,
-    { x: 0.03, y: 0.72, scale: 0.94 },
+    { x: 0.0, y: 0.73, scale: 1.0 },
     cues,
   );
   plan.forEach((fr: BurnFrameSpec, i: number) => {

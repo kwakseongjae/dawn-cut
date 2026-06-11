@@ -349,6 +349,8 @@ export async function renderEdl(
     for (const ip of ovf.inputs) {
       if (/\.gif$/i.test(ip)) arr.push('-ignore_loop', '0');
       else if (/\.(png|jpe?g)$/i.test(ip)) arr.push('-loop', '1', '-t', totalSecAll);
+      // 알파 비디오 스티커(.mov ProRes4444 / .webm) — 무한 루프 + 총길이 유한화(사이클 9).
+      else if (/\.(mov|webm)$/i.test(ip)) arr.push('-stream_loop', '-1', '-t', totalSecAll);
       arr.push('-i', ip);
     }
   };

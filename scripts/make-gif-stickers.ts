@@ -260,5 +260,51 @@ function renderGif(name: string, draw: DrawFrame, frames: number = FRAMES): void
 }
 
 mkdirSync(OUT, { recursive: true });
+/**
+ * 합성용 고품질 변형(사이클 9) — ProRes 4444 알파 .mov, 30fps, 2배 해상도.
+ * GIF(12fps·256색 팔레트)는 합성 시 '버벅이는 AI 티'가 난다 → 미리보기 패널은 GIF 유지,
+ * 실제 영상 합성은 .mov를 쓴다(renderEdl이 -stream_loop로 루프). ProRes는 LGPL ffmpeg
+ * 네이티브 인코드/디코드라 동봉 빌드에서도 재생된다(libvpx 불필요).
+ */
+const MOV_FPS = 30;
+const MOV_SCALE = 2;
+function renderMov(name: string, draw: DrawFrame, durSec: number): void {
+  const frames = Math.round(durSec * MOV_FPS);
+  const px = SIZE * MOV_SCALE;
+  const tmp = mkdtempSync(join(tmpdir(), `mov-${name}-`));
+  for (let i = 0; i < frames; i++) {
+    const cv = createCanvas(px, px);
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, px, px);
+    ctx.save();
+    ctx.scale(MOV_SCALE, MOV_SCALE); // drawer는 SIZE 좌표계 그대로
+    draw(ctx, i / frames);
+    ctx.restore();
+    writeFileSync(join(tmp, `f${String(i).padStart(4, '0')}.png`), cv.toBuffer('image/png'));
+  }
+  const out = join(OUT, `${name}.mov`);
+  execFileSync(FFMPEG, [
+    '-y',
+    '-loglevel',
+    'error',
+    '-framerate',
+    String(MOV_FPS),
+    '-i',
+    join(tmp, 'f%04d.png'),
+    '-c:v',
+    'prores_ks',
+    '-profile:v',
+    '4444',
+    '-pix_fmt',
+    'yuva444p10le',
+    out,
+  ]);
+  rmSync(tmp, { recursive: true, force: true });
+  console.log('✓', `${name}.mov`);
+}
+
 for (const s of STICKERS) renderGif(s.name, s.draw, (s as { frames?: number }).frames);
+// 합성용 알파 비디오 — 우선 CTA 핵심 2종(나머지는 수요 따라 확장).
+renderMov('zoom-subscribe', subscribeV2, 2.4);
+renderMov('thumbs-up', STICKERS.find((s) => s.name === 'thumbs-up')!.draw, 1.2);
 console.log(`\n${STICKERS.length} motion stickers → assets/gif/`);
