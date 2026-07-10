@@ -69,6 +69,8 @@ import {
   Volume2,
   Wand2,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   type CSSProperties,
@@ -76,6 +78,7 @@ import {
   type MouseEvent,
   type PointerEvent,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -83,6 +86,7 @@ import {
 import './styles.css';
 import { deadSet, useEditor } from './store.js';
 import type { ColorPreset, ManualCue, Overlay, PanelId, TtsClip } from './store.js';
+import { rulerTicks } from './timeline-scale.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -3206,6 +3210,67 @@ function Timeline() {
     return { subRowOf: rowOf, subRows: Math.max(1, rowEnds.length) };
   }, [subtitleCues]);
   const ratio = durationProgramUs > 0 ? playheadUs / durationProgramUs : 0;
+  // ── 타임라인 v2(B1): 줌·시간 눈금·가로 스크롤 ──
+  // 좌표계는 % 그대로(블록·드래그 환산은 트랙 rect 기준이라 줌과 무관하게 정확).
+  // 트랙 픽셀 폭만 뷰포트폭×zoom으로 키워 .tracks가 가로 스크롤러가 된다. 줌은 뷰 상태(저장 안 함).
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 16;
+  const TL_LABEL_W = 72; // lbl 64px + gap 8px
+  const [zoom, setZoom] = useState(1);
+  const [viewPx, setViewPx] = useState(0);
+  const tracksRef = useRef<HTMLDivElement>(null);
+  const pendingScroll = useRef<number | null>(null);
+  useEffect(() => {
+    const el = tracksRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewPx(Math.max(0, el.clientWidth - TL_LABEL_W - 4)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const trackPx = Math.round(viewPx * zoom);
+  const trackFlex = trackPx > 0 ? `0 0 ${trackPx}px` : undefined;
+  // 줌 변경 시 anchor(커서/중앙) 아래의 시각이 그대로 있도록 scrollLeft 보정.
+  const zoomTo = (next: number, anchorClientX?: number) => {
+    const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+    const el = tracksRef.current;
+    if (!el || z === zoom) {
+      setZoom(z);
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const x =
+      anchorClientX !== undefined
+        ? anchorClientX - rect.left - TL_LABEL_W
+        : (rect.width - TL_LABEL_W) / 2;
+    pendingScroll.current = (el.scrollLeft + x) * (z / zoom) - x;
+    setZoom(z);
+  };
+  // 렌더마다 확인 — pendingScroll은 zoomTo 직후 한 번만 채워진다(앵커 보정).
+  useLayoutEffect(() => {
+    if (pendingScroll.current !== null && tracksRef.current) {
+      tracksRef.current.scrollLeft = Math.max(0, pendingScroll.current);
+      pendingScroll.current = null;
+    }
+  });
+  // ⌘/Ctrl+휠 = 커서 기준 줌. React onWheel은 passive라 preventDefault 불가 → 네이티브 등록.
+  useEffect(() => {
+    const el = tracksRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      zoomTo(zoom * (e.deltaY < 0 ? 1.25 : 0.8), e.clientX);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
+  const ticks = useMemo(
+    () =>
+      timeline && durationProgramUs > 0 && trackPx > 0
+        ? rulerTicks(durationProgramUs, trackPx)
+        : [],
+    [timeline, durationProgramUs, trackPx],
+  );
   // 트랙을 클릭하면 그 시점으로 플레이헤드 이동(+일시정지). 클립 자식 클릭도 트랙으로 버블링됨.
   const seekFromTrack = (e: MouseEvent<HTMLDivElement>) => {
     if (!timeline || durationProgramUs <= 0) return;
@@ -3311,18 +3376,73 @@ function Timeline() {
     <div className="timeline">
       <div className="tl-head">
         <span>Timeline</span>
-        <span>
-          {clips.length} clips · {fmt(durationProgramUs)}
+        <span className="tl-tools">
+          <button
+            type="button"
+            className="tl-zoom-btn"
+            data-testid="tl-zoom-out"
+            onClick={() => zoomTo(zoom / 1.5)}
+            disabled={!timeline || zoom <= ZOOM_MIN}
+            title="타임라인 축소"
+          >
+            <ZoomOut size={12} strokeWidth={2} />
+          </button>
+          <span className="tl-zoom-val" data-testid="tl-zoom-val">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            className="tl-zoom-btn"
+            data-testid="tl-zoom-in"
+            onClick={() => zoomTo(zoom * 1.5)}
+            disabled={!timeline || zoom >= ZOOM_MAX}
+            title="타임라인 확대 (⌘+휠)"
+          >
+            <ZoomIn size={12} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className="tl-zoom-btn fit"
+            data-testid="tl-zoom-fit"
+            onClick={() => zoomTo(1)}
+            disabled={!timeline || zoom === 1}
+            title="전체 맞춤"
+          >
+            맞춤
+          </button>
+          <span>
+            {clips.length} clips · {fmt(durationProgramUs)}
+          </span>
         </span>
       </div>
-      <div className="tracks">
+      <div className="tracks" ref={tracksRef}>
+        <div className="trackrow ruler-row">
+          <span className="lbl" aria-hidden="true" />
+          <div
+            className="track ruler"
+            data-testid="tl-ruler"
+            onClick={seekFromTrack}
+            style={{ cursor: timeline ? 'pointer' : 'default', flex: trackFlex }}
+          >
+            {ticks.map((t) => (
+              <div
+                key={t.us}
+                className={`tick${t.major ? ' major' : ''}`}
+                style={{ left: `${(t.us / durationProgramUs) * 100}%` }}
+              >
+                {t.label !== undefined && <span className="tick-label">{t.label}</span>}
+              </div>
+            ))}
+            {timeline && <div className="playhead" style={{ left: `${ratio * 100}%` }} />}
+          </div>
+        </div>
         <div className="trackrow">
           <span className="lbl">Video</span>
           <div
             className="track"
             data-testid="tl-video-track"
             onClick={seekFromTrack}
-            style={{ cursor: timeline ? 'pointer' : 'default' }}
+            style={{ cursor: timeline ? 'pointer' : 'default', flex: trackFlex }}
           >
             {clips.map((c) => {
               const len = c.sourceEnd - c.sourceStart;
@@ -3345,6 +3465,7 @@ function Timeline() {
             style={{
               cursor: timeline ? 'pointer' : 'default',
               height: `${subRows * OV_ROW_H + 4}px`,
+              flex: trackFlex,
             }}
           >
             {subtitleCues.length === 0 ? (
@@ -3390,7 +3511,7 @@ function Timeline() {
           <div
             className="track thin ov-lane"
             ref={ovLaneRef}
-            style={{ height: `${ovRows * OV_ROW_H + 4}px` }}
+            style={{ height: `${ovRows * OV_ROW_H + 4}px`, flex: trackFlex }}
           >
             {laneOverlays.length === 0 ? (
               <span className="empty-track">
@@ -3457,7 +3578,11 @@ function Timeline() {
         </div>
         <div className="trackrow">
           <span className="lbl">Voice</span>
-          <div className="track thin ov-lane voice-lane" ref={voiceLaneRef}>
+          <div
+            className="track thin ov-lane voice-lane"
+            ref={voiceLaneRef}
+            style={{ flex: trackFlex }}
+          >
             {ttsClips.length === 0 ? (
               <span className="empty-track">
                 AI 보이스를 만들면 시간 블록으로 표시 — 드래그=이동 · 양끝=길이 · Delete=삭제

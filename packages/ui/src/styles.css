@@ -1438,18 +1438,25 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  /* 트랙이 4개(Video·Subtitle·Overlay·Voice)라 타임라인 패널 높이를 넘으면 부드럽게 스크롤. */
+  /* 트랙이 4개(Video·Subtitle·Overlay·Voice)라 타임라인 패널 높이를 넘으면 부드럽게 스크롤.
+     B1: 줌 시 트랙 픽셀 폭이 뷰포트를 넘어 가로 스크롤러이기도 하다(눈금+4트랙 한 몸). */
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding-right: 2px;
 }
 .trackrow {
-  display: grid;
-  grid-template-columns: 64px 1fr;
+  display: flex;
   gap: 8px;
   align-items: center;
+  /* 줌 시 트랙(flex-basis px)이 커지면 행도 같이 늘어나 스크롤 폭을 만든다. */
+  width: max-content;
+  min-width: 100%;
+}
+.trackrow .track {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .trackrow .lbl {
   font-size: 10px;
@@ -1457,6 +1464,80 @@ body {
   letter-spacing: 0.5px;
   color: var(--faint);
   text-align: right;
+  /* 가로 스크롤 중에도 라벨은 좌측 고정 — 배경으로 지나가는 블록을 가린다. */
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  flex: 0 0 64px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background: var(--panel-2);
+  /* 라벨-트랙 사이 gap(8px)까지 덮어 스크롤 블록 비침 방지 */
+  box-shadow: 8px 0 0 0 var(--panel-2);
+}
+/* B1 시간 눈금(ruler) */
+.track.ruler {
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+}
+.tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 6px;
+  background: var(--border);
+  pointer-events: none;
+}
+.tick.major {
+  height: 10px;
+  background: var(--faint);
+}
+.tick-label {
+  position: absolute;
+  bottom: 10px;
+  left: 3px;
+  font-size: 9px;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tl-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tl-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  min-width: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.tl-zoom-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--faint);
+}
+.tl-zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tl-zoom-val {
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .track.thin {
   height: 30px;

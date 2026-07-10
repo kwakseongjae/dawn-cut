@@ -21,6 +21,7 @@
 | **A3** | 앱↔MCP 라이브 브리지 | 실행 중 GUI 세션에 localhost MCP 연결, 외부 에이전트 편집이 승인 카드 경유로 실시간 반영 | A1 | 신규 |
 | **A4** | 동사 확장 1차 (14→22+) | addOverlay/updateOverlay/removeOverlay/addVoiceover/addManualCue/addBroll/setSubtitlePos — 이미 렌더 가능한 능력의 동사화. 플래너·MCP 노출 | — | #2·#18 |
 | **A5** | promo-agent 앱 내 통합 | 멀티 에셋 인박스 + 자연어 → 템플릿 연출 → 승인 카드 → 타임라인 | A4 | #18 |
+| **A6** | 에이전트 앱 플러그인 패키징 | Claude Code/Codex 마켓플레이스용 git 리포(plugin.json+.mcp.json+SKILL.md) — 에이전트가 앱 설치·기동·라이브 브리지 접속까지 원문장 온보딩. 레퍼런스: ChatCut-Inc/agent-plugin | A3 | 신규 |
 
 ## Phase B — 타임라인 NLE 기본기 (CapCut 체감 격차)
 

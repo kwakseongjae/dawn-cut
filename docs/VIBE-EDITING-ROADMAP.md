@@ -46,6 +46,16 @@
 
 출처: [palmier.io](https://www.palmier.io/) · [GitHub palmier-io/palmier-pro](https://github.com/palmier-io/palmier-pro) · [YC Launch](https://www.ycombinator.com/launches/QtT-palmier-pro-an-open-source-video-editor-your-agents-can-operate) · [Digital Trends](https://www.digitaltrends.com/cool-tech/this-new-video-editor-lets-claude-work-directly-on-your-timeline/) · [eesel 분석](https://www.eesel.ai/blog/what-is-palmier-ai-video-editor)
 
+### 1-b. 레퍼런스 2: ChatCut Codex 플러그인 (2026-07 확인)
+
+"Codex가 풀 비디오 에디터가 됐다"로 홍보되는 [ChatCut](https://chatcut.io/)의 실체(설치 페이지·플러그인 리포 실측):
+
+- **본체는 클라우드 웹 NLE**(app.chatcut.io, 크레딧 과금·Pro 내보내기) — Codex 안의 에디터는 **Codex 데스크톱 앱의 인앱 브라우저에 웹앱을 띄운 것**. 에이전트는 ChatCut **클라우드 MCP**(OAuth 로그인) + 인앱 브라우저 컨트롤로 조작. 로컬 의존성은 ffmpeg(PATH)뿐.
+- **"플러그인" = git 리포 하나**([ChatCut-Inc/agent-plugin](https://github.com/ChatCut-Inc/agent-plugin)): `.agents/plugins/marketplace.json` + `.codex-plugin/plugin.json` + `.mcp.json` + `skills/*/SKILL.md`(asset-import/모션그래픽/export/image-gen/music/known-errors) + hooks. **스토어 심사·오피셜 승인 없음** — `plugin marketplace add <git url>`이 전부.
+- **"URL 읽으면 설치" 패턴**: 설치 페이지 자체가 에이전트 지시문("If you are a Codex agent reading this file…" + 실행 계약·자가보고 요구). 온보딩 마찰을 에이전트가 흡수하는 설계.
+- **UX 시사점(사용자가 원하는 플로우로 확인됨)**: 좌측 채팅(작업 진행 서사 + 결과 썸네일 + "Open in editor") + 우측 풀 NLE(시간 눈금·줌 슬라이더·멀티트랙 MG/V2/V1/A1·필름스트립·파형·하단 "Tell AI what changes to make" 입력). → 우리 A2(채팅 패널)·B1/B2(타임라인 v2)의 목표 화면.
+- **dawn-cut 적용**: Claude Code도 동일한 플러그인 체계(git 마켓플레이스+MCP+skills)를 지원 → **A3(라이브 브리지) 완성 후 A6(플러그인 패키징)로 동일 원문장 온보딩 재현 가능.** 차이는 우리 에디터가 클라우드 웹앱이 아니라 **로컬 네이티브 앱**이라는 것(프라이버시·무크레딧 = 우위).
+
 ---
 
 ## 2. CapCut 2026 기준선 (UX/기능)
