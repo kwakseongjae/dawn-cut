@@ -67,7 +67,7 @@ export async function runFeature(
   const app: ElectronApplication = await electron.launch({
     executablePath: electronPath as unknown as string,
     args: [MAIN],
-    env: { ...process.env, DAWN_ADVANCED: '1', DAWN_DISABLE_LLM: '1' },
+    env: { ...process.env, DAWN_DISABLE_LLM: '1' }, // A1: 게이트 철거 — DAWN_ADVANCED 불필요
   });
   try {
     const win = await app.firstWindow();
@@ -80,6 +80,13 @@ export async function runFeature(
     await win.waitForFunction(() => Boolean((window as unknown as AutoWin).__editor), null, {
       timeout: 20_000,
     });
+    // A1: QA 플로우는 밀도 도구(자막 세부·사전·감사로그)까지 검증 → 프로 모드로 전환(UI 경로).
+    try {
+      const mode = win.getByTestId('ui-mode');
+      if ((await mode.innerText()) === '간단') await mode.click();
+    } catch {
+      // 토글 미존재(구 빌드) 시 무시
+    }
 
     const shot = async (name: string, loc?: Locator) => {
       const file = `${steps.length.toString().padStart(2, '0')}-${name}.png`;

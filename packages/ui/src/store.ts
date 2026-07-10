@@ -81,7 +81,10 @@ interface EditorState {
   selectedVoiceId: string | null; // 선택된 보이스 클립(Delete·하이라이트용)
   subtitlePos: { x: number; y: number; scale: number };
   subtitleStyle: SubtitleStyle;
-  advanced: boolean; // 고급(전체) UI 노출 — DAWN_ADVANCED=1(preload). false=쇼케이스 단순 UI.
+  // A1: 인앱 모드 — 'simple'=핵심만, 'pro'=밀도 높은 도구(감사로그·사전·챕터·자막 세부)까지.
+  // NL바·승인 카드·레일 전 패널은 모드와 무관하게 항상 노출(제품 정체성). localStorage 영속.
+  uiMode: 'simple' | 'pro';
+  setUiMode: (m: 'simple' | 'pro') => void;
 
   importPath: (path: string) => Promise<void>; // 프로브만(즉시) — 자막 자동 생성 안 함
   transcribeMedia: () => Promise<void>; // 명시적 자막 생성(받아쓰기)
@@ -292,6 +295,23 @@ export interface BrandKit {
   watermarkCorner: 'tl' | 'tr' | 'bl' | 'br';
   watermarkOpacity: number; // 0..1
 }
+const UIMODE_KEY = 'dawn.uiMode.v1';
+function loadUiMode(): 'simple' | 'pro' {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(UIMODE_KEY) : null;
+    return raw === 'pro' ? 'pro' : 'simple';
+  } catch {
+    return 'simple';
+  }
+}
+function saveUiMode(m: 'simple' | 'pro'): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(UIMODE_KEY, m);
+  } catch {
+    // 무해
+  }
+}
+
 const BRAND_KEY = 'dawn.brandKit.v1';
 const DEFAULT_BRAND: BrandKit = {
   name: '',
@@ -538,7 +558,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   subtitlePos: { x: 0.1, y: 0.8, scale: 0.8 },
   subtitleStyle: {},
   // preload가 노출한 DAWN_ADVANCED 플래그(모듈 로드 시 1회 평가; 비-electron/테스트=false).
-  advanced: typeof window !== 'undefined' ? (window.dawn?.advanced ?? false) : false,
+  uiMode: loadUiMode(),
+  setUiMode: (m) => {
+    saveUiMode(m);
+    set({ uiMode: m });
+  },
   colorPreset: 'none',
   autoEnhanceEq: null,
   highlightNotice: null,

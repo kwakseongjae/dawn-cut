@@ -20,6 +20,7 @@ type RenderOpts = {
 // Typed bridge. contextIsolation=true, nodeIntegration=false. Mirrors DawnBridge in @dawn-cut/ui.
 const bridge = {
   // 쇼케이스/프로덕션 페이스 게이트 — DAWN_ADVANCED=1이면 전체(고급) UI, 아니면 단순 와우셋만 노출.
+  // A1 이후 미사용(게이트 철거 — 인앱 uiMode로 대체). 하위호환 위해 남김.
   advanced: process.env.DAWN_ADVANCED === '1',
   // 드래그앤드롭 파일의 실제 경로. Electron 32+에서 File.path가 제거돼 webUtils.getPathForFile이 유일.
   pathForFile: (file: File): string => {

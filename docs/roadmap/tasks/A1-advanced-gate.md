@@ -40,3 +40,10 @@ pkill -f dawn-cut; pnpm --filter @dawn-cut/desktop start   # 환경변수 없이
 ```
 
 ## 진행 저널 (append-only)
+
+### 2026-07-10 — 구현 완료(체인 대기)
+- 재분류 확정: **항상** = 레일 전 패널(text/sticker 포함)·NL바·plan-card·자동 하이라이트 / **프로 게이트** = 감사로그·자막 미리보기 카드(subtitle-pos)·내 사전·챕터. 툴바 간단↔프로 토글(ui-mode, localStorage 영속).
+- store.advanced 완전 제거(uiMode로 대체), preload advanced는 deprecated 주석만(하위호환).
+- 테스트 갱신: showcase-gate 재작성(신 시맨틱 — 환경변수 없이 검증), auto-highlight 숨김 단언→가시성, nl-command/QA 하네스 DAWN_ADVANCED 제거.
+- ★플레이크 폭탄 선제 제거: uiMode localStorage가 e2e 실행 간 잔존(Electron userData) → 게이트 테스트는 토글 상태를 **읽고 결정적으로 맞춘 뒤** 단언. QA 하네스는 pro 전용 요소(subtitle-pos/glossary) 사용 → 런치 후 UI로 프로 전환.
+- 체인 그린이면 v0.1.18 커밋. 메모리의 "앱 실행 시 DAWN_ADVANCED=1" 노트도 폐기 대상.

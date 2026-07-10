@@ -51,7 +51,8 @@ test('고급: 자동 하이라이트 버튼 노출 + 컷 적용(감사 +1)', asy
 test('단순: 자동 하이라이트 버튼 숨김', async () => {
   const { app, win } = await launch(false);
   try {
-    await expect(win.getByTestId('auto-highlight')).toHaveCount(0);
+    // A1: 게이트 철거 — 환경변수 없이도(=구 단순 모드) 자동 하이라이트가 보인다.
+    await expect(win.getByTestId('auto-highlight')).toBeVisible();
   } finally {
     await app.close();
   }

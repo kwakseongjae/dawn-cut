@@ -331,6 +331,21 @@ function Toolbar() {
           삭제 ({s.selected.length})
         </button>
         <div className="sep" />
+        {/* A1: 간단↔프로 — 밀도 높은 도구(감사로그·사전·챕터·자막 세부)의 노출만 조절.
+            NL바·승인 카드·전 패널은 모드와 무관하게 항상. */}
+        <button
+          type="button"
+          className="btn ghost"
+          data-testid="ui-mode"
+          onClick={() => s.setUiMode(s.uiMode === 'pro' ? 'simple' : 'pro')}
+          title={
+            s.uiMode === 'pro'
+              ? '프로 모드 — 감사로그·사전·챕터·자막 세부까지 표시 중 (클릭=간단)'
+              : '간단 모드 — 핵심 도구만 (클릭=프로: 감사로그·사전·챕터·자막 세부)'
+          }
+        >
+          {s.uiMode === 'pro' ? '프로' : '간단'}
+        </button>
         <div className="menu-wrap">
           <button
             type="button"
@@ -462,11 +477,9 @@ const RAIL: { id: PanelId; ico: LucideIcon; label: string; short: string }[] = [
 ];
 
 function Rail() {
-  const { panel, setPanel, advanced } = useEditor();
+  const { panel, setPanel } = useEditor();
   // 단순(쇼케이스) 모드는 미디어 + 효과만 — 오버레이/스티커·TTS 패널은 고급에서.
-  const items = advanced
-    ? RAIL
-    : RAIL.filter((r) => r.id === 'media' || r.id === 'bgm' || r.id === 'effect');
+  const items = RAIL; // A1: 게이트 철거 — 전 패널 상시 노출
   return (
     <div className="rail">
       {items.map((r) => (
@@ -2657,7 +2670,7 @@ function Transcript() {
     nlBusy,
     nlError,
     llmReady,
-    advanced,
+    uiMode,
     manualCues,
     addManualCue,
     updateManualCue,
@@ -2895,7 +2908,7 @@ function Transcript() {
       </div>
       {/* 헤더 아래 전체를 단일 스크롤 영역으로 — 작은 창에서 자막카드·갤러리가 잘리지 않고 스크롤된다. */}
       <div className="transcript-scroll">
-        {advanced && transcript && (
+        {transcript && (
           <div className="nl-bar" data-testid="nl-bar">
             <span className="nl-ico">
               <Bot size={15} />
@@ -2918,7 +2931,7 @@ function Transcript() {
             </span>
           </div>
         )}
-        {advanced && transcript && (
+        {transcript && (
           <button
             type="button"
             className="btn ghost"
@@ -3022,7 +3035,7 @@ function Transcript() {
             </div>
           </div>
         )}
-        {advanced && auditLog.length > 0 && (
+        {uiMode === 'pro' && auditLog.length > 0 && (
           // 감사로그 뷰어(#14) — 적용된 모든 편집 명령의 해시체인. 'AI 편집은 불투명하지 않다'의 증거 UI.
           <details className="card audit-viewer" data-testid="audit-viewer">
             <summary>
@@ -3042,7 +3055,7 @@ function Transcript() {
             </ul>
           </details>
         )}
-        {advanced && (
+        {uiMode === 'pro' && (
           <div className="sub-pos card" data-testid="subtitle-pos">
             <div className="sub-pos-head">
               <span className="sub-pos-title">자막 미리보기</span>
@@ -3277,7 +3290,7 @@ function Transcript() {
               <CornerDownRight size={13} /> 다음 의심 어절
             </button>
           )}
-          {advanced && (
+          {uiMode === 'pro' && (
             <>
               <details className="glossary">
                 <summary>
