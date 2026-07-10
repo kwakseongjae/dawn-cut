@@ -46,8 +46,8 @@
 | B3 | 클립 트림/리플 드래그 | todo | | | dep: B1 |
 | B4 | 전환 (crossfade/dip) | done | eaaf670 | 2026-07-10 | #8 · unit 480/int 57/e2e 17/QA 8 · 동사 16개 |
 | B5 | 배속 (setSpeed) | done | c62e5ec | 2026-07-10 | #9 · unit 493/int 60/e2e 18/QA 8 · 동사 17개 |
-| B6 | 오디오 덕킹 | done | (다음 커밋에 기록) | 2026-07-10 | B7과 동시(sidechaincompress, 발화 구간 76% 감쇠 실증) |
-| B7 | BGM 트랙 | done | (다음 커밋에 기록) | 2026-07-10 | unit 495/int 69/e2e 19/QA 8 · BGM 패널+Music 레인 |
+| B6 | 오디오 덕킹 | done | 6866848 | 2026-07-10 | B7과 동시(sidechaincompress, 발화 구간 76% 감쇠 실증) |
+| B7 | BGM 트랙 | done | 6866848 | 2026-07-10 | unit 495/int 69/e2e 19/QA 8 · BGM 패널+Music 레인 |
 | B8 | 데모 오토줌 | todo | | | dep: B5 · 2026-07-10 신설 |
 
 ### Phase C — 프리뷰 WYSIWYG
