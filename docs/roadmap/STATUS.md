@@ -44,7 +44,7 @@
 | B1 | 타임라인 v2 (줌·눈금·스크롤) | done | d140b17 | 2026-07-10 | unit 460/int 52/e2e 15/QA 8 |
 | B2 | 썸네일 + 파형 | done | 52d912f | 2026-07-10 | unit 470/int 55/e2e 16/QA 8 |
 | B3 | 클립 트림/리플 드래그 | todo | | | dep: B1 |
-| B4 | 전환 (crossfade/dip) | done | (다음 커밋에 기록) | 2026-07-10 | #8 · unit 480/int 57/e2e 17/QA 8 · 동사 16개 |
+| B4 | 전환 (crossfade/dip) | done | eaaf670 | 2026-07-10 | #8 · unit 480/int 57/e2e 17/QA 8 · 동사 16개 |
 | B5 | 배속 (setSpeed) | todo | | | #9 |
 | B6 | 오디오 덕킹 | todo | | | dep: B7 |
 | B7 | BGM 트랙 | todo | | | |
