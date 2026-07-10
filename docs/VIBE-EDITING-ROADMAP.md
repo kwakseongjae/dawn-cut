@@ -56,6 +56,20 @@
 - **UX 시사점(사용자가 원하는 플로우로 확인됨)**: 좌측 채팅(작업 진행 서사 + 결과 썸네일 + "Open in editor") + 우측 풀 NLE(시간 눈금·줌 슬라이더·멀티트랙 MG/V2/V1/A1·필름스트립·파형·하단 "Tell AI what changes to make" 입력). → 우리 A2(채팅 패널)·B1/B2(타임라인 v2)의 목표 화면.
 - **dawn-cut 적용**: Claude Code도 동일한 플러그인 체계(git 마켓플레이스+MCP+skills)를 지원 → **A3(라이브 브리지) 완성 후 A6(플러그인 패키징)로 동일 원문장 온보딩 재현 가능.** 차이는 우리 에디터가 클라우드 웹앱이 아니라 **로컬 네이티브 앱**이라는 것(프라이버시·무크레딧 = 우위).
 
+### 1-c. 레퍼런스 3: 마케팅 비디오 지형 — "숏츠 공장이 아니라 우리 것 홍보" (2026-07 조사)
+
+타깃 유스케이스 = ①상품 바이럴 ②서비스 런칭 ③신기능 홍보. 입력 유형별 지형:
+
+- **컨셉만 → 영상**: Topview(상품 URL/이미지→30s 광고, 에이전트 캔버스), Creatify(URL→UGC 광고), Arcads(AI 배우 UGC 대량), HeyGen/Synthesia(아바타 발표형), Icon(광고 OS). 전부 클라우드 크레딧·영어 우선·대량 A/B 지향. **브랜드 킷(로고/컬러/폰트)이 업계 기본 장착.**
+- **원본 영상 → NL 편집**: Descript **Underlord**(대화형 co-editor — 멀티스텝 지시, 브랜드 스타일 스크린샷 매칭, 아이디어→영상), Eddie AI(러프컷), Palmier/ChatCut(1-a/1-b절). **SaaS 데모 특화 서브장르**: Screen Studio(클릭 오토줌)·Clueso·Canvid·ngram(녹화→줌·자막·보이스오버·브랜드킷 자동) = '신기능 홍보'의 사실상 표준 워크플로.
+- **레퍼런스 영상 → "이것처럼"**: Creatify AdClone(광고 업로드→구조 추출→내 제품으로 재작성), AdStellar/AdsTurbo(Meta Ad Library 위닝 광고→변형), Picwand(리듬/전환/카메라 언어 모방). 공통 패턴 = **레퍼런스를 '연출 구조'(훅-바디-CTA·컷 리듬·스타일)로 역컴파일 → 내 에셋으로 재합성** — 우리 promo-agent의 Direction(template/bgMood/copy/voice/style) 중간표현과 정확히 동형. 추출기만 없다.
+
+**이 유스케이스에서의 차별점 재정렬**: 마케팅 영상은 공개물이라 '프라이버시'의 힘이 약해진다 — 단 **미출시 기능 데모는 예외**(런칭 전 기밀 유지 = 로컬 강점 유효). 주 무기는 ①무크레딧 무한 반복(배리에이션 부담 0) ②한국어 카피·자막·보이스 품질 ③결정적 재현(같은 Direction = 같은 결과 → 브랜드 일관성) ④승인·감사(팀 리뷰).
+
+**갭 → 로드맵 신설**(A7·A8·B8·D6·D7·E4 — ROADMAP.md 참조): BGM 소스 부재, 브랜드 킷 부재, 레퍼런스→연출 추출 부재, 30–60s 씬 시퀀스(런칭 구조물) 부재, 데모 오토줌 부재, 멀티 포맷 배리에이션 부재. promo-agent가 이미지 에셋만 받는 것(영상 에셋 파이프)은 A5 범위에 명시.
+
+출처: [Topview](https://www.topview.ai/) · [Creatify AdClone](https://creatify.ai/features/ad-clone) · [Descript Underlord](https://www.descript.com/underlord) · [a16z: agentic video editing](https://www.a16z.news/p/its-time-for-agentic-video-editing) · [AdStellar](https://www.adstellar.ai/blog/competitor-ad-cloning-software) · [SaaS 데모 도구 비교](https://leadde.ai/blog/best-saas-product-demo-software)
+
 ---
 
 ## 2. CapCut 2026 기준선 (UX/기능)
