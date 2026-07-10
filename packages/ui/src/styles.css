@@ -68,7 +68,8 @@ body {
   /* 타임라인 4트랙(Video·Subtitle·Overlay·Voice)이 한눈에 들어오도록 높이 확보(넘치면 .tracks 스크롤). */
   /* banner 행은 복구 배너가 없으면 0으로 접힌다(auto). 배너가 암묵 행으로 밀려
      전체 높이를 침범(좌우 패널 하단 클리핑)하던 버그 수정. */
-  grid-template-rows: 52px auto 1fr 214px 30px;
+  /* B9 반응형: 타임라인 행은 창 높이에 비례(전체화면=레인 더 보임, 작은 창=최소 190px 보장). */
+  grid-template-rows: 52px auto 1fr clamp(190px, 24vh, 340px) 30px;
   grid-template-areas: "toolbar" "banner" "main" "timeline" "status";
   height: 100vh;
 }
@@ -201,7 +202,7 @@ body {
   max-width: 100%;
   /* 세로 영상이 재생바/타임라인을 밀어내지 않게 definite 상한. 고정 크롬(툴바52+타임라인214+
      상태30+스테이지 패딩44+재생바66 ≈ 406)을 창 높이에서 뺀다. %는 content-sized 프레임에서 안 먹음. */
-  max-height: calc(100vh - 408px);
+  max-height: calc(100vh - 194px - clamp(190px, 24vh, 340px)); /* B9: 타임라인 행 유동화 반영 */
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
@@ -213,7 +214,7 @@ body {
   object-fit: contain;
   /* 가로·세로 둘 다에 맞춰 축소(definite 상한이라 세로 영상도 영역 안에 들어옴). */
   max-width: 100%;
-  max-height: calc(100vh - 408px);
+  max-height: calc(100vh - 194px - clamp(190px, 24vh, 340px)); /* B9 */
 }
 /* 번인 전 라이브 자막 밴드 — 영상 위에 얹힘. */
 .live-cap {
@@ -977,7 +978,18 @@ body {
 
 /* ── CapCut-style left rail + asset panels ── */
 .main {
-  grid-template-columns: 56px 290px 1fr 380px;
+  /* B9 반응형: 도크/자막 패널을 창 폭에 비례(프리뷰 1fr이 항상 남는 공간을 가져간다). */
+  grid-template-columns: 56px clamp(220px, 19vw, 300px) 1fr clamp(300px, 27vw, 440px);
+}
+/* B9: 좁은 창 — 패널을 더 줄여 프리뷰를 지킨다(랩탑 분할 화면 등). */
+@media (max-width: 1120px) {
+  .main {
+    grid-template-columns: 56px clamp(200px, 18vw, 240px) 1fr clamp(260px, 26vw, 300px);
+  }
+  /* 좁은 도크에서 한국어가 글자 단위로 꺾이지 않게(어절 단위 줄바꿈). */
+  .dock-body {
+    word-break: keep-all;
+  }
 }
 .rail {
   background: var(--panel-2);
