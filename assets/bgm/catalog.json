@@ -1,0 +1,56 @@
+[
+  {
+    "id": "dawn-lofi",
+    "title": "새벽 로파이",
+    "desc": "따뜻한 maj7 패드 + 소프트 플럭 — 차분한 제품/브이로그",
+    "bpm": 72,
+    "durationSec": 26.67,
+    "loopable": true,
+    "pairsWithBroll": ["bokeh-dawn", "sunset-flow"]
+  },
+  {
+    "id": "mint-ambient",
+    "title": "민트 앰비언트",
+    "desc": "에어리 패드 + 슬로우 벨(무드럼) — 잔잔한 인트로/설명",
+    "bpm": 0,
+    "durationSec": 28,
+    "loopable": true,
+    "pairsWithBroll": ["mint-flow", "bokeh-ocean"]
+  },
+  {
+    "id": "sunset-keys",
+    "title": "노을 키즈",
+    "desc": "멜로우 EP 코드 — 감성 회고/스토리",
+    "bpm": 84,
+    "durationSec": 22.86,
+    "loopable": true,
+    "pairsWithBroll": ["sunset-flow", "bokeh-dawn"]
+  },
+  {
+    "id": "stars-dream",
+    "title": "별밤 드림",
+    "desc": "드리미 패드 + 스파클 — 몽환/밤 감성",
+    "bpm": 66,
+    "durationSec": 29.09,
+    "loopable": true,
+    "pairsWithBroll": ["stars-night", "aurora-flow"]
+  },
+  {
+    "id": "aurora-synth",
+    "title": "오로라 신스",
+    "desc": "라이트 신스웨이브 — 테크/앱 소개",
+    "bpm": 96,
+    "durationSec": 20,
+    "loopable": true,
+    "pairsWithBroll": ["aurora-flow", "stars-night"]
+  },
+  {
+    "id": "uplift-pop",
+    "title": "업리프트 팝",
+    "desc": "밝은 업비트(킥/클랩) — 런칭·CTA·바이럴 훅",
+    "bpm": 112,
+    "durationSec": 25.71,
+    "loopable": true,
+    "pairsWithBroll": ["bokeh-dawn", "mint-flow"]
+  }
+]
