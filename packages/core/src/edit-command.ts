@@ -7,7 +7,13 @@
 // 런타임 가드(safeParse), (c) JSON-Schema/MCP 매니페스트(z.toJSONSchema) 모두 파생.
 // Zod는 순수 TS라 packages/core 이식성 경계(dependency-cruiser)를 통과한다.
 import { z } from 'zod';
-import { cutSourceRange, deleteWordRange, removeSilences, splitClipAt } from './commands.js';
+import {
+  cutSourceRange,
+  deleteWordRange,
+  rebuildGapless,
+  removeSilences,
+  splitClipAt,
+} from './commands.js';
 import type { SubtitleStyle } from './draw.js';
 import type { ClipEffect } from './effects.js';
 import { detectFillers } from './fillers.js';
@@ -173,6 +179,16 @@ const CommandSchemas = {
     type: z.literal('removeTransition'),
     afterClipId: z.string().optional(),
   }),
+  /**
+   * 배속(B5/#9) — 클립 일정 배속(램프는 후속). clipId 생략 = 전 비디오클립(플래너 친화:
+   * "2배속으로"). 프로그램 길이 = round(소스/speed)로 재적층 — sync/EDL/전환 정합 자동.
+   * speed=1은 필드 제거(원복).
+   */
+  setSpeed: z.object({
+    type: z.literal('setSpeed'),
+    clipId: z.string().optional(),
+    speed: z.number().min(0.5).max(3),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -192,6 +208,7 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.autoHighlight,
   CommandSchemas.addTransition,
   CommandSchemas.removeTransition,
+  CommandSchemas.setSpeed,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -348,6 +365,20 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
       const next = cmd.afterClipId ? cur.filter((tr) => tr.afterClipId !== cmd.afterClipId) : [];
       const { transitions: _dropR, ...bareR } = state.timeline;
       return { ...state, timeline: next.length > 0 ? { ...bareR, transitions: next } : bareR };
+    }
+    case 'setSpeed': {
+      // 배속(B5) — 대상 클립의 speed 갱신 후 재적층(rebuildGapless가 timelineStart 재계산 +
+      // 전환 reconcile). splitAt 재사용을 위해 rebuild 경로는 splitClipAt과 동일하게 흡수.
+      const order = videoClips(state.timeline);
+      if (order.length === 0) return state;
+      if (cmd.clipId && !order.some((c) => c.id === cmd.clipId))
+        throw new Error(`setSpeed: unknown clip ${cmd.clipId}`);
+      const rebuilt = order.map((c) => {
+        if (cmd.clipId && c.id !== cmd.clipId) return c;
+        const { speed: _s, ...bare } = c;
+        return cmd.speed === 1 ? bare : { ...bare, speed: cmd.speed };
+      });
+      return { ...state, timeline: rebuildGapless(state.timeline, rebuilt) };
     }
     case 'applyZoom': {
       const effect: ClipEffect = {

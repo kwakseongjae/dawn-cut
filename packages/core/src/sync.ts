@@ -1,4 +1,4 @@
-import { clipDuration, clipTimelineEnd, videoClips } from './timeline.js';
+import { clipProgramDuration, clipSpeed, clipTimelineEnd, videoClips } from './timeline.js';
 import type { TimelineModel, TranscriptModel, Word } from './types.js';
 
 /**
@@ -14,9 +14,12 @@ export function wordToProgram(
     if (c.mediaId !== word.mediaId) continue;
     // word source interval contained in this clip's source interval
     if (word.sourceStart >= c.sourceStart && word.sourceEnd <= c.sourceEnd) {
-      const start = c.timelineStart + (word.sourceStart - c.sourceStart);
-      const end = c.timelineStart + (word.sourceEnd - c.sourceStart);
-      return { start, end };
+      // B5 배속: 프로그램 = 소스Δ/speed. 라운드트립(SYNC-INV-1)이 어절 구간 안에 떨어지도록
+      // start=ceil·end=floor(비대칭) — programToWord의 round(Δ×speed)가 경계 밖으로 못 나간다.
+      const s = clipSpeed(c);
+      const start = c.timelineStart + Math.ceil((word.sourceStart - c.sourceStart) / s);
+      const end = c.timelineStart + Math.floor((word.sourceEnd - c.sourceStart) / s);
+      return { start, end: Math.max(end, start + 1) };
     }
   }
   return null;
@@ -30,7 +33,7 @@ export function programToWord(
 ): string | null {
   for (const c of videoClips(timeline)) {
     if (tProgram < c.timelineStart || tProgram >= clipTimelineEnd(c)) continue;
-    const src = c.sourceStart + (tProgram - c.timelineStart);
+    const src = c.sourceStart + Math.round((tProgram - c.timelineStart) * clipSpeed(c));
     for (const id of transcript.order) {
       const w = transcript.words[id]!;
       if (w.mediaId === c.mediaId && src >= w.sourceStart && src < w.sourceEnd) {
@@ -72,8 +75,8 @@ export function validateSync(timeline: TimelineModel, transcript: TranscriptMode
     errors.push('SYNC-INV-2: live word order is not a subsequence of transcript.order');
   }
 
-  // SYNC-INV-3: durationProgram == Σ live clip durations
-  const sumLive = videoClips(timeline).reduce((acc, c) => acc + clipDuration(c), 0);
+  // SYNC-INV-3: durationProgram == Σ live clip '프로그램' durations (B5: 배속 반영)
+  const sumLive = videoClips(timeline).reduce((acc, c) => acc + clipProgramDuration(c), 0);
   if (timeline.durationProgram !== sumLive) {
     errors.push(`SYNC-INV-3: durationProgram(${timeline.durationProgram}) != Σ clips(${sumLive})`);
   }

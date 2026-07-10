@@ -277,6 +277,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'removeSilences',
       'removeTransition',
       'replaceSubtitleStyle',
+      'setSpeed',
       'setSubtitleStyle',
       'splitAt',
     ]);

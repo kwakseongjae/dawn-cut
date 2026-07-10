@@ -142,6 +142,7 @@ interface EditorState {
   applyGlossaryNow: () => void; // 현재 전사에 사전 치환 적용
   removeFillers: () => void; // 말버릇(음/어…) 어절을 타임라인에서 컷
   applyTransition: (kind: 'crossfade' | 'dipToBlack' | 'none', durationUs: number) => void; // B4 경계 전환
+  applySpeed: (speed: number) => void; // B5 배속(전 클립, 버스 경유)
   auditLog: AuditEntry[]; // 적용된 편집 명령의 결정적 해시체인 기록(replay/검증 토대)
   // ── 자연어 명령 (NL → plan → dryRun 미리보기 → 승인 → commit) ──
   nlBusy: boolean;
@@ -1283,6 +1284,26 @@ export const useEditor = create<EditorState>((set, get) => ({
       canRedo: false,
       status: 'ready',
       auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
+      ...derive(after.timeline),
+    });
+  },
+  applySpeed: (speed) => {
+    // B5: 배속 — command bus 경유. 프로그램 길이가 바뀌므로 undo 스택·파생값 갱신.
+    const { transcript, timeline } = get();
+    if (!timeline) return;
+    const tx = transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+    const cmd = { type: 'setSpeed', speed } as const;
+    const { after } = applyCommand({ timeline, transcript: tx }, cmd);
+    if (after.timeline === timeline) return;
+    set({
+      timeline: after.timeline,
+      past: [...get().past, timeline],
+      future: [],
+      canUndo: true,
+      canRedo: false,
+      status: 'ready',
+      auditLog: appendAudit(get().auditLog, cmd, 0),
+      playheadUs: Math.min(get().playheadUs, after.timeline.durationProgram),
       ...derive(after.timeline),
     });
   },

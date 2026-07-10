@@ -3,6 +3,11 @@
 > 형식: `## YYYY-MM-DD — <세션 한 줄>` + 본문 5줄 이내(한 일 / 열린 것 / 다음). **기존 항목 수정 금지.**
 > 작업 단위의 미시 기록은 여기가 아니라 각 작업 패킷(`tasks/<ID>-*.md`)의 진행 저널에.
 
+## 2026-07-10 — B5 배속(setSpeed) 완료 (v0.1.14) — #9 닫을 수 있음
+- 한 일: Clip.speed + 프로그램/소스 이중 좌표계(clipProgramDuration 단일 산식) + sync ceil/floor 반올림 규약(0.5~3× 라운드트립 그린) + setpts/atempo 렌더 + 프리뷰 배속 재생 + EffectPanel/라벨. 동사 17개. 실미디어 2×=7.81s/0.5×=31.21s 정산 정확(output/b5-speed/).
+- 열린 것: 배속 램프(가변 속도)는 후속(#9 스코프대로). B8(데모 오토줌)의 dep 해제됨.
+- 다음: D6 (BGM 소스 팩)
+
 ## 2026-07-10 — B4 전환(crossfade/dip) 완료 (v0.1.13) — #8 닫을 수 있음
 - 한 일: Transition 모델(TL-INV-5·reconcile·splitAt 재매핑) + 동사 16개(addTransition/removeTransition, 플래너·GBNF 개방) + 렌더 폴드(소스 핸들 오버랩 xfade — **길이 완전 불변 실증**, dip은 fade+concat) + EffectPanel/배지. 실미디어 데모(output/b4-transitions/).
 - 열린 것: 프리뷰에서 전환 재생 안 됨(C1 범위). 오디오는 오버랩 없이 afade(삭제 콘텐츠 부활 방지 — 설계 결정).

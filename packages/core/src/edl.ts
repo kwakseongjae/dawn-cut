@@ -1,4 +1,4 @@
-import { clipDuration, videoClips } from './timeline.js';
+import { clipProgramDuration, clipSpeed, videoClips } from './timeline.js';
 import type { Edl, TimelineModel } from './types.js';
 
 /**
@@ -12,8 +12,10 @@ export function timelineToEdl(timeline: TimelineModel, mediaPath: string): Edl {
     sourceEnd: c.sourceEnd,
     programStart: c.timelineStart,
     ...(c.effects && c.effects.length > 0 ? { effects: c.effects } : {}),
+    ...(clipSpeed(c) !== 1 ? { speed: clipSpeed(c) } : {}),
   }));
-  const totalDuration = segments.reduce((acc, s) => acc + (s.sourceEnd - s.sourceStart), 0);
+  // B5: totalDuration = Σ '프로그램' 길이(배속 반영) — EDL-INV-1 재정의.
+  const totalDuration = videoClips(timeline).reduce((acc, c) => acc + clipProgramDuration(c), 0);
   const edl: Edl = { fps: timeline.fps, segments, totalDuration };
   // B4: 경계 전환을 afterClipId → 세그먼트 인덱스로 매핑(마지막/미존재 경계는 validate가 걸렀다는 전제,
   // 방어적으로 한 번 더 거른다). 전환 없으면 필드 자체가 없어 렌더 인자 바이트 동일.
@@ -32,11 +34,22 @@ export function timelineToEdl(timeline: TimelineModel, mediaPath: string): Edl {
   return edl;
 }
 
+/** 세그먼트 '프로그램' 길이(µs) — B5: round(소스 길이/speed). */
+export function segmentProgramDuration(s: {
+  sourceStart: number;
+  sourceEnd: number;
+  speed?: number;
+}): number {
+  const sp = s.speed && s.speed > 0 ? s.speed : 1;
+  return Math.round((s.sourceEnd - s.sourceStart) / sp);
+}
+
 /** Returns a list of EDL-INV violations ([] == valid). EDL-INV-1, EDL-INV-2. */
 export function validateEdl(edl: Edl, timeline: TimelineModel): string[] {
   const errors: string[] = [];
 
-  const sum = edl.segments.reduce((acc, s) => acc + (s.sourceEnd - s.sourceStart), 0);
+  // B5: EDL-INV-1 = Σ '프로그램' 길이(배속 반영).
+  const sum = edl.segments.reduce((acc, s) => acc + segmentProgramDuration(s), 0);
   if (sum !== edl.totalDuration) errors.push('EDL-INV-1: Σ segment lengths != totalDuration');
 
   if (edl.totalDuration !== timeline.durationProgram) {
@@ -48,14 +61,14 @@ export function validateEdl(edl: Edl, timeline: TimelineModel): string[] {
   for (const s of edl.segments) {
     if (s.programStart !== cursor) errors.push(`EDL: non-contiguous segment at ${s.programStart}`);
     if (s.sourceEnd <= s.sourceStart) errors.push('EDL: non-positive segment');
-    cursor += s.sourceEnd - s.sourceStart;
+    cursor += segmentProgramDuration(s);
   }
 
-  // sanity: durationProgram equals Σ clip durations (defensive)
-  const clipSum = videoClips(timeline).reduce((a, c) => a + clipDuration(c), 0);
+  // sanity: durationProgram equals Σ clip program durations (defensive)
+  const clipSum = videoClips(timeline).reduce((a, c) => a + clipProgramDuration(c), 0);
   if (clipSum !== timeline.durationProgram) errors.push('EDL: timeline duration mismatch');
 
-  // B4: 전환은 내부 경계만, D ≤ min(양쪽 세그먼트 길이) — 렌더 전 마지막 게이트.
+  // B4: 전환은 내부 경계만, D ≤ min(양쪽 세그먼트 '프로그램' 길이) — 렌더 전 마지막 게이트.
   for (const tr of edl.transitions ?? []) {
     const a = edl.segments[tr.afterIndex];
     const b = edl.segments[tr.afterIndex + 1];
@@ -63,7 +76,7 @@ export function validateEdl(edl: Edl, timeline: TimelineModel): string[] {
       errors.push(`EDL: transition afterIndex ${tr.afterIndex} out of range`);
       continue;
     }
-    const maxD = Math.min(a.sourceEnd - a.sourceStart, b.sourceEnd - b.sourceStart);
+    const maxD = Math.min(segmentProgramDuration(a), segmentProgramDuration(b));
     if (tr.durationUs <= 0 || tr.durationUs > maxD) {
       errors.push(`EDL: transition at ${tr.afterIndex} duration ${tr.durationUs} out of range`);
     }

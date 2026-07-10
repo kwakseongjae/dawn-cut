@@ -2,12 +2,23 @@ import { randomUUID } from './id.js';
 import { frameUs, snapToFrame } from './time.js';
 import type { Clip, TimelineModel, Track, Transition } from './types.js';
 
+/** 소스 길이(µs) — 편집·컷 연산의 좌표계. B5 이후 프로그램 길이와 다를 수 있다. */
 export function clipDuration(c: Clip): number {
   return c.sourceEnd - c.sourceStart;
 }
 
+/** 배속(생략=1). */
+export function clipSpeed(c: Clip): number {
+  return c.speed && c.speed > 0 ? c.speed : 1;
+}
+
+/** 프로그램 길이(µs) = round(소스 길이 / speed) — 타임라인 적층·EDL·SYNC의 단일 산식(B5). */
+export function clipProgramDuration(c: Clip): number {
+  return Math.round(clipDuration(c) / clipSpeed(c));
+}
+
 export function clipTimelineEnd(c: Clip): number {
-  return c.timelineStart + clipDuration(c);
+  return c.timelineStart + clipProgramDuration(c);
 }
 
 /** Video clips of a timeline in program order. */
@@ -106,7 +117,7 @@ export function validateTimeline(m: TimelineModel): string[] {
         errors.push(`TL-INV-5: duplicate transition at boundary ${tr.afterClipId}`);
       }
       seen.add(tr.afterClipId);
-      const maxD = Math.min(clipDuration(order[i]!), clipDuration(order[i + 1]!));
+      const maxD = Math.min(clipProgramDuration(order[i]!), clipProgramDuration(order[i + 1]!));
       if (tr.durationUs < frameUs(m.fps) || tr.durationUs > maxD) {
         errors.push(`TL-INV-5: transition ${tr.id} duration ${tr.durationUs} out of range`);
       }
@@ -132,7 +143,7 @@ export function reconcileTransitions(
   for (const tr of transitions) {
     const i = idxOf.get(tr.afterClipId);
     if (i === undefined || i >= order.length - 1 || seen.has(tr.afterClipId)) continue;
-    const maxD = Math.min(clipDuration(order[i]!), clipDuration(order[i + 1]!));
+    const maxD = Math.min(clipProgramDuration(order[i]!), clipProgramDuration(order[i + 1]!));
     const d = snapToFrame(Math.min(tr.durationUs, maxD), m.fps);
     if (d < frameUs(m.fps)) continue;
     seen.add(tr.afterClipId);

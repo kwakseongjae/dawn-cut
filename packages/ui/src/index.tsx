@@ -15,6 +15,8 @@ import {
   lowConfidenceWords,
   moveOverlay,
   pickKeywords,
+  programToSource,
+  programToSpeed,
   programToWord,
   resizeOverlay,
   subtitleBurnPlan,
@@ -1148,11 +1150,14 @@ function EffectPanel() {
     autoEnhanceEq,
     status,
     applyTransition,
+    applySpeed,
     clipCount,
   } = useEditor();
   const [trKind, setTrKind] = useState<'none' | 'crossfade' | 'dipToBlack'>('none');
   const [trDur, setTrDur] = useState(500_000);
   const trCount = timeline?.transitions?.length ?? 0;
+  const [spd, setSpd] = useState('1');
+  const curSpeed = timeline ? (videoClips(timeline)[0]?.speed ?? 1) : 1;
   const analyzing = status === 'analyzing';
   // eq가 사실상 중립(±변화 거의 0)이면 '이미 잘 노출됨' — 시각 변화가 작은 게 정상임을 알린다.
   const eqNeutral =
@@ -1257,6 +1262,35 @@ function EffectPanel() {
           전환은 클립이 2개 이상일 때(⌘B 분할·컷 이후) 적용할 수 있어요.
         </p>
       )}
+      <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>배속 (Speed)</strong>
+      <div className="ov-field" style={{ marginTop: 8 }}>
+        전체 배속
+        <KSelect
+          testId="speed-select"
+          flex
+          value={spd}
+          disabled={!timeline}
+          onChange={(v) => setSpd(v)}
+          options={[
+            { value: '0.5', label: '0.5× (슬로모)' },
+            { value: '1', label: '1× (원속)' },
+            { value: '1.5', label: '1.5×' },
+            { value: '2', label: '2×' },
+            { value: '3', label: '3×' },
+          ]}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn"
+        data-testid="speed-apply"
+        disabled={!timeline || Number(spd) === curSpeed}
+        onClick={() => applySpeed(Number(spd))}
+        style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
+        title="영상 전체에 일정 배속 적용 — 오디오 피치 유지(atempo), 자막 타이밍 자동 재계산"
+      >
+        배속 적용{curSpeed !== 1 ? ` (현재 ${curSpeed}×)` : ''}
+      </button>
       <p className="note-strong">
         미리보기는 분위기만 보여줘요. 실제 색·비율·전환은 <b>내보낼 때 정확히 적용</b>됩니다.{' '}
         <b>9:16·1:1은 화면 가운데를 기준으로 잘립니다.</b>
@@ -1411,8 +1445,11 @@ function Preview() {
     const tick = () => {
       const tUs = v.currentTime * US;
       const seg = edl.segments.find((g) => tUs >= g.sourceStart && tUs < g.sourceEnd);
-      if (seg) setPlayhead(seg.programStart + (tUs - seg.sourceStart));
-      else {
+      // B5: 소스→프로그램 환산에 세그먼트 배속 반영(Δ/speed). 1×면 기존과 동일.
+      if (seg) {
+        const sp = seg.speed && seg.speed > 0 ? seg.speed : 1;
+        setPlayhead(seg.programStart + Math.round((tUs - seg.sourceStart) / sp));
+      } else {
         const next = edl.segments.find((g) => g.sourceStart > tUs);
         if (next) v.currentTime = next.sourceStart / US;
         else if (playing) {
@@ -1432,7 +1469,8 @@ function Preview() {
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !edl) return;
-    v.playbackRate = playbackRate; // JKL 셔틀 배속(issue #6)
+    // JKL 셔틀(issue #6) × 클립 배속(B5) — 현재 세그먼트의 speed를 곱한다.
+    v.playbackRate = playbackRate * programToSpeed(edl, playheadUs);
     if (playing) {
       if (playheadUs >= edl.totalDuration - 1)
         v.currentTime = (edl.segments[0]?.sourceStart ?? 0) / US;
@@ -1446,14 +1484,10 @@ function Preview() {
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !edl || playing) return;
-    const seg =
-      edl.segments.find(
-        (g) =>
-          playheadUs >= g.programStart &&
-          playheadUs < g.programStart + (g.sourceEnd - g.sourceStart),
-      ) ?? edl.segments.at(-1);
-    if (seg) {
-      const target = (seg.sourceStart + (playheadUs - seg.programStart)) / US;
+    // B5: 프로그램→소스 환산은 speed-인지 순수 함수로(programToSource — 배속 반영).
+    const src = programToSource(edl, playheadUs) ?? edl.segments.at(-1)?.sourceEnd ?? null;
+    if (src !== null) {
+      const target = src / US;
       if (Math.abs(v.currentTime - target) > 0.05) v.currentTime = target;
     }
   }, [playheadUs, edl, playing]);
@@ -3502,7 +3536,9 @@ function Timeline() {
             style={{ cursor: timeline ? 'pointer' : 'default', flex: trackFlex }}
           >
             {clips.map((c) => {
-              const len = c.sourceEnd - c.sourceStart;
+              const spd = c.speed && c.speed > 0 ? c.speed : 1;
+              // B5: 블록 폭·라벨은 '프로그램' 길이(배속 반영) — 필름스트립/파형은 소스 구간 그대로.
+              const len = Math.round((c.sourceEnd - c.sourceStart) / spd);
               const pct = durationProgramUs > 0 ? (len / durationProgramUs) * 100 : 0;
               // B2: 필름스트립(소스 시간 매핑, 경계는 크롭) + 하단 SVG 파형(스케일-프리).
               const film = mediaVisuals
@@ -3546,7 +3582,10 @@ function Timeline() {
                       <path d={wavePathD(wave)} />
                     </svg>
                   )}
-                  <span className="clip-label">{fmt(len)}</span>
+                  <span className="clip-label">
+                    {fmt(len)}
+                    {spd !== 1 ? ` · ${spd}×` : ''}
+                  </span>
                 </div>
               );
             })}
@@ -3554,7 +3593,8 @@ function Timeline() {
             {timeline?.transitions?.map((tr) => {
               const c = timeline.clips[tr.afterClipId];
               if (!c || durationProgramUs <= 0) return null;
-              const at = c.timelineStart + (c.sourceEnd - c.sourceStart);
+              const sp = c.speed && c.speed > 0 ? c.speed : 1;
+              const at = c.timelineStart + Math.round((c.sourceEnd - c.sourceStart) / sp);
               return (
                 <span
                   key={tr.id}

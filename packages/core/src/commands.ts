@@ -1,5 +1,12 @@
 import { snapToFrame } from './time.js';
-import { clipDuration, recomputeDuration, reconcileTransitions, videoClips } from './timeline.js';
+import {
+  clipProgramDuration,
+  clipSpeed,
+  clipTimelineEnd,
+  recomputeDuration,
+  reconcileTransitions,
+  videoClips,
+} from './timeline.js';
 import type { Clip, CommandResult, TimelineModel, Track, TranscriptModel } from './types.js';
 
 /** Deep clone via structuredClone (global in Node 18+/browsers — portable). */
@@ -7,8 +14,11 @@ function clone<T>(x: T): T {
   return structuredClone(x);
 }
 
-/** Rebuild a single-video-track timeline gapless from 0 (enforces TL-INV-2). */
-function rebuildGapless(model: TimelineModel, orderedClips: Clip[]): TimelineModel {
+/**
+ * Rebuild a single-video-track timeline gapless from 0 (enforces TL-INV-2).
+ * B5: setSpeed 등 '클립 속성 변경 후 재적층'에도 쓰인다(export) — 전환 reconcile 포함.
+ */
+export function rebuildGapless(model: TimelineModel, orderedClips: Clip[]): TimelineModel {
   const clips: Record<string, Clip> = {};
   let cursor = 0;
   const ids: string[] = [];
@@ -16,7 +26,7 @@ function rebuildGapless(model: TimelineModel, orderedClips: Clip[]): TimelineMod
     const placed: Clip = { ...c, timelineStart: cursor };
     clips[placed.id] = placed;
     ids.push(placed.id);
-    cursor += clipDuration(placed);
+    cursor += clipProgramDuration(placed);
   }
   const videoTrack: Track = {
     id: model.tracks.find((t) => t.kind === 'video')?.id ?? 'video',
@@ -84,13 +94,11 @@ export function cutSourceRange(
  */
 export function splitClipAt(timeline: TimelineModel, programUs: number): TimelineModel {
   const clips = videoClips(timeline);
-  const target = clips.find(
-    (c) =>
-      programUs >= c.timelineStart && programUs < c.timelineStart + (c.sourceEnd - c.sourceStart),
-  );
+  const target = clips.find((c) => programUs >= c.timelineStart && programUs < clipTimelineEnd(c));
   if (!target) return clone(timeline);
+  // B5: 프로그램→소스 환산에 배속 반영(1×면 기존과 동일).
   const srcAt = clampSnap(
-    target.sourceStart + (programUs - target.timelineStart),
+    target.sourceStart + Math.round((programUs - target.timelineStart) * clipSpeed(target)),
     timeline.fps,
     target.sourceStart,
     target.sourceEnd,

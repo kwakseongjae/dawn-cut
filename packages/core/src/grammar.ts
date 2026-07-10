@@ -90,7 +90,7 @@ const TRANSITION_KIND_RULE = String.raw`transitionKind ::= "\"crossfade\"" | "\"
 
 // ── 전체 문법(13 verb) ──
 const FULL_GBNF = `${String.raw`root ::= "[" ws ( cmd ( ws "," ws cmd )* )? ws "]"
-cmd ::= deleteWordRange | removeSilences | removeFillers | cutSourceRange | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | applyColorgrade | applyZoom | applyAutoEnhance | correctWord | autoHighlight | addTransition | removeTransition
+cmd ::= deleteWordRange | removeSilences | removeFillers | cutSourceRange | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | applyColorgrade | applyZoom | applyAutoEnhance | correctWord | autoHighlight | addTransition | removeTransition | setSpeed
 deleteWordRange ::= "{" ws "\"type\"" ws ":" ws "\"deleteWordRange\"" ws "," ws "\"fromWordId\"" ws ":" ws string ws "," ws "\"toWordId\"" ws ":" ws string ws "}"
 removeSilences ::= "{" ws "\"type\"" ws ":" ws "\"removeSilences\"" ws "," ws "\"silences\"" ws ":" ws silenceArray ( ws "," ws "\"padUs\"" ws ":" ws integer )? ws "}"
 silenceArray ::= "[" ws ( silence ( ws "," ws silence )* )? ws "]"
@@ -109,7 +109,8 @@ eqKey ::= "\"contrast\"" | "\"saturation\"" | "\"brightness\"" | "\"gamma\""
 correctWord ::= "{" ws "\"type\"" ws ":" ws "\"correctWord\"" ws "," ws "\"wordId\"" ws ":" ws string ws "," ws "\"text\"" ws ":" ws string ws "}"
 autoHighlight ::= "{" ws "\"type\"" ws ":" ws "\"autoHighlight\"" ( ws "," ws "\"targetSeconds\"" ws ":" ws number )? ws "}"
 addTransition ::= "{" ws "\"type\"" ws ":" ws "\"addTransition\"" ws "," ws "\"kind\"" ws ":" ws transitionKind ( ws "," ws "\"durationUs\"" ws ":" ws integer )? ( ws "," ws "\"afterClipId\"" ws ":" ws string )? ws "}"
-removeTransition ::= "{" ws "\"type\"" ws ":" ws "\"removeTransition\"" ( ws "," ws "\"afterClipId\"" ws ":" ws string )? ws "}"`}
+removeTransition ::= "{" ws "\"type\"" ws ":" ws "\"removeTransition\"" ( ws "," ws "\"afterClipId\"" ws ":" ws string )? ws "}"
+setSpeed ::= "{" ws "\"type\"" ws ":" ws "\"setSpeed\"" ws "," ws ( "\"clipId\"" ws ":" ws string ws "," ws )? "\"speed\"" ws ":" ws number ws "}"`}
 ${GLOSSARY_RULES}
 ${SUBTITLE_RULES}
 ${COLOR_PRESET_RULE}
@@ -120,7 +121,7 @@ ${BASE_TERMINALS}
 
 // ── 플래너 안전 부분집합(7 verb, clipId/좌표/외부ID 없음) ──
 const PLAN_GBNF = `${String.raw`root ::= "[" ws ( cmd ( ws "," ws cmd )* )? ws "]"
-cmd ::= removeFillers | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | autoHighlight | applyColorgrade | addTransition | removeTransition
+cmd ::= removeFillers | applyGlossary | setSubtitleStyle | replaceSubtitleStyle | highlightKeyword | autoHighlight | applyColorgrade | addTransition | removeTransition | setSpeed
 removeFillers ::= "{" ws "\"type\"" ws ":" ws "\"removeFillers\"" ( ws "," ws "\"lexicon\"" ws ":" ws stringArray )? ws "}"
 autoHighlight ::= "{" ws "\"type\"" ws ":" ws "\"autoHighlight\"" ( ws "," ws "\"targetSeconds\"" ws ":" ws number )? ws "}"
 setSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"setSubtitleStyle\"" ws "," ws "\"patch\"" ws ":" ws subtitleStyle ws "}"
@@ -128,7 +129,8 @@ replaceSubtitleStyle ::= "{" ws "\"type\"" ws ":" ws "\"replaceSubtitleStyle\"" 
 highlightKeyword ::= "{" ws "\"type\"" ws ":" ws "\"highlightKeyword\"" ( ws "," ws "\"color\"" ws ":" ws string )? ws "}"
 applyColorgrade ::= "{" ws "\"type\"" ws ":" ws "\"applyColorgrade\"" ws "," ws "\"preset\"" ws ":" ws colorPreset ( ws "," ws "\"intensity\"" ws ":" ws number )? ws "}"
 addTransition ::= "{" ws "\"type\"" ws ":" ws "\"addTransition\"" ws "," ws "\"kind\"" ws ":" ws transitionKind ( ws "," ws "\"durationUs\"" ws ":" ws integer )? ws "}"
-removeTransition ::= "{" ws "\"type\"" ws ":" ws "\"removeTransition\"" ws "}"`}
+removeTransition ::= "{" ws "\"type\"" ws ":" ws "\"removeTransition\"" ws "}"
+setSpeed ::= "{" ws "\"type\"" ws ":" ws "\"setSpeed\"" ws "," ws "\"speed\"" ws ":" ws number ws "}"`}
 ${GLOSSARY_RULES}
 ${SUBTITLE_RULES}
 ${COLOR_PRESET_RULE}

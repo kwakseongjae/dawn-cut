@@ -38,6 +38,8 @@ export interface Clip {
   timelineStart: number; // µs (program coords)
   // 렌더 이펙트(펀치인 줌·색보정). 길이를 바꾸지 않는 픽셀 메타라 TL/SYNC/EDL 불변식 무영향.
   effects?: ClipEffect[];
+  /** B5 배속(0.5~3, 생략=1). 프로그램 길이 = round(소스 길이 / speed) — clipProgramDuration이 단일 산식. */
+  speed?: number;
 }
 
 export interface Track {
@@ -71,8 +73,10 @@ export interface EdlSegment {
   mediaPath: string;
   sourceStart: number; // µs
   sourceEnd: number; // µs
-  programStart: number; // µs
+  programStart: number; // µs (B5: 프로그램 길이 = round(소스 길이/speed)로 적층)
   effects?: ClipEffect[]; // 클립 이펙트를 EDL로 전달 → 렌더러가 세그먼트별 필터 적용
+  /** B5 배속(생략=1) — 렌더러가 setpts/atempo로 구현 */
+  speed?: number;
 }
 
 export interface Edl {

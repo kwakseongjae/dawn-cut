@@ -398,6 +398,11 @@ export async function renderEdl(
   const nSeg = edl.segments.length;
   const extL: number[] = new Array(nSeg).fill(0);
   const extR: number[] = new Array(nSeg).fill(0);
+  // B5 배속 헬퍼 — 세그먼트 speed(생략=1). 전환 D는 '프로그램' 시간이라 소스 핸들은 ×speed.
+  const segSpeed = (i: number) => {
+    const sp = edl.segments[i]!.speed;
+    return sp && sp > 0 ? sp : 1;
+  };
   if (trans.some((t) => t.kind === 'crossfade')) {
     const mediaDurUs = (await probeMedia(input)).durationUs;
     for (const t of trans) {
@@ -405,16 +410,21 @@ export async function renderEdl(
       const sa = edl.segments[t.afterIndex]!;
       const sb = edl.segments[t.afterIndex + 1]!;
       extR[t.afterIndex] = Math.min(
-        Math.floor(t.durationUs / 2),
+        Math.round((t.durationUs / 2) * segSpeed(t.afterIndex)),
         Math.max(0, mediaDurUs - sa.sourceEnd),
       );
-      extL[t.afterIndex + 1] = Math.min(Math.floor(t.durationUs / 2), sb.sourceStart);
+      extL[t.afterIndex + 1] = Math.min(
+        Math.round((t.durationUs / 2) * segSpeed(t.afterIndex + 1)),
+        sb.sourceStart,
+      );
     }
-    // 핸들 합이 2프레임 미만이면 하드컷 강등 — 확장분을 0으로 되돌려 길이 불변을 지킨다.
+    // 프로그램 오버랩 합이 2프레임 미만이면 하드컷 강등 — 확장분을 0으로 되돌려 길이 불변 유지.
     for (const t of trans) {
       if (t.kind !== 'crossfade') continue;
-      const dUsed = (extR[t.afterIndex] ?? 0) + (extL[t.afterIndex + 1] ?? 0);
-      if (dUsed < Math.ceil(2e6 / edl.fps)) {
+      const progUsed =
+        (extR[t.afterIndex] ?? 0) / segSpeed(t.afterIndex) +
+        (extL[t.afterIndex + 1] ?? 0) / segSpeed(t.afterIndex + 1);
+      if (progUsed < Math.ceil(2e6 / edl.fps)) {
         extR[t.afterIndex] = 0;
         extL[t.afterIndex + 1] = 0;
       }
@@ -425,6 +435,9 @@ export async function renderEdl(
     return s.sourceEnd - s.sourceStart;
   };
   const extLenUs = (i: number) => segLenUs(i) + (extL[i] ?? 0) + (extR[i] ?? 0);
+  // B5: 프로그램 길이(배속 반영) — 폴드 offset/afade/총길이 계산의 좌표계.
+  const progLenUs = (i: number) => Math.round(segLenUs(i) / segSpeed(i));
+  const progExtLenUs = (i: number) => Math.round(extLenUs(i) / segSpeed(i));
   const minXfadeUs = Math.ceil(2e6 / edl.fps); // 2프레임 미만 오버랩이면 하드컷으로 강등
 
   const vparts: string[] = [];
@@ -445,19 +458,23 @@ export async function renderEdl(
       vfades.push(`fade=t=in:st=0:d=${sec(Math.floor(before.durationUs / 2))}`);
     if (after?.kind === 'dipToBlack')
       vfades.push(
-        `fade=t=out:st=${sec(extLenUs(i) - Math.floor(after.durationUs / 2))}:d=${sec(Math.floor(after.durationUs / 2))}`,
+        `fade=t=out:st=${sec(progExtLenUs(i) - Math.floor(after.durationUs / 2))}:d=${sec(Math.floor(after.durationUs / 2))}`,
       );
     const effChain = [...eff, ...vfades].length > 0 ? `,${[...eff, ...vfades].join(',')}` : '';
     const afades: string[] = [];
     if (before) afades.push(`afade=t=in:st=0:d=${sec(Math.floor(before.durationUs / 2))}`);
     if (after)
       afades.push(
-        `afade=t=out:st=${sec(segLenUs(i) - Math.floor(after.durationUs / 2))}:d=${sec(Math.floor(after.durationUs / 2))}`,
+        `afade=t=out:st=${sec(progLenUs(i) - Math.floor(after.durationUs / 2))}:d=${sec(Math.floor(after.durationUs / 2))}`,
       );
     const aChain = afades.length > 0 ? `,${afades.join(',')}` : '';
-    vparts.push(`[0:v]trim=start=${a}:end=${b},setpts=PTS-STARTPTS${effChain}[v${i}]`);
+    // B5: 배속 — setpts 나눗셈(이후 체인은 전부 프로그램-로컬 시간), 오디오는 atempo. 1×면 바이트 동일.
+    const sp = segSpeed(i);
+    const vsetpts = sp === 1 ? 'setpts=PTS-STARTPTS' : `setpts=(PTS-STARTPTS)/${sp}`;
+    const atempo = sp === 1 ? '' : `,atempo=${sp}`;
+    vparts.push(`[0:v]trim=start=${a}:end=${b},${vsetpts}${effChain}[v${i}]`);
     aparts.push(
-      `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS${aChain}[a${i}]`,
+      `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS${atempo}${aChain}[a${i}]`,
     );
     vlabels.push(`[v${i}]`);
     alabels.push(`[a${i}]`);
@@ -469,19 +486,20 @@ export async function renderEdl(
     if (trans.length === 0) return `${vlabels.join('')}concat=n=${n}:v=1:a=0[vbase]`;
     const parts: string[] = [];
     let cur = 'v0';
-    let curLenUs = extLenUs(0);
+    let curLenUs = progExtLenUs(0);
     for (let i = 1; i < n; i++) {
       const t = trAfter.get(i - 1);
       const out = i === n - 1 ? 'vbase' : `vx${i}`;
-      const dUsed = (extR[i - 1] ?? 0) + (extL[i] ?? 0);
+      // B5: xfade duration/offset은 '프로그램' 초(setpts 이후 좌표) — 핸들을 각자 배속으로 환산.
+      const dUsed = Math.round((extR[i - 1] ?? 0) / segSpeed(i - 1) + (extL[i] ?? 0) / segSpeed(i));
       if (t?.kind === 'crossfade' && dUsed >= minXfadeUs) {
         parts.push(
           `[${cur}][v${i}]xfade=transition=fade:duration=${sec(dUsed)}:offset=${sec(curLenUs - dUsed)}[${out}]`,
         );
-        curLenUs = curLenUs + extLenUs(i) - dUsed;
+        curLenUs = curLenUs + progExtLenUs(i) - dUsed;
       } else {
         parts.push(`[${cur}][v${i}]concat=n=2:v=1:a=0[${out}]`);
-        curLenUs += extLenUs(i);
+        curLenUs += progExtLenUs(i);
       }
       cur = out;
     }
@@ -511,9 +529,9 @@ export async function renderEdl(
   // 애니가 조용히 무시됐다(위치 애니는 overlay 필터라 정상 — 팝인이 익스포트에서만 죽던
   // 잠복 버그). -shortest로 묶지 않는 이유: 짧은 자막 소프트트랙이 영상을 자르는 부작용
   // (QA F8이 회귀로 잡음) — 유한화는 -t로 한다.
-  const totalSecAll = (
-    edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6
-  ).toFixed(6);
+  const totalSecAll = (edl.segments.reduce((acc, _s2, i2) => acc + progLenUs(i2), 0) / 1e6).toFixed(
+    6,
+  );
   const pushOverlayInputs = (arr: string[]) => {
     for (const ip of ovf.inputs) {
       if (/\.gif$/i.test(ip)) arr.push('-ignore_loop', '0');
@@ -538,7 +556,7 @@ export async function renderEdl(
   }
 
   const hasAud = opts.inputHasAudio !== false;
-  const totalSec = edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6;
+  const totalSec = edl.segments.reduce((acc, _s2, i2) => acc + progLenUs(i2), 0) / 1e6;
   const interleaved = edl.segments.map((_, i) => `${vlabels[i]}${alabels[i]}`).join('');
   // 무음 입력: 비디오만 concat + anullsrc로 길이만큼 무음 트랙 합성([0:a] 참조 금지).
   // B4: 전환이 있으면 비디오는 폴드(xfade 포함 가능)로, 오디오는 별도 concat으로 조인.
@@ -605,8 +623,10 @@ export async function renderAudioOnly(
   const parts: string[] = [];
   const labels: string[] = [];
   edl.segments.forEach((s, i) => {
+    // B5: 배속 세그먼트는 오디오도 atempo(프로그램 길이 일치).
+    const atempo = s.speed && s.speed > 0 && s.speed !== 1 ? `,atempo=${s.speed}` : '';
     parts.push(
-      `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS[a${i}]`,
+      `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS${atempo}[a${i}]`,
     );
     labels.push(`[a${i}]`);
   });
