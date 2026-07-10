@@ -53,7 +53,8 @@
 | **D1** | B-roll 패널(배경 6종 노출 + 무드 태그) | 미디어/스티커 패널과 동급 UI | — | 신규 |
 | **D2** | 모션 스티커 12→30종 + 태그/검색 | 로컬 번들 유지 | — | #10 |
 | **D3** | 템플릿 갤러리(프로모 템플릿 앱 노출) | 추후 서버 배급 구조 유지 | A5 | #18 |
-| **D4** | 생성형 에셋 동사: generateImage/generateSticker | grok CLI/BYOK 어댑터 — 크레딧 장사 아님 | A4 | 신규 |
+| **D4** | 생성형 에셋 동사: generateImage/Sticker/**Video** | BYOK 어댑터(grok CLI 이미지 실증 완료 + fal/Replicate류 애그리게이터로 Kling/Veo/Seedance image-to-video). **카메라 모션 프리셋 어휘**(dolly/crash-zoom/FPV/crane — Higgsfield 문법)를 Direction 카탈로그로 — LLM은 프리셋만 고르고 생성은 어댑터가. 크레딧 장사 아님 | A4 | 신규 |
+| **D8** | 생성 프로버넌스 + 재생성 루프 | 생성 클립별 {prompt, model, seed, ref에셋}을 .dawn에 기록 → "이 클립 다시"/"프롬프트 바꿔 변형" 액션(승인 카드 경유). Palmier의 per-clip provenance 패턴 — 생성의 비결정성을 기록으로 보정 | D4 | 신규 |
 | **D5** | CC0 실사 배경 수집(Pexels) | API 키 필요(사용자 액션) | — | 신규 |
 | **D6** | BGM 소스 팩 | CC0/절차 생성 음악 무드 팩(B7 트랙의 '소재'. 업계는 생성 음악이 기본 — 우리는 로컬 팩 + BYOK 생성 어댑터) | — | 신규 |
 | **D7** | 브랜드 킷 | 로고(워터마크/아웃트로)·브랜드 컬러·폰트 프리셋 — Direction/템플릿에 주입, 업계 기본 장착 항목 | — | 신규 |
