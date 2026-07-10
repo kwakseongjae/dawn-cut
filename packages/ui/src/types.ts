@@ -67,6 +67,15 @@ export interface DawnBridge {
       quality?: 'high' | 'medium' | 'small';
       inputHasAudio?: boolean;
       outFps?: number;
+      /** B7 BGM(+B6 덕킹) — 프로그램 좌표 시간창의 음악 믹스. */
+      bgm?: {
+        path: string;
+        startUs: number;
+        endUs: number;
+        volume: number;
+        loop: boolean;
+        duck: boolean;
+      };
     },
   ) => Promise<{ outPath: string; actualDurationUs: number }>;
   writeSrt: (path: string, content: string) => Promise<{ path: string }>;
@@ -109,6 +118,18 @@ export interface DawnBridge {
   }>;
   /** 번들된 모션 스티커(애니 GIF) 목록 — 로컬 생성·번들(클라우드 의존 없음). 절대경로. */
   motionStickers: () => Promise<{ name: string; path: string }[]>;
+  /** B7: 번들 BGM 카탈로그(assets/bgm) — 절대경로 포함. */
+  bgmCatalog?: () => Promise<
+    Array<{
+      id: string;
+      title: string;
+      desc: string;
+      bpm: number;
+      durationSec: number;
+      loopable: boolean;
+      path: string;
+    }>
+  >;
   /** TTS 엔진 상태 — 뉴럴(Piper) 사용 가능 여부. 미설치면 macOS say 폴백. */
   ttsEngineStatus: () => Promise<{
     available: boolean;

@@ -28,6 +28,7 @@ import type {
   EditCommand,
   GlossaryPair,
   OverlayClip,
+  ProjectBgm,
   SubtitleStyle,
   TimelineModel,
   TranscriptModel,
@@ -46,6 +47,10 @@ interface EditorState {
   hasAudio: boolean; // 가져온 미디어에 오디오 트랙이 있는가(자막 생성 가능 여부)
   // B2: 타임라인 필름스트립·파형(시각 보조 — 편집 좌표계와 무관, 실패 시 그냥 없음)
   mediaVisuals: MediaVisuals | null;
+  // B7: BGM 트랙(단일) — 버스 미경유(오버레이/TTS와 같은 관례, A4에서 동사 승격 예정)
+  bgm: ProjectBgm | null;
+  setBgm: (b: ProjectBgm | null) => void;
+  updateBgm: (patch: Partial<ProjectBgm>) => void;
   transcribeError: string | null; // 자막 생성 실패/불가 사유(사람이 읽을 메시지)
   transcript: TranscriptModel | null;
   timeline: TimelineModel | null;
@@ -176,7 +181,7 @@ interface EditorState {
   dismissRecovery: () => void; // 배너 [무시] — autosave 삭제
 }
 
-export type PanelId = 'media' | 'text' | 'sticker' | 'effect';
+export type PanelId = 'media' | 'text' | 'sticker' | 'bgm' | 'effect';
 export interface Overlay {
   id: string;
   kind: 'image' | 'sticker' | 'gif' | 'subtitle' | 'video';
@@ -377,6 +382,7 @@ function collectAssetPaths(s: EditorState): string[] {
   const files = new Set<string>();
   for (const o of s.overlays) if (o.src) files.add(o.src);
   for (const t of s.ttsClips) if (t.wavPath) files.add(t.wavPath);
+  if (s.bgm?.src) files.add(s.bgm.src);
   return [...files];
 }
 
@@ -395,6 +401,7 @@ function serializeFullProject(s: EditorState, mapping: Record<string, string>): 
       colorPreset: s.colorPreset,
       autoEnhanceEq: s.autoEnhanceEq,
       glossary: s.glossary,
+      ...(s.bgm ? { bgm: { ...s.bgm, src: remap(s.bgm.src) ?? s.bgm.src } } : {}),
     }),
   );
 }
@@ -412,6 +419,9 @@ function remapAssetPaths(
     ttsClips: get().ttsClips.map((t) =>
       t.wavPath && mapping[t.wavPath] ? { ...t, wavPath: mapping[t.wavPath] } : t,
     ),
+    ...(get().bgm?.src && mapping[get().bgm!.src]
+      ? { bgm: { ...get().bgm!, src: mapping[get().bgm!.src]! } }
+      : {}),
   });
 }
 
@@ -449,6 +459,7 @@ function restoreFromProject(project: ReturnType<typeof deserializeProject>) {
     reframe: (project.reframe ?? 'source') as Reframe,
     colorPreset: (project.colorPreset ?? 'none') as ColorPreset,
     autoEnhanceEq: project.autoEnhanceEq ?? null,
+    bgm: project.bgm ?? null,
     selectedOverlayId: null,
     selectedVoiceId: null,
     ...(project.glossary?.length ? { glossary: project.glossary } : {}),
@@ -461,6 +472,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   proxyBusy: false,
   hasAudio: false,
   mediaVisuals: null,
+  bgm: null,
   transcribeError: null,
   transcript: null,
   timeline: null,
@@ -822,6 +834,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       proxyBusy: proxyNeeded,
       hasAudio: probe.hasAudio,
       mediaVisuals: null,
+      bgm: null,
       transcribeError: null,
       transcript: null, // 자막은 'transcribeMedia'를 눌러야 생성된다.
       timeline,
@@ -933,6 +946,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       proxyBusy: false,
       hasAudio: false,
       mediaVisuals: null,
+      bgm: null,
       transcribeError: null,
       transcript: null,
       timeline: null,
@@ -1088,6 +1102,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
     }
     const voiceClip = ttsClips.find((c) => c.wavPath);
+    const bgm = get().bgm;
     const res = await dawn.render(edl, path, {
       overlays: toClips(overlays, timeline.durationProgram),
       frameW,
@@ -1095,6 +1110,18 @@ export const useEditor = create<EditorState>((set, get) => ({
       inputHasAudio: get().hasAudio,
       ...(voiceClip
         ? { voicePath: voiceClip.wavPath, voiceStartUs: Math.max(0, voiceClip.startUs) }
+        : {}),
+      ...(bgm
+        ? {
+            bgm: {
+              path: bgm.src,
+              startUs: bgm.startUs,
+              endUs: bgm.endUs,
+              volume: bgm.volume,
+              loop: bgm.loop,
+              duck: bgm.duck,
+            },
+          }
         : {}),
       ...(subtitlesPath ? { subtitlesPath } : {}),
       ...(reframe !== 'source' ? { reframe } : {}),
@@ -1287,6 +1314,12 @@ export const useEditor = create<EditorState>((set, get) => ({
       ...derive(after.timeline),
     });
   },
+  setBgm: (b) => set({ bgm: b }),
+  updateBgm: (patch) => {
+    const cur = get().bgm;
+    if (cur) set({ bgm: { ...cur, ...patch } });
+  },
+
   applySpeed: (speed) => {
     // B5: 배속 — command bus 경유. 프로그램 길이가 바뀌므로 undo 스택·파생값 갱신.
     const { transcript, timeline } = get();
@@ -1494,6 +1527,7 @@ let autosaveLast: {
   overlays: unknown;
   manualCues: unknown;
   ttsClips: unknown;
+  bgm: unknown;
   subtitleStyle: unknown;
   subtitlePos: unknown;
   colorPreset: unknown;
@@ -1509,6 +1543,7 @@ useEditor.subscribe((s) => {
     overlays: s.overlays,
     manualCues: s.manualCues,
     ttsClips: s.ttsClips,
+    bgm: s.bgm,
     subtitleStyle: s.subtitleStyle,
     subtitlePos: s.subtitlePos,
     colorPreset: s.colorPreset,

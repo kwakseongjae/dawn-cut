@@ -91,6 +91,17 @@ const bridge = {
   }> => ipcRenderer.invoke('settings:set', patch),
   motionStickers: (): Promise<{ name: string; path: string }[]> =>
     ipcRenderer.invoke('assets:motionStickers'),
+  bgmCatalog: (): Promise<
+    Array<{
+      id: string;
+      title: string;
+      desc: string;
+      bpm: number;
+      durationSec: number;
+      loopable: boolean;
+      path: string;
+    }>
+  > => ipcRenderer.invoke('assets:bgmCatalog'),
   ttsEngineStatus: (): Promise<{
     available: boolean;
     binPath: string;

@@ -53,6 +53,7 @@ import {
   Lock,
   type LucideIcon,
   Mic,
+  Music,
   NotebookText,
   Palette,
   Pause,
@@ -456,13 +457,16 @@ const RAIL: { id: PanelId; ico: LucideIcon; label: string; short: string }[] = [
   { id: 'media', ico: Film, label: '미디어', short: '미디어' },
   { id: 'text', ico: Mic, label: '음성 · TTS', short: '음성' },
   { id: 'sticker', ico: Sparkles, label: '스티커 · GIF', short: '스티커' },
+  { id: 'bgm', ico: Music, label: '배경음악', short: 'BGM' },
   { id: 'effect', ico: SlidersHorizontal, label: '효과 · 색보정', short: '효과' },
 ];
 
 function Rail() {
   const { panel, setPanel, advanced } = useEditor();
   // 단순(쇼케이스) 모드는 미디어 + 효과만 — 오버레이/스티커·TTS 패널은 고급에서.
-  const items = advanced ? RAIL : RAIL.filter((r) => r.id === 'media' || r.id === 'effect');
+  const items = advanced
+    ? RAIL
+    : RAIL.filter((r) => r.id === 'media' || r.id === 'bgm' || r.id === 'effect');
   return (
     <div className="rail">
       {items.map((r) => (
@@ -1127,6 +1131,133 @@ const REFRAME_OPTS: { id: 'source' | '9:16' | '1:1'; label: string }[] = [
   { id: '1:1', label: '정사각 1:1' },
 ];
 
+// ── B7 배경음악 패널 — 번들 카탈로그(절차 생성·저작권 0)에서 고르고 볼륨/덕킹 조절 ──
+interface BgmCatalogItem {
+  id: string;
+  title: string;
+  desc: string;
+  bpm: number;
+  durationSec: number;
+  path: string;
+}
+
+function BgmPanel() {
+  const { timeline, durationProgramUs, bgm, setBgm, updateBgm } = useEditor();
+  const [catalog, setCatalog] = useState<BgmCatalogItem[]>([]);
+  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  useEffect(() => {
+    void window.dawn?.bgmCatalog?.().then(setCatalog);
+    return () => previewRef.current?.pause();
+  }, []);
+  const togglePreview = (item: BgmCatalogItem) => {
+    if (previewId === item.id) {
+      previewRef.current?.pause();
+      setPreviewId(null);
+      return;
+    }
+    previewRef.current?.pause();
+    const a = new Audio(`file://${item.path}`);
+    a.volume = 0.6;
+    a.loop = true;
+    void a.play().catch(() => {});
+    previewRef.current = a;
+    setPreviewId(item.id);
+  };
+  const useTrack = (item: BgmCatalogItem) => {
+    previewRef.current?.pause();
+    setPreviewId(null);
+    setBgm({
+      src: item.path,
+      title: item.title,
+      startUs: 0,
+      endUs: Math.max(1_000_000, durationProgramUs),
+      volume: 0.25,
+      loop: true,
+      duck: true,
+    });
+  };
+  return (
+    <div className="dock-body">
+      {bgm && (
+        <div className="bgm-current" data-testid="bgm-current">
+          <strong style={{ fontSize: 13 }}>♪ {bgm.title}</strong>
+          <div className="ov-field" style={{ marginTop: 8 }}>
+            볼륨
+            <input
+              type="range"
+              min={0}
+              max={0.6}
+              step={0.05}
+              value={bgm.volume}
+              data-testid="bgm-volume"
+              onChange={(e) => updateBgm({ volume: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            {Math.round(bgm.volume * 100)}%
+          </div>
+          <label className="ov-field" style={{ marginTop: 6, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={bgm.duck}
+              data-testid="bgm-duck"
+              onChange={(e) => updateBgm({ duck: e.target.checked })}
+            />
+            자동 덕킹 — 말소리가 나오면 음악이 스스로 작아져요
+          </label>
+          <button
+            type="button"
+            className="btn"
+            data-testid="bgm-remove"
+            onClick={() => setBgm(null)}
+            style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
+          >
+            <Trash2 size={13} /> 배경음악 제거
+          </button>
+          <p className="muted-note" style={{ marginTop: 6 }}>
+            미리보기 재생은 근사(덕킹 제외) — 실제 믹스·덕킹은 내보낼 때 정확히 적용됩니다.
+          </p>
+        </div>
+      )}
+      <strong style={{ fontSize: 13, marginTop: bgm ? 12 : 0, display: 'block' }}>
+        번들 음악 (절차 생성 · 저작권 걱정 없음)
+      </strong>
+      <div className="bgm-list">
+        {catalog.map((c) => (
+          <div key={c.id} className="bgm-row" data-testid={`bgm-row-${c.id}`}>
+            <button
+              type="button"
+              className="btn icon"
+              title={previewId === c.id ? '미리듣기 정지' : '미리듣기'}
+              data-testid={`bgm-preview-${c.id}`}
+              onClick={() => togglePreview(c)}
+            >
+              {previewId === c.id ? <Pause size={13} /> : <Play size={13} />}
+            </button>
+            <div className="bgm-meta">
+              <b>{c.title}</b>
+              <span>
+                {c.bpm ? `${c.bpm}bpm · ` : ''}
+                {Math.round(c.durationSec)}s · {c.desc}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn"
+              disabled={!timeline}
+              data-testid={`bgm-use-${c.id}`}
+              onClick={() => useTrack(c)}
+            >
+              사용
+            </button>
+          </div>
+        ))}
+        {catalog.length === 0 && <p className="muted-note">번들 음악을 찾지 못했어요.</p>}
+      </div>
+    </div>
+  );
+}
+
 const TRANSITION_OPTS = [
   { id: 'none', label: '없음 (하드컷)' },
   { id: 'crossfade', label: '크로스페이드' },
@@ -1305,6 +1436,7 @@ function Dock() {
     media: '미디어',
     text: '음성 · TTS',
     sticker: '스티커 · GIF',
+    bgm: '배경음악',
     effect: '효과 · 색보정',
   };
   return (
@@ -1313,6 +1445,7 @@ function Dock() {
       {panel === 'media' && <MediaPanel />}
       {panel === 'text' && <TextPanel />}
       {panel === 'sticker' && <StickerPanel />}
+      {panel === 'bgm' && <BgmPanel />}
       {panel === 'effect' && <EffectPanel />}
     </div>
   );
@@ -1363,6 +1496,7 @@ function Preview() {
     playheadUs,
     playing,
     playbackRate,
+    bgm,
     setPlayhead,
     setPlaying,
     durationProgramUs,
@@ -1437,6 +1571,29 @@ function Preview() {
     () => (timeline && mediaPath ? timelineToEdl(timeline, mediaPath) : null),
     [timeline, mediaPath],
   );
+
+  // B7: BGM 프리뷰 근사 재생(덕킹 제외 — 내보내기에서 정확). 별도 <audio>를 플레이헤드에 동기.
+  const bgmAudioRef = useRef<HTMLAudioElement>(null);
+  useEffect(() => {
+    const a = bgmAudioRef.current;
+    if (!a) return;
+    if (!bgm) {
+      a.pause();
+      return;
+    }
+    const inWin = playheadUs >= bgm.startUs && playheadUs < bgm.endUs;
+    a.volume = Math.min(1, bgm.volume * 2); // 청감 근사(익스포트 믹스 비율과 유사하게)
+    a.loop = bgm.loop;
+    if (playing && inWin) {
+      const rel = (playheadUs - bgm.startUs) / 1e6;
+      const dur = a.duration || 0;
+      const want = dur > 0 && bgm.loop ? rel % dur : rel;
+      if (dur > 0 && Math.abs(a.currentTime - want) > 0.3) a.currentTime = want;
+      if (a.paused) void a.play().catch(() => {});
+    } else if (!a.paused) {
+      a.pause();
+    }
+  }, [playing, playheadUs, bgm]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -1543,6 +1700,10 @@ function Preview() {
                 onLoadedData={() => setVideoErr(false)}
                 style={previewFilter ? { filter: previewFilter } : undefined}
               />
+            )}
+            {bgm && (
+              // biome-ignore lint/a11y/useMediaCaption: BGM 근사 재생(내부 도구)
+              <audio ref={bgmAudioRef} src={`file://${bgm.src}`} style={{ display: 'none' }} />
             )}
             {/* 변환 중(proxyBusy)이거나 아직 미리보기 경로가 없으면 안내 오버레이를 영상 위에 덮어
                 검은 화면 오해를 막는다. (프록시가 previewPath를 먼저 세팅하는 레이스에도 견고) */}
@@ -3269,6 +3430,8 @@ function Timeline() {
     transcript,
     manualCues,
     mediaVisuals,
+    bgm,
+    updateBgm,
     seekTo,
     selectOverlay,
     selectedOverlayId,
@@ -3443,6 +3606,42 @@ function Timeline() {
   };
   const onVoiceUp = (e: PointerEvent<HTMLElement>) => {
     voiceDrag.current = null;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+  };
+  // B7 MUSIC 레인: 단일 BGM 블록 — 드래그 이동/양끝 트림(voice 패턴).
+  const bgmLaneRef = useRef<HTMLDivElement>(null);
+  const bgmDrag = useRef<{
+    mode: 'move' | 'l' | 'r';
+    px: number;
+    start: number;
+    end: number;
+  } | null>(null);
+  const onBgmDown = (e: PointerEvent<HTMLElement>, mode: 'move' | 'l' | 'r') => {
+    if (!bgm) return;
+    e.stopPropagation();
+    e.preventDefault();
+    bgmDrag.current = { mode, px: e.clientX, start: bgm.startUs, end: bgm.endUs };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onBgmMove = (e: PointerEvent<HTMLElement>) => {
+    const d = bgmDrag.current;
+    const rect = bgmLaneRef.current?.getBoundingClientRect();
+    if (!d || !rect || durationProgramUs <= 0) return;
+    const deltaUs = ((e.clientX - d.px) / rect.width) * durationProgramUs;
+    const len = d.end - d.start;
+    if (d.mode === 'move') {
+      const st = Math.round(ovClamp(d.start + deltaUs, 0, durationProgramUs - len));
+      updateBgm({ startUs: st, endUs: st + len });
+    } else if (d.mode === 'l') {
+      updateBgm({ startUs: Math.round(ovClamp(d.start + deltaUs, 0, d.end - OV_MIN)) });
+    } else {
+      updateBgm({
+        endUs: Math.round(ovClamp(d.end + deltaUs, d.start + OV_MIN, durationProgramUs)),
+      });
+    }
+  };
+  const onBgmUp = (e: PointerEvent<HTMLElement>) => {
+    bgmDrag.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
   // OVERLAY 레인: 자막 제외. 시간대가 겹치는 블록은 서로 다른 행(서브레인)에 배치해 둘 다 보이게
@@ -3776,6 +3975,50 @@ function Timeline() {
                   </div>
                 );
               })
+            )}
+          </div>
+        </div>
+        <div className="trackrow">
+          <span className="lbl">Music</span>
+          <div
+            className="track thin ov-lane music-lane"
+            ref={bgmLaneRef}
+            style={{ flex: trackFlex }}
+          >
+            {!bgm ? (
+              <span className="empty-track">
+                배경음악을 추가하면 여기에 표시 — BGM 패널에서 '사용' · 드래그=이동 · 양끝=길이
+              </span>
+            ) : (
+              <div
+                className="ov-block bgm-block"
+                data-testid="music-block"
+                style={{
+                  left: `${durationProgramUs > 0 ? (bgm.startUs / durationProgramUs) * 100 : 0}%`,
+                  width: `${durationProgramUs > 0 ? Math.max(2, ((bgm.endUs - bgm.startUs) / durationProgramUs) * 100) : 0}%`,
+                }}
+                onPointerDown={(e) => onBgmDown(e, 'move')}
+                onPointerMove={onBgmMove}
+                onPointerUp={onBgmUp}
+                title={`${bgm.title} · ${fmt(bgm.startUs)}~${fmt(bgm.endUs)} · 드래그=이동 · 양끝=길이${bgm.duck ? ' · 덕킹 on' : ''}`}
+              >
+                <span
+                  className="ov-block-h l"
+                  onPointerDown={(e) => onBgmDown(e, 'l')}
+                  onPointerMove={onBgmMove}
+                  onPointerUp={onBgmUp}
+                />
+                <span className="ov-block-label">
+                  <Music size={11} /> {bgm.title}
+                  {bgm.duck ? ' · 덕킹' : ''}
+                </span>
+                <span
+                  className="ov-block-h r"
+                  onPointerDown={(e) => onBgmDown(e, 'r')}
+                  onPointerMove={onBgmMove}
+                  onPointerUp={onBgmUp}
+                />
+              </div>
             )}
           </div>
         </div>

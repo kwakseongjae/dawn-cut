@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createWriteStream, existsSync, mkdtempSync, readdirSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -385,6 +385,26 @@ ipcMain.handle('assets:motionStickers', () => {
       .filter((f) => f.toLowerCase().endsWith('.gif'))
       .sort()
       .map((f) => ({ name: f.replace(/\.gif$/i, ''), path: join(dir, f) }));
+  } catch {
+    return [];
+  }
+});
+
+// B7: 번들 BGM 카탈로그(assets/bgm/catalog.json + 절대경로). motionStickers와 동일 해석.
+ipcMain.handle('assets:bgmCatalog', () => {
+  const dir = app.isPackaged
+    ? join(process.resourcesPath, 'bgm')
+    : resolve(__dirname, '../../../../assets/bgm');
+  try {
+    const catalog = JSON.parse(readFileSync(join(dir, 'catalog.json'), 'utf8')) as Array<{
+      id: string;
+      title: string;
+      desc: string;
+      bpm: number;
+      durationSec: number;
+      loopable: boolean;
+    }>;
+    return catalog.map((c) => ({ ...c, path: join(dir, `${c.id}.m4a`) }));
   } catch {
     return [];
   }

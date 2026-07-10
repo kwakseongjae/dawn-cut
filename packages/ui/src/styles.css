@@ -831,6 +831,49 @@ body {
   background: rgba(10, 14, 26, 0.65);
   pointer-events: none;
 }
+/* B7: BGM 패널·Music 레인 */
+.bgm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bgm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.bgm-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bgm-meta b {
+  font-size: 12px;
+}
+.bgm-meta span {
+  font-size: 10px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bgm-current {
+  padding: 10px;
+  border: 1px solid rgba(122, 162, 247, 0.4);
+  border-radius: 10px;
+  background: rgba(122, 162, 247, 0.07);
+}
+.ov-block.bgm-block {
+  background: rgba(64, 160, 120, 0.85);
+  border-color: rgba(64, 160, 120, 0.9);
+}
 /* B4: 경계 전환 배지 — 클립 경계 중앙의 마름모(크로스페이드=보라, 암전=검정 테두리) */
 .tr-badge {
   position: absolute;

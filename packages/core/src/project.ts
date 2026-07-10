@@ -61,6 +61,18 @@ export interface Project {
   colorPreset?: string;
   autoEnhanceEq?: ColorEq | null;
   glossary?: GlossaryPair[];
+  bgm?: ProjectBgm;
+}
+
+/** B7 BGM 트랙(단일) — 프로그램 좌표 시간창 + 볼륨/루프/덕킹. */
+export interface ProjectBgm {
+  src: string;
+  title: string;
+  startUs: number;
+  endUs: number;
+  volume: number;
+  loop: boolean;
+  duck: boolean;
 }
 
 export interface ProjectExtras {
@@ -73,6 +85,7 @@ export interface ProjectExtras {
   colorPreset?: string;
   autoEnhanceEq?: ColorEq | null;
   glossary?: GlossaryPair[];
+  bgm?: ProjectBgm;
 }
 
 export function makeProject(
@@ -97,6 +110,7 @@ export function makeProject(
       : {}),
     ...(extras?.autoEnhanceEq ? { autoEnhanceEq: extras.autoEnhanceEq } : {}),
     ...(extras?.glossary?.length ? { glossary: extras.glossary } : {}),
+    ...(extras?.bgm ? { bgm: extras.bgm } : {}),
   };
 }
 

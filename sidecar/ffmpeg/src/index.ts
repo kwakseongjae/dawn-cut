@@ -326,6 +326,18 @@ export interface RenderOpts {
   inputHasAudio?: boolean;
   /** 출력 프레임레이트(기본 = 타임라인 fps). 예: 60fps 원본을 30으로, 또는 60 업샘플. */
   outFps?: number;
+  /**
+   * B7 BGM 트랙 — 프로그램(+보이스) 위에 음악을 깐다. duck=true(B6)면 말소리(원본+보이스)가
+   * 나올 때 sidechaincompress로 음악이 자동으로 숙는다. 미지정 시 기존과 인자 바이트 동일.
+   */
+  bgm?: {
+    path: string;
+    startUs: number; // 프로그램 좌표
+    endUs: number;
+    volume: number; // 0..1 (관례 0.15~0.35)
+    loop: boolean; // 창 길이만큼 반복
+    duck: boolean; // B6 덕킹
+  };
 }
 
 /** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
@@ -581,6 +593,25 @@ export async function renderEdl(
     const delayMs = Math.round((opts.voiceStartUs ?? 0) / 1000);
     filter += `;[${voiceIdx}:a]adelay=${delayMs}:all=1[vdelay];[a][vdelay]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
     audioLabel = '[aout]';
+  }
+  // ── B7 BGM(+B6 덕킹) — 기존 체인 '뒤'에만 스테이지 추가(bgm 없으면 인자 바이트 동일) ──
+  if (opts.bgm) {
+    const bgmIdx = voiceIdx + (opts.voicePath ? 1 : 0);
+    const spanSec = Math.max(0.1, (opts.bgm.endUs - opts.bgm.startUs) / 1e6);
+    if (opts.bgm.loop) args.push('-stream_loop', '-1');
+    args.push('-t', spanSec.toFixed(6), '-i', opts.bgm.path);
+    const delayMs = Math.round(opts.bgm.startUs / 1000);
+    const vol = Math.max(0, Math.min(1, opts.bgm.volume));
+    const fadeOutSt = Math.max(0, spanSec - 1).toFixed(6);
+    // 창 경계 페이드(in 0.5/out 1.0)로 뚝 끊김 방지 → adelay로 프로그램 위치에 배치.
+    filter += `;[${bgmIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=${vol},afade=t=in:d=0.5,afade=t=out:st=${fadeOutSt}:d=1,adelay=${delayMs}:all=1[bgmv]`;
+    if (opts.bgm.duck) {
+      // B6: 말소리(원본+보이스)를 사이드체인으로 BGM 압축 — 발화 중 자동으로 숙는다.
+      filter += `;${audioLabel}asplit=2[amain][asc];[bgmv][asc]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500[bgmd];[amain][bgmd]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[afinal]`;
+    } else {
+      filter += `;${audioLabel}[bgmv]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[afinal]`;
+    }
+    audioLabel = '[afinal]';
   }
   // 내보내기 프리셋(issue #5): 해상도 스케일은 최종 비디오 라벨 뒤에 1번만 붙인다(오버레이/크롭 이후).
   let mapVideo = videoLabel;
