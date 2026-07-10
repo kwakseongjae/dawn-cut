@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { buildOverlayFilter, effectFilter } from '@dawn-cut/core';
 import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
@@ -113,6 +114,89 @@ export async function makePreviewProxy(src: string, out: string, maxDim = 1280):
     out,
   ]);
   return out;
+}
+
+/**
+ * 타임라인 필름스트립용 썸네일 배치(B2) — fps 필터 1패스, ≈1장/s, 상한으로 롱폼 방어.
+ * 편집·내보내기와 무관한 시각 보조(원본 좌표계에 영향 없음). (IPC `media:visuals`)
+ */
+export async function extractThumbs(
+  src: string,
+  outDir: string,
+  opts: { height?: number; maxCount?: number } = {},
+): Promise<{ thumbs: string[]; intervalUs: number }> {
+  const height = opts.height ?? 54;
+  const maxCount = opts.maxCount ?? 120;
+  const probe = await probeMedia(src);
+  const durSec = probe.durationUs / 1e6;
+  if (durSec <= 0 || probe.width <= 0) return { thumbs: [], intervalUs: 0 };
+  const count = Math.max(1, Math.min(maxCount, Math.ceil(durSec)));
+  const intervalSec = durSec / count;
+  await mkdir(outDir, { recursive: true });
+  await exec(FFMPEG(), [
+    '-y',
+    '-loglevel',
+    'error',
+    '-i',
+    src,
+    '-vf',
+    `fps=1/${intervalSec},scale=-2:${height}`,
+    '-q:v',
+    '5',
+    join(outDir, 'thumb-%04d.jpg'),
+  ]);
+  const thumbs = (await readdir(outDir))
+    .filter((f) => f.startsWith('thumb-') && f.endsWith('.jpg'))
+    .sort()
+    .map((f) => join(outDir, f));
+  return { thumbs, intervalUs: Math.round(intervalSec * 1e6) };
+}
+
+/**
+ * 파형 피크(B2) — 8kHz mono s16le로 디코드해 버킷당 max|sample| (0..1). 오디오 없으면 [].
+ * maxBuffer 256MB = 8kHz×2B 기준 약 4.4시간분.
+ */
+export async function extractPeaks(
+  src: string,
+  opts: { peaksPerSec?: number } = {},
+): Promise<number[]> {
+  const peaksPerSec = opts.peaksPerSec ?? 20;
+  const probe = await probeMedia(src);
+  if (!probe.hasAudio || probe.durationUs <= 0) return [];
+  const SR = 8000;
+  const { stdout } = await exec(
+    FFMPEG(),
+    [
+      '-v',
+      'error',
+      '-i',
+      src,
+      '-map',
+      'a:0',
+      '-ac',
+      '1',
+      '-ar',
+      String(SR),
+      '-f',
+      's16le',
+      'pipe:1',
+    ],
+    { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 },
+  );
+  const buf = stdout as unknown as Buffer;
+  const perBucket = Math.max(1, Math.round(SR / peaksPerSec));
+  const samples = Math.floor(buf.length / 2);
+  const peaks: number[] = [];
+  for (let start = 0; start < samples; start += perBucket) {
+    const end = Math.min(samples, start + perBucket);
+    let m = 0;
+    for (let i = start; i < end; i++) {
+      const v = Math.abs(buf.readInt16LE(i * 2));
+      if (v > m) m = v;
+    }
+    peaks.push(Math.round((m / 32768) * 100) / 100);
+  }
+  return peaks;
 }
 
 function parseFps(rate: string | undefined): number {

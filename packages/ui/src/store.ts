@@ -33,6 +33,7 @@ import type {
   TranscriptModel,
 } from '@dawn-cut/core';
 import { create } from 'zustand';
+import type { MediaVisuals } from './types.js';
 
 const MEDIA_ID = 'media';
 
@@ -43,6 +44,8 @@ interface EditorState {
   previewPath: string | null;
   proxyBusy: boolean; // 미리보기 프록시 변환 중
   hasAudio: boolean; // 가져온 미디어에 오디오 트랙이 있는가(자막 생성 가능 여부)
+  // B2: 타임라인 필름스트립·파형(시각 보조 — 편집 좌표계와 무관, 실패 시 그냥 없음)
+  mediaVisuals: MediaVisuals | null;
   transcribeError: string | null; // 자막 생성 실패/불가 사유(사람이 읽을 메시지)
   transcript: TranscriptModel | null;
   timeline: TimelineModel | null;
@@ -72,6 +75,7 @@ interface EditorState {
   importPath: (path: string) => Promise<void>; // 프로브만(즉시) — 자막 자동 생성 안 함
   transcribeMedia: () => Promise<void>; // 명시적 자막 생성(받아쓰기)
   clearMedia: () => void; // 가져온 영상·자막·편집 비우기(빈 상태로)
+  loadVisuals: (path: string) => void; // B2: 필름스트립·파형 백그라운드 로드(내부용)
   seekTo: (programUs: number) => void; // 플레이헤드 이동 + 일시정지(스크럽/타임라인 클릭)
   toggleWord: (id: string) => void;
   deleteSelection: () => void;
@@ -416,6 +420,7 @@ function restoreFromProject(project: ReturnType<typeof deserializeProject>) {
     previewPath: project.mediaPath, // 열기는 원본 미리보기(검으면 다시 가져오기로 프록시 생성)
     proxyBusy: false,
     hasAudio: true, // 저장된 프로젝트는 이미 전사를 거쳤다고 가정
+    mediaVisuals: null, // B2: 호출부(openProject/recover)가 loadVisuals로 다시 채운다
     transcribeError: null,
     transcript: project.transcript,
     timeline: project.timeline,
@@ -453,6 +458,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   previewPath: null,
   proxyBusy: false,
   hasAudio: false,
+  mediaVisuals: null,
   transcribeError: null,
   transcript: null,
   timeline: null,
@@ -813,6 +819,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       previewPath: proxyNeeded ? null : path,
       proxyBusy: proxyNeeded,
       hasAudio: probe.hasAudio,
+      mediaVisuals: null,
       transcribeError: null,
       transcript: null, // 자막은 'transcribeMedia'를 눌러야 생성된다.
       timeline,
@@ -850,6 +857,7 @@ export const useEditor = create<EditorState>((set, get) => ({
           if (get().mediaPath === path) set({ previewPath: path, proxyBusy: false });
         });
     }
+    get().loadVisuals(path);
   },
 
   transcribeMedia: async () => {
@@ -905,12 +913,24 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
   },
 
+  // B2: 필름스트립·파형 백그라운드 로드(캐시 히트면 즉시). 실패는 조용히 —
+  // 시각 보조의 부재일 뿐 기능 대체가 아니다(같은 미디어일 때만 반영, 프록시 패턴과 동일).
+  loadVisuals: (path) => {
+    void window.dawn
+      ?.mediaVisuals?.(path)
+      .then((v) => {
+        if (get().mediaPath === path) set({ mediaVisuals: v });
+      })
+      .catch(() => {});
+  },
+
   clearMedia: () =>
     set({
       mediaPath: null,
       previewPath: null,
       proxyBusy: false,
       hasAudio: false,
+      mediaVisuals: null,
       transcribeError: null,
       transcript: null,
       timeline: null,
@@ -1194,6 +1214,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!dawn) return;
     const project = deserializeProject(await dawn.openProject(path));
     set(restoreFromProject(project));
+    get().loadVisuals(project.mediaPath);
   },
 
   // ── 자동저장 복구(issue #17) ──
@@ -1217,6 +1238,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     }
     const project = deserializeProject(saved.content);
     set({ ...restoreFromProject(project), recovery: null, status: '작업을 복구했습니다' });
+    get().loadVisuals(project.mediaPath);
   },
   dismissRecovery: () => {
     void window.dawn?.autosaveClear?.();

@@ -87,6 +87,7 @@ import './styles.css';
 import { deadSet, useEditor } from './store.js';
 import type { ColorPreset, ManualCue, Overlay, PanelId, TtsClip } from './store.js';
 import { rulerTicks } from './timeline-scale.js';
+import { filmstripSlices, peakSlice, wavePathD } from './timeline-visuals.js';
 
 export * from './types.js';
 export { useEditor } from './store.js';
@@ -3178,6 +3179,7 @@ function Timeline() {
     ttsClips,
     transcript,
     manualCues,
+    mediaVisuals,
     seekTo,
     selectOverlay,
     selectedOverlayId,
@@ -3447,9 +3449,49 @@ function Timeline() {
             {clips.map((c) => {
               const len = c.sourceEnd - c.sourceStart;
               const pct = durationProgramUs > 0 ? (len / durationProgramUs) * 100 : 0;
+              // B2: 필름스트립(소스 시간 매핑, 경계는 크롭) + 하단 SVG 파형(스케일-프리).
+              const film = mediaVisuals
+                ? filmstripSlices(
+                    mediaVisuals.thumbIntervalUs,
+                    mediaVisuals.thumbs.length,
+                    c.sourceStart,
+                    c.sourceEnd,
+                  )
+                : [];
+              const wave = mediaVisuals
+                ? peakSlice(
+                    mediaVisuals.peaks,
+                    mediaVisuals.peaksPerSec,
+                    c.sourceStart,
+                    c.sourceEnd,
+                  )
+                : [];
               return (
                 <div className="clip" key={c.id} style={{ width: `${pct}%` }}>
-                  {fmt(len)}
+                  {film.length > 0 && (
+                    <div className="film" aria-hidden="true">
+                      {film.map((f) => (
+                        <img
+                          key={f.index}
+                          src={`file://${mediaVisuals?.thumbs[f.index] ?? ''}`}
+                          style={{ left: `${f.leftPct}%`, width: `${f.widthPct}%` }}
+                          alt=""
+                          draggable={false}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {wave.length > 1 && (
+                    <svg
+                      className="wave"
+                      viewBox={`0 0 ${wave.length - 1} 2`}
+                      preserveAspectRatio="none"
+                      aria-hidden="true"
+                    >
+                      <path d={wavePathD(wave)} />
+                    </svg>
+                  )}
+                  <span className="clip-label">{fmt(len)}</span>
                 </div>
               );
             })}

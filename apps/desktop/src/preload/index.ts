@@ -42,6 +42,10 @@ const bridge = {
   analyzeVideo: (path: string): Promise<VideoStats> => ipcRenderer.invoke('analyze:video', path),
   makePreviewProxy: (path: string): Promise<{ path: string }> =>
     ipcRenderer.invoke('preview:proxy', path),
+  mediaVisuals: (
+    path: string,
+  ): Promise<{ thumbs: string[]; thumbIntervalUs: number; peaks: number[]; peaksPerSec: number }> =>
+    ipcRenderer.invoke('media:visuals', path),
   render: (
     edl: Edl,
     outPath: string,

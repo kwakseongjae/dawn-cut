@@ -3,6 +3,11 @@
 > 형식: `## YYYY-MM-DD — <세션 한 줄>` + 본문 5줄 이내(한 일 / 열린 것 / 다음). **기존 항목 수정 금지.**
 > 작업 단위의 미시 기록은 여기가 아니라 각 작업 패킷(`tasks/<ID>-*.md`)의 진행 저널에.
 
+## 2026-07-10 — B2 필름스트립+파형 완료 (v0.1.12)
+- 한 일: sidecar extractThumbs(≈1장/s, 상한 120)·extractPeaks(20/s) + media:visuals IPC(mtime 캐시) + Timeline 클립 = 필름스트립+SVG 파형(preserveAspectRatio:none — 줌 무재그리기). unit 470·int 55·e2e 16·QA 8 그린. 실제 1080p 영상 캡쳐 확인(output/b2-timeline/).
+- 열린 것: 보이스(TTS) 클립 파형은 미적용(B2 범위 제외 — 후속 후보), GitHub Actions는 과금 문제로 제거됨(로컬 체인만)
+- 다음: B4 (전환 crossfade/dip-to-black)
+
 ## 2026-07-10 — ChatCut 분석 + B1 타임라인 v2 완료 (v0.1.11)
 - 한 일: ChatCut Codex 플러그인 실체 규명(클라우드 웹 NLE + git 리포 플러그인 — A6로 등재, VIBE 문서 1-b절) / 사용자 결정으로 B-트랙 우선 재배열 / **B1 완료**: 시간 눈금(간격 사다리)+줌 1~16×(⌘휠 앵커)+가로 스크롤+sticky 라벨. unit 460·int 52·e2e 15·QA 8 그린, 캡쳐 확인.
 - 열린 것: 없음

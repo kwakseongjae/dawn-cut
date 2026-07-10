@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream, existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,6 +9,8 @@ import {
   analyzeVideo,
   detectSilences,
   extractAudio,
+  extractPeaks,
+  extractThumbs,
   makePreviewProxy,
   probeMedia,
   renderAudioOnly,
@@ -45,6 +47,31 @@ ipcMain.handle('media:extractAudio', async (_e, path: string) => {
   const wavPath = join(dir, 'audio.wav');
   await extractAudio(path, wavPath);
   return { wavPath };
+});
+
+// B2: 타임라인 필름스트립·파형 — userData/cache/visuals/<sha1(path:mtime:size)>/ 디스크 캐시.
+// 원본이 바뀌면(mtime/size) 키가 바뀌어 자동 무효화. 시각 보조 전용(편집 좌표계와 무관).
+ipcMain.handle('media:visuals', async (_e, path: string) => {
+  const st = await stat(path);
+  const key = createHash('sha1')
+    .update(`${path}:${st.mtimeMs}:${st.size}`)
+    .digest('hex')
+    .slice(0, 16);
+  const dir = join(app.getPath('userData'), 'cache', 'visuals', key);
+  const metaPath = join(dir, 'meta.json');
+  try {
+    return JSON.parse(await readFile(metaPath, 'utf8'));
+  } catch {
+    // 캐시 미스 — 아래에서 생성.
+  }
+  await mkdir(dir, { recursive: true });
+  const [{ thumbs, intervalUs }, peaks] = await Promise.all([
+    extractThumbs(path, dir),
+    extractPeaks(path),
+  ]);
+  const visuals = { thumbs, thumbIntervalUs: intervalUs, peaks, peaksPerSec: 20 };
+  await writeFile(metaPath, JSON.stringify(visuals));
+  return visuals;
 });
 
 ipcMain.handle('stt:transcribe', (_e, wavPath: string, mediaId: string, lang?: string) =>

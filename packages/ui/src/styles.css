@@ -783,6 +783,7 @@ body {
   cursor: pointer;
 }
 .clip {
+  position: relative; /* B2: 필름스트립/파형/라벨 절대배치 기준 */
   height: 100%;
   background: linear-gradient(180deg, #2b3550, #222a40);
   border: 1px solid #3a466b;
@@ -793,8 +794,42 @@ body {
   padding: 5px 7px;
   color: #aeb9e6;
   font-size: 10px;
-  overflow: hidden;
+  overflow: hidden; /* 경계 썸네일(음수 left)을 크롭 — filmstripSlices 전제 */
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* B2: 필름스트립 — 소스 시간에 매핑된 썸네일 띠(클립 전체 높이, 파형 아래 깔림) */
+.clip .film {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.clip .film img {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.85;
+}
+/* B2: 파형 — 하단 띠, preserveAspectRatio:none이라 줌 시 CSS 스케일만 */
+.clip .wave {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 18px;
+  pointer-events: none;
+}
+.clip .wave path {
+  fill: rgba(122, 162, 247, 0.75);
+}
+.clip .clip-label {
+  position: relative;
+  z-index: 2;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(10, 14, 26, 0.65);
+  pointer-events: none;
 }
 .playhead {
   position: absolute;

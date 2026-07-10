@@ -25,6 +25,14 @@ export interface LlmStatus {
   modelPath: string;
   reason?: string;
 }
+/** B2: 타임라인 필름스트립·파형 — main이 sidecar로 추출·캐시해 내려준다. */
+export interface MediaVisuals {
+  thumbs: string[];
+  thumbIntervalUs: number;
+  peaks: number[];
+  peaksPerSec: number;
+}
+
 /** Typed IPC bridge exposed by the Electron preload (contextBridge). */
 export interface DawnBridge {
   /** 고급(전체) UI 노출 여부 — DAWN_ADVANCED=1. false면 쇼케이스용 단순 UI. */
@@ -41,6 +49,8 @@ export interface DawnBridge {
   ) => Promise<SilenceInterval[]>;
   analyzeVideo: (path: string) => Promise<VideoStats>;
   makePreviewProxy: (path: string) => Promise<{ path: string }>;
+  /** B2: 타임라인 필름스트립·파형 데이터(디스크 캐시). 시각 보조 전용. */
+  mediaVisuals?: (path: string) => Promise<MediaVisuals>;
   render: (
     edl: Edl,
     outPath: string,
