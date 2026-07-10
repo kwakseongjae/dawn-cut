@@ -41,5 +41,5 @@
 - **멀티라인 커밋**: compound 명령 안의 `-m`/heredoc은 조용히 실패 → `printf '%s\n' … > /tmp/cmsg.txt && git commit -F /tmp/cmsg.txt`, 커밋 후 `git log` 확인.
 - **biome 포매터**가 객체 리터럴을 개행 분리 → 멀티라인 문자열 치환이 조용히 no-op — 편집 후 반드시 grep으로 적용 확인.
 - `packages/ui/src/store.ts`는 인터페이스/구현 양쪽에 같은 anchor 문자열 존재 — 구현부는 `useEditor` 이후에서 탐색.
-- CI에서 whisper는 `DAWN_WHISPER_NO_GPU=1` **잡 레벨** 필수(가상화 Metal 오염 — 고신뢰 환각 `*Rain*` 유형).
+- **GitHub Actions는 2026-07 제거됨**(유료 할당 소진) — 워크플로를 다시 추가하지 말 것. 검증은 로컬 체인이 유일한 게이트. (참고: CI를 부활시킬 경우 whisper는 `DAWN_WHISPER_NO_GPU=1` 잡 레벨 필수 — 가상화 Metal 오염.)
 - core에 이징 추가 시 `packages/ui/src/store.ts`의 Overlay 키프레임 유니언 2곳도 갱신(TS2345).
