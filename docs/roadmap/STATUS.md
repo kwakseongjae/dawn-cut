@@ -49,7 +49,7 @@
 | B6 | 오디오 덕킹 | done | 6866848 | 2026-07-10 | B7과 동시(sidechaincompress, 발화 구간 76% 감쇠 실증) |
 | B7 | BGM 트랙 | done | 6866848 | 2026-07-10 | unit 495/int 69/e2e 19/QA 8 · BGM 패널+Music 레인 |
 | B8 | 데모 오토줌 | todo | | | dep: B5 · 2026-07-10 신설 |
-| B9 | 반응형 레이아웃 | done | (다음 커밋에 기록) | 2026-07-10 | e2e 20/QA 8 · clamp+vh/vw+1120px BP |
+| B9 | 반응형 레이아웃 | done | 09b7b97 | 2026-07-10 | e2e 20/QA 8 · clamp+vh/vw+1120px BP |
 
 ### Phase C — 프리뷰 WYSIWYG
 | ID | 작업 | 상태 | 커밋 | 완료일 | 메모 |
