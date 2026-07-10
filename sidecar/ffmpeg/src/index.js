@@ -3,29 +3,13 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { buildOverlayFilter, effectFilter } from '@dawn-cut/core';
-import type { Edl, OverlayClip, VideoStats } from '@dawn-cut/core';
-
 const exec = promisify(execFile);
-
 // 호출 시점 해석(lazy) — 패키징 앱은 main 부팅 시 동봉 경로(Resources/bin)를
 // DAWN_FFMPEG/DAWN_FFPROBE env로 주입한다(ESM import 호이스팅보다 늦어도 적용되게).
 const FFMPEG = () => process.env.DAWN_FFMPEG ?? 'ffmpeg';
 const FFPROBE = () => process.env.DAWN_FFPROBE ?? 'ffprobe';
-
-export interface ProbeResult {
-  durationUs: number;
-  fps: number;
-  hasAudio: boolean;
-  width: number;
-  height: number;
-  /** 비디오 코덱(예: h264/hevc/prores). 미리보기 재생 가능 여부 판단에 쓴다. */
-  vcodec: string;
-  /** H.264 등의 level×10(예: 5.2→52, 4.0→40). 고레벨은 Electron 미리보기가 못 그릴 수 있다. */
-  level: number;
-}
-
 /** ffprobe → duration (µs), video fps, frame size, audio presence, codec/level. (IPC `media:probe`) */
-export async function probeMedia(path: string): Promise<ProbeResult> {
+export async function probeMedia(path) {
   const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
@@ -35,24 +19,12 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
     'json',
     path,
   ]);
-  const data = JSON.parse(stdout) as {
-    format?: { duration?: string };
-    streams?: Array<{
-      codec_type?: string;
-      codec_name?: string;
-      level?: number;
-      r_frame_rate?: string;
-      width?: number;
-      height?: number;
-    }>;
-  };
-
+  const data = JSON.parse(stdout);
   const durationUs = Math.round(Number(data.format?.duration ?? 0) * 1_000_000);
   const streams = data.streams ?? [];
   const hasAudio = streams.some((s) => s.codec_type === 'audio');
   const video = streams.find((s) => s.codec_type === 'video');
   const fps = parseFps(video?.r_frame_rate);
-
   return {
     durationUs,
     fps,
@@ -63,7 +35,6 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
     level: Number(video?.level ?? 0),
   };
 }
-
 /**
  * 미리보기 프록시 — 원본을 '확실히 재생되는' 작은 H.264(Main/Level 4.0, ≤1280px, yuv420p,
  * faststart)로 재인코딩한다. (IPC `preview:proxy`)
@@ -75,7 +46,7 @@ export async function probeMedia(path: string): Promise<ProbeResult> {
  *
  * @param src 원본 경로.  @param out 출력 mp4 경로.  @param maxDim 긴 변 상한(기본 1280).
  */
-export async function makePreviewProxy(src: string, out: string, maxDim = 1280): Promise<string> {
+export async function makePreviewProxy(src, out, maxDim = 1280) {
   const cap = Math.max(160, Math.min(2160, Math.round(maxDim)));
   const enc = await detectH264Encoder();
   const encArgs =
@@ -115,16 +86,11 @@ export async function makePreviewProxy(src: string, out: string, maxDim = 1280):
   ]);
   return out;
 }
-
 /**
  * 타임라인 필름스트립용 썸네일 배치(B2) — fps 필터 1패스, ≈1장/s, 상한으로 롱폼 방어.
  * 편집·내보내기와 무관한 시각 보조(원본 좌표계에 영향 없음). (IPC `media:visuals`)
  */
-export async function extractThumbs(
-  src: string,
-  outDir: string,
-  opts: { height?: number; maxCount?: number } = {},
-): Promise<{ thumbs: string[]; intervalUs: number }> {
+export async function extractThumbs(src, outDir, opts = {}) {
   const height = opts.height ?? 54;
   const maxCount = opts.maxCount ?? 120;
   const probe = await probeMedia(src);
@@ -151,15 +117,11 @@ export async function extractThumbs(
     .map((f) => join(outDir, f));
   return { thumbs, intervalUs: Math.round(intervalSec * 1e6) };
 }
-
 /**
  * 파형 피크(B2) — 8kHz mono s16le로 디코드해 버킷당 max|sample| (0..1). 오디오 없으면 [].
  * maxBuffer 256MB = 8kHz×2B 기준 약 4.4시간분.
  */
-export async function extractPeaks(
-  src: string,
-  opts: { peaksPerSec?: number } = {},
-): Promise<number[]> {
+export async function extractPeaks(src, opts = {}) {
   const peaksPerSec = opts.peaksPerSec ?? 20;
   const probe = await probeMedia(src);
   if (!probe.hasAudio || probe.durationUs <= 0) return [];
@@ -183,10 +145,10 @@ export async function extractPeaks(
     ],
     { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 },
   );
-  const buf = stdout as unknown as Buffer;
+  const buf = stdout;
   const perBucket = Math.max(1, Math.round(SR / peaksPerSec));
   const samples = Math.floor(buf.length / 2);
-  const peaks: number[] = [];
+  const peaks = [];
   for (let start = 0; start < samples; start += perBucket) {
     const end = Math.min(samples, start + perBucket);
     let m = 0;
@@ -198,14 +160,12 @@ export async function extractPeaks(
   }
   return peaks;
 }
-
-function parseFps(rate: string | undefined): number {
+function parseFps(rate) {
   if (!rate) return 0;
   const [num, den] = rate.split('/').map(Number);
   if (!num || !den) return 0;
   return Math.round((num / den) * 1000) / 1000;
 }
-
 /**
  * ffmpeg `signalstats` → 평균 휘도(YAVG)/채도(SATAVG)/휘도 범위(YMIN·YMAX) (IPC `analyze:video`).
  *
@@ -215,10 +175,7 @@ function parseFps(rate: string | undefined): number {
  *
  * 측정값은 core의 순수 `autoEnhanceParams(stats)` 로 넘겨 eq 파라미터를 계산한다(렌더는 별도).
  */
-export async function analyzeVideo(
-  path: string,
-  opts: { sampleSec?: number; sampleFps?: number } = {},
-): Promise<VideoStats> {
+export async function analyzeVideo(path, opts = {}) {
   const sampleSec = Math.min(60, Math.max(0.5, opts.sampleSec ?? 6));
   const sampleFps = Math.min(10, Math.max(0.5, opts.sampleFps ?? 2));
   const { stderr } = await exec(FFMPEG(), [
@@ -232,10 +189,9 @@ export async function analyzeVideo(
     '-f',
     'null',
     '-',
-  ]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
-
-  const yavgs: number[] = [];
-  const satavgs: number[] = [];
+  ]).catch((e) => ({ stderr: e.stderr ?? '' }));
+  const yavgs = [];
+  const satavgs = [];
   let ymin = Number.POSITIVE_INFINITY;
   let ymax = Number.NEGATIVE_INFINITY;
   for (const line of stderr.split('\n')) {
@@ -249,8 +205,7 @@ export async function analyzeVideo(
     if (yx) ymax = Math.max(ymax, Number(yx[1]));
   }
   if (yavgs.length === 0) return { yavg: 128, ymin: 16, ymax: 240, satavg: 40 }; // 파싱 실패 폴백
-  const mean = (xs: number[], d: number) =>
-    xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : d;
+  const mean = (xs, d) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : d);
   return {
     yavg: mean(yavgs, 128),
     ymin: Number.isFinite(ymin) ? ymin : 16,
@@ -258,15 +213,11 @@ export async function analyzeVideo(
     satavg: mean(satavgs, 40),
   };
 }
-
 /**
  * Extract audio as 16kHz mono PCM s16le wav for whisper. (IPC `media:extractAudio`)
  * FFmpeg runs as a subprocess — no linking, no --enable-gpl (LGPL preserved).
  */
-export async function extractAudio(
-  inputPath: string,
-  outWavPath: string,
-): Promise<{ wavPath: string }> {
+export async function extractAudio(inputPath, outWavPath) {
   await exec(FFMPEG(), [
     '-y',
     '-loglevel',
@@ -284,60 +235,21 @@ export async function extractAudio(
   ]);
   return { wavPath: outWavPath };
 }
-
-const sec = (us: number): string => (us / 1_000_000).toFixed(6);
-
+const sec = (us) => (us / 1_000_000).toFixed(6);
 /** Write an SRT document to disk. (IPC `subtitle:write`) */
-export async function writeSrt(path: string, content: string): Promise<{ path: string }> {
+export async function writeSrt(path, content) {
   await writeFile(path, content, 'utf8');
   return { path };
 }
-
-/**
- * Render an EDL to an MP4 by trimming + concatenating source segments via a
- * single filter_complex graph (frame-accurate, single source for PoC).
- * When `subtitlesPath` is given, muxes the SRT as a soft subtitle track
- * (mov_text) — non-destructive, toggleable, no libass dependency.
- * (IPC `export:render`) FFmpeg runs as a subprocess; LGPL preserved.
- */
-export type ExportFormat = 'mp4' | 'gif';
-
-export interface RenderOpts {
-  subtitlesPath?: string;
-  format?: ExportFormat;
-  overlays?: OverlayClip[];
-  frameW?: number;
-  frameH?: number;
-  voicePath?: string; // extra audio (TTS voiceover) mixed over the program audio
-  voiceStartUs?: number; // program offset for the voiceover
-  // 자동 리프레이밍: 소스를 목표 종횡비로 중앙 크롭(쇼츠 9:16, 정사각 1:1). 'source'/미지정=원본 유지.
-  // 오버레이 좌표는 크롭된 프레임 기준으로 재계산된다(safe-area 보존).
-  reframe?: '9:16' | '1:1' | 'source';
-  // ── 내보내기 프리셋(issue #5) — 미지정 시 기존과 바이트 동일 ──
-  /** 출력 세로 해상도(px) — 가로는 종횡비 유지(-2, 짝수). 예: 1080/720. */
-  outHeight?: number;
-  /** 품질 프리셋 → libx264 CRF(high=18/medium=23/small=28). 미지정=ffmpeg 기본. */
-  quality?: 'high' | 'medium' | 'small';
-  /**
-   * 입력에 오디오 스트림이 있는가(기본 true=기존 동작). false면 [0:a] 참조 대신
-   * 무음 트랙(anullsrc)을 합성한다 — 화면녹화 등 무음 영상도 내보내기·TTS 믹스가 되게.
-   * (실측 2026-06-11: 미지정 상태로 무음 입력을 주면 ffmpeg가 [0:a]에서 즉사했다.)
-   */
-  inputHasAudio?: boolean;
-  /** 출력 프레임레이트(기본 = 타임라인 fps). 예: 60fps 원본을 30으로, 또는 60 업샘플. */
-  outFps?: number;
-}
-
 /** 품질 프리셋 → CRF 값(순수, 단위테스트 대상). */
-export function crfForQuality(q: NonNullable<RenderOpts['quality']>): string {
+export function crfForQuality(q) {
   return q === 'high' ? '18' : q === 'small' ? '28' : '23';
 }
-
 // ── H.264 인코더 폴백(issue #19) ─────────────────────────────────────
 // 동봉용 LGPL ffmpeg에는 libx264(GPL)가 없다 → macOS 하드웨어 인코더
 // h264_videotoolbox로 폴백한다. dev(brew GPL 빌드)에선 libx264 유지(기존 산출물 동일).
-let h264Cache: 'libx264' | 'h264_videotoolbox' | null = null;
-export async function detectH264Encoder(): Promise<'libx264' | 'h264_videotoolbox'> {
+let h264Cache = null;
+export async function detectH264Encoder() {
   if (h264Cache) return h264Cache;
   try {
     const { stdout } = await exec(FFMPEG(), ['-hide_banner', '-encoders']);
@@ -348,23 +260,22 @@ export async function detectH264Encoder(): Promise<'libx264' | 'h264_videotoolbo
   return h264Cache;
 }
 /** 테스트용 — 감지 캐시 리셋(env로 ffmpeg를 바꿔치기하는 테스트가 사용). */
-export function resetEncoderCache(): void {
+export function resetEncoderCache() {
   h264Cache = null;
 }
 /** CRF(libx264) ↔ -q:v(videotoolbox, 0~100 높을수록 고화질) 결정적 매핑(순수). */
-export function vtbQualityForCrf(crf: number): string {
+export function vtbQualityForCrf(crf) {
   // 선형 매핑: crf18→q75(고화질) · 23→q62(보통) · 28→q48(고압축) · 프록시24→q58.
   return String(Math.max(30, Math.min(85, Math.round(123.6 - 2.7 * crf))));
 }
 /** 인코더별 비디오 인자(순수 조립). */
-export function vencArgs(enc: 'libx264' | 'h264_videotoolbox', crf: number): string[] {
+export function vencArgs(enc, crf) {
   return enc === 'libx264'
     ? ['-c:v', 'libx264', '-crf', String(crf)]
     : ['-c:v', 'h264_videotoolbox', '-q:v', vtbQualityForCrf(crf)];
 }
-
 /** 소스 w×h를 목표 종횡비로 중앙 크롭할 짝수 치수(짝수=yuv420p 안전). */
-function cropForAspect(w: number, h: number, aspect: '9:16' | '1:1'): { w: number; h: number } {
+function cropForAspect(w, h, aspect) {
   const [tw, th] = aspect === '9:16' ? [9, 16] : [1, 1];
   const target = tw / th;
   const src = w / h;
@@ -373,20 +284,14 @@ function cropForAspect(w: number, h: number, aspect: '9:16' | '1:1'): { w: numbe
   if (src > target)
     cw = Math.round(h * target); // 소스가 더 넓다 → 폭을 깎음
   else ch = Math.round(w / target); // 소스가 더 좁다(세로) → 높이를 깎음
-  const even = (n: number) => Math.max(2, n - (n % 2));
+  const even = (n) => Math.max(2, n - (n % 2));
   return { w: even(Math.min(cw, w)), h: even(Math.min(ch, h)) };
 }
-
-export async function renderEdl(
-  edl: Edl,
-  outPath: string,
-  opts: RenderOpts = {},
-): Promise<{ outPath: string }> {
+export async function renderEdl(edl, outPath, opts = {}) {
   if (edl.segments.length === 0) throw new Error('renderEdl: empty EDL');
-  const input = edl.segments[0]!.mediaPath;
+  const input = edl.segments[0].mediaPath;
   const format = opts.format ?? 'mp4';
   const overlays = opts.overlays ?? [];
-
   // ── B4 경계 전환 — 프로그램 길이 완전 불변 규약 ──
   // crossfade: 소스 '핸들'로만 오버랩(A 꼬리를 sourceEnd 너머 D/2, B 머리를 앞으로 D/2 확장).
   //   xfade 유효 길이 = handleA+handleB → 출력 길이 = Σ원래 세그먼트 길이(EOF/0에선 결정적 축소,
@@ -396,14 +301,14 @@ export async function renderEdl(
   const trans = edl.transitions ?? [];
   const trAfter = new Map(trans.map((t) => [t.afterIndex, t]));
   const nSeg = edl.segments.length;
-  const extL: number[] = new Array(nSeg).fill(0);
-  const extR: number[] = new Array(nSeg).fill(0);
+  const extL = new Array(nSeg).fill(0);
+  const extR = new Array(nSeg).fill(0);
   if (trans.some((t) => t.kind === 'crossfade')) {
     const mediaDurUs = (await probeMedia(input)).durationUs;
     for (const t of trans) {
       if (t.kind !== 'crossfade') continue;
-      const sa = edl.segments[t.afterIndex]!;
-      const sb = edl.segments[t.afterIndex + 1]!;
+      const sa = edl.segments[t.afterIndex];
+      const sb = edl.segments[t.afterIndex + 1];
       extR[t.afterIndex] = Math.min(
         Math.floor(t.durationUs / 2),
         Math.max(0, mediaDurUs - sa.sourceEnd),
@@ -420,17 +325,16 @@ export async function renderEdl(
       }
     }
   }
-  const segLenUs = (i: number) => {
-    const s = edl.segments[i]!;
+  const segLenUs = (i) => {
+    const s = edl.segments[i];
     return s.sourceEnd - s.sourceStart;
   };
-  const extLenUs = (i: number) => segLenUs(i) + (extL[i] ?? 0) + (extR[i] ?? 0);
+  const extLenUs = (i) => segLenUs(i) + (extL[i] ?? 0) + (extR[i] ?? 0);
   const minXfadeUs = Math.ceil(2e6 / edl.fps); // 2프레임 미만 오버랩이면 하드컷으로 강등
-
-  const vparts: string[] = [];
-  const aparts: string[] = [];
-  const vlabels: string[] = [];
-  const alabels: string[] = [];
+  const vparts = [];
+  const aparts = [];
+  const vlabels = [];
+  const alabels = [];
   edl.segments.forEach((s, i) => {
     const a = sec(s.sourceStart - (extL[i] ?? 0));
     const b = sec(s.sourceEnd + (extR[i] ?? 0));
@@ -440,7 +344,7 @@ export async function renderEdl(
     // dipToBlack: 세그먼트-로컬 fade(앞 경계 in / 뒤 경계 out). 오디오는 모든 전환에서 afade.
     const before = trAfter.get(i - 1);
     const after = trAfter.get(i);
-    const vfades: string[] = [];
+    const vfades = [];
     if (before?.kind === 'dipToBlack')
       vfades.push(`fade=t=in:st=0:d=${sec(Math.floor(before.durationUs / 2))}`);
     if (after?.kind === 'dipToBlack')
@@ -448,7 +352,7 @@ export async function renderEdl(
         `fade=t=out:st=${sec(extLenUs(i) - Math.floor(after.durationUs / 2))}:d=${sec(Math.floor(after.durationUs / 2))}`,
       );
     const effChain = [...eff, ...vfades].length > 0 ? `,${[...eff, ...vfades].join(',')}` : '';
-    const afades: string[] = [];
+    const afades = [];
     if (before) afades.push(`afade=t=in:st=0:d=${sec(Math.floor(before.durationUs / 2))}`);
     if (after)
       afades.push(
@@ -463,11 +367,10 @@ export async function renderEdl(
     alabels.push(`[a${i}]`);
   });
   const n = edl.segments.length;
-
   // 비디오 조인: 전환 없으면 기존 단일 concat(바이트 동일), 있으면 xfade/concat 폴드.
-  const buildVideoJoin = (): string => {
+  const buildVideoJoin = () => {
     if (trans.length === 0) return `${vlabels.join('')}concat=n=${n}:v=1:a=0[vbase]`;
-    const parts: string[] = [];
+    const parts = [];
     let cur = 'v0';
     let curLenUs = extLenUs(0);
     for (let i = 1; i < n; i++) {
@@ -487,24 +390,21 @@ export async function renderEdl(
     }
     return parts.join(';');
   };
-
   // ── 리프레이밍: concat된 [vbase]를 목표 종횡비로 중앙 크롭한 뒤 그 위에 오버레이를 올린다.
   // reframe 없으면(또는 'source') baseLabel='vbase'·ovW/ovH=소스치수·cropFilter=''로 기존과 바이트 동일.
   const srcW = opts.frameW ?? 1280;
   const srcH = opts.frameH ?? 720;
   const wantReframe = opts.reframe === '9:16' || opts.reframe === '1:1';
-  const crop = wantReframe ? cropForAspect(srcW, srcH, opts.reframe as '9:16' | '1:1') : null;
+  const crop = wantReframe ? cropForAspect(srcW, srcH, opts.reframe) : null;
   const baseLabel = crop ? 'vrf' : 'vbase';
   const cropFilter = crop ? `[vbase]crop=${crop.w}:${crop.h}[vrf]` : '';
   const ovW = crop ? crop.w : srcW;
   const ovH = crop ? crop.h : srcH;
-
   // overlays are appended as inputs 1..N (before any subtitle input)
   const ovf =
     overlays.length > 0
       ? buildOverlayFilter(baseLabel, overlays, ovW, ovH, 1)
-      : { inputs: [] as string[], filter: '', out: `[${baseLabel}]` };
-
+      : { inputs: [], filter: '', out: `[${baseLabel}]` };
   // animated GIFs need -ignore_loop 0 so they loop for the whole clip.
   // ★정지 이미지(png/jpg)는 -loop 1 + '-t 총길이'로 '유한한' 프레임 스트림으로 만든다
   // (사이클 8): 1프레임 입력에선 scale의 eval=frame 식이 한 번만 평가돼 스케일 키프레임
@@ -514,7 +414,7 @@ export async function renderEdl(
   const totalSecAll = (
     edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6
   ).toFixed(6);
-  const pushOverlayInputs = (arr: string[]) => {
+  const pushOverlayInputs = (arr) => {
     for (const ip of ovf.inputs) {
       if (/\.gif$/i.test(ip)) arr.push('-ignore_loop', '0');
       else if (/\.(png|jpe?g)$/i.test(ip)) arr.push('-loop', '1', '-t', totalSecAll);
@@ -523,7 +423,6 @@ export async function renderEdl(
       arr.push('-i', ip);
     }
   };
-
   if (format === 'gif') {
     const vconcat = `${vparts.join(';')};${buildVideoJoin()}`;
     const cropPart = cropFilter ? `;${cropFilter}` : '';
@@ -536,7 +435,6 @@ export async function renderEdl(
     await exec(FFMPEG(), gargs, { maxBuffer: 64 * 1024 * 1024 });
     return { outPath };
   }
-
   const hasAud = opts.inputHasAudio !== false;
   const totalSec = edl.segments.reduce((acc, s2) => acc + (s2.sourceEnd - s2.sourceStart), 0) / 1e6;
   const interleaved = edl.segments.map((_, i) => `${vlabels[i]}${alabels[i]}`).join('');
@@ -550,7 +448,6 @@ export async function renderEdl(
   const cropPart = cropFilter ? `;${cropFilter}` : '';
   let filter = ovf.filter ? `${concat}${cropPart};${ovf.filter}` : `${concat}${cropPart}`;
   const videoLabel = ovf.out; // '[vbase]'(reframe 시 '[vrf]') when no overlays, else '[voN]'
-
   const args = ['-y', '-loglevel', 'error', '-i', input];
   pushOverlayInputs(args);
   const subIdx = 1 + ovf.inputs.length;
@@ -586,24 +483,18 @@ export async function renderEdl(
     'yuv420p',
     outPath,
   );
-
   await exec(FFMPEG(), args, { maxBuffer: 32 * 1024 * 1024 });
   return { outPath };
 }
-
 /**
  * 오디오만 내보내기(issue #5) — EDL의 오디오 세그먼트만 trim/concat해 mp3/wav로.
  * 팟캐스트 클립·녹취 공유용. 비디오 디코드가 없어 매우 빠르다.
  */
-export async function renderAudioOnly(
-  edl: Edl,
-  outPath: string,
-  format: 'mp3' | 'wav',
-): Promise<{ outPath: string }> {
+export async function renderAudioOnly(edl, outPath, format) {
   if (edl.segments.length === 0) throw new Error('renderAudioOnly: empty EDL');
-  const input = edl.segments[0]!.mediaPath;
-  const parts: string[] = [];
-  const labels: string[] = [];
+  const input = edl.segments[0].mediaPath;
+  const parts = [];
+  const labels = [];
   edl.segments.forEach((s, i) => {
     parts.push(
       `[0:a]atrim=start=${sec(s.sourceStart)}:end=${sec(s.sourceEnd)},asetpts=PTS-STARTPTS[a${i}]`,
@@ -631,9 +522,8 @@ export async function renderAudioOnly(
   );
   return { outPath };
 }
-
 /** True if the file contains at least one subtitle stream (ffprobe). */
-export async function hasSubtitleStream(path: string): Promise<boolean> {
+export async function hasSubtitleStream(path) {
   const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
@@ -647,20 +537,11 @@ export async function hasSubtitleStream(path: string): Promise<boolean> {
   ]);
   return stdout.trim().length > 0;
 }
-
-export interface SilenceInterval {
-  start: number; // µs
-  end: number; // µs
-}
-
 /**
  * Detect silent intervals via the FFmpeg `silencedetect` filter. (IPC `analyze:silence`)
  * noiseDb e.g. -30 (dBFS threshold), minSilenceUs minimum silence to report.
  */
-export async function detectSilences(
-  path: string,
-  opts: { noiseDb?: number; minSilenceUs?: number } = {},
-): Promise<SilenceInterval[]> {
+export async function detectSilences(path, opts = {}) {
   const noiseDb = opts.noiseDb ?? -30;
   const minSilenceSec = (opts.minSilenceUs ?? 500_000) / 1_000_000;
   // silencedetect writes to stderr; -f null discards output.
@@ -672,10 +553,9 @@ export async function detectSilences(
     '-f',
     'null',
     '-',
-  ]).catch((e: { stderr?: string }) => ({ stderr: e.stderr ?? '' }));
-
-  const intervals: SilenceInterval[] = [];
-  let pendingStart: number | null = null;
+  ]).catch((e) => ({ stderr: e.stderr ?? '' }));
+  const intervals = [];
+  let pendingStart = null;
   for (const line of stderr.split('\n')) {
     const ms = line.match(/silence_start:\s*([\d.]+)/);
     const me = line.match(/silence_end:\s*([\d.]+)/);
@@ -687,11 +567,8 @@ export async function detectSilences(
   }
   return intervals;
 }
-
 /** ffprobe details of an audio file (used by tests to assert wav format). */
-export async function probeAudioStream(
-  path: string,
-): Promise<{ sampleRate: number; channels: number; codec: string; durationUs: number }> {
+export async function probeAudioStream(path) {
   const { stdout } = await exec(FFPROBE(), [
     '-v',
     'error',
@@ -703,10 +580,7 @@ export async function probeAudioStream(
     'json',
     path,
   ]);
-  const data = JSON.parse(stdout) as {
-    format?: { duration?: string };
-    streams?: Array<{ sample_rate?: string; channels?: number; codec_name?: string }>;
-  };
+  const data = JSON.parse(stdout);
   const s = data.streams?.[0] ?? {};
   return {
     sampleRate: Number(s.sample_rate ?? 0),
@@ -715,3 +589,4 @@ export async function probeAudioStream(
     durationUs: Math.round(Number(data.format?.duration ?? 0) * 1_000_000),
   };
 }
+//# sourceMappingURL=index.js.map

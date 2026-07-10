@@ -263,6 +263,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
   it('verb별 inputSchema(JSON-Schema)를 노출', () => {
     const m = commandManifest();
     expect(m.map((x) => x.name).sort()).toEqual([
+      'addTransition',
       'applyAutoEnhance',
       'applyColorgrade',
       'applyGlossary',
@@ -274,6 +275,7 @@ describe('commandManifest — MCP/tool용 JSON-Schema 파생', () => {
       'highlightKeyword',
       'removeFillers',
       'removeSilences',
+      'removeTransition',
       'replaceSubtitleStyle',
       'setSubtitleStyle',
       'splitAt',

@@ -1125,6 +1125,17 @@ const REFRAME_OPTS: { id: 'source' | '9:16' | '1:1'; label: string }[] = [
   { id: '1:1', label: '정사각 1:1' },
 ];
 
+const TRANSITION_OPTS = [
+  { id: 'none', label: '없음 (하드컷)' },
+  { id: 'crossfade', label: '크로스페이드' },
+  { id: 'dipToBlack', label: '암전 (dip to black)' },
+] as const;
+const TRANSITION_DUR_OPTS = [
+  { us: 300_000, label: '0.3초' },
+  { us: 500_000, label: '0.5초' },
+  { us: 700_000, label: '0.7초' },
+] as const;
+
 function EffectPanel() {
   const {
     colorPreset,
@@ -1136,7 +1147,12 @@ function EffectPanel() {
     autoEnhance,
     autoEnhanceEq,
     status,
+    applyTransition,
+    clipCount,
   } = useEditor();
+  const [trKind, setTrKind] = useState<'none' | 'crossfade' | 'dipToBlack'>('none');
+  const [trDur, setTrDur] = useState(500_000);
+  const trCount = timeline?.transitions?.length ?? 0;
   const analyzing = status === 'analyzing';
   // eq가 사실상 중립(±변화 거의 0)이면 '이미 잘 노출됨' — 시각 변화가 작은 게 정상임을 알린다.
   const eqNeutral =
@@ -1202,8 +1218,47 @@ function EffectPanel() {
           options={REFRAME_OPTS.map((o) => ({ value: o.id, label: o.label }))}
         />
       </div>
+      <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>전환 (Transition)</strong>
+      <div className="ov-field" style={{ marginTop: 8 }}>
+        종류
+        <KSelect
+          testId="transition-kind"
+          flex
+          value={trKind}
+          disabled={!timeline || clipCount < 2}
+          onChange={(v) => setTrKind(v as typeof trKind)}
+          options={TRANSITION_OPTS.map((o) => ({ value: o.id, label: o.label }))}
+        />
+      </div>
+      <div className="ov-field" style={{ marginTop: 6 }}>
+        길이
+        <KSelect
+          testId="transition-dur"
+          flex
+          value={String(trDur)}
+          disabled={!timeline || clipCount < 2 || trKind === 'none'}
+          onChange={(v) => setTrDur(Number(v))}
+          options={TRANSITION_DUR_OPTS.map((o) => ({ value: String(o.us), label: o.label }))}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn"
+        data-testid="transition-apply"
+        disabled={!timeline || clipCount < 2}
+        onClick={() => applyTransition(trKind, trDur)}
+        style={{ marginTop: 8, width: '100%', justifyContent: 'center' }}
+        title="모든 클립 경계에 일괄 적용 (⌘B로 분할한 컷 사이)"
+      >
+        모든 경계에 적용{trCount > 0 ? ` (현재 ${trCount}개)` : ''}
+      </button>
+      {clipCount < 2 && (
+        <p className="muted-note" style={{ marginTop: 6 }}>
+          전환은 클립이 2개 이상일 때(⌘B 분할·컷 이후) 적용할 수 있어요.
+        </p>
+      )}
       <p className="note-strong">
-        미리보기는 분위기만 보여줘요. 실제 색·비율은 <b>내보낼 때 정확히 적용</b>됩니다.{' '}
+        미리보기는 분위기만 보여줘요. 실제 색·비율·전환은 <b>내보낼 때 정확히 적용</b>됩니다.{' '}
         <b>9:16·1:1은 화면 가운데를 기준으로 잘립니다.</b>
       </p>
     </div>
@@ -3493,6 +3548,21 @@ function Timeline() {
                   )}
                   <span className="clip-label">{fmt(len)}</span>
                 </div>
+              );
+            })}
+            {/* B4: 경계 전환 배지 — 앞 클립 끝 위치에 표시(읽기 전용, 렌더에서 실적용) */}
+            {timeline?.transitions?.map((tr) => {
+              const c = timeline.clips[tr.afterClipId];
+              if (!c || durationProgramUs <= 0) return null;
+              const at = c.timelineStart + (c.sourceEnd - c.sourceStart);
+              return (
+                <span
+                  key={tr.id}
+                  className={`tr-badge${tr.kind === 'dipToBlack' ? ' dip' : ''}`}
+                  data-testid="transition-badge"
+                  style={{ left: `${(at / durationProgramUs) * 100}%` }}
+                  title={`${tr.kind === 'dipToBlack' ? '암전' : '크로스페이드'} ${(tr.durationUs / 1e6).toFixed(1)}s — 내보낼 때 적용`}
+                />
               );
             })}
             {timeline && <div className="playhead" style={{ left: `${ratio * 100}%` }} />}

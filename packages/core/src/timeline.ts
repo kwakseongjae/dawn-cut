@@ -1,5 +1,6 @@
 import { randomUUID } from './id.js';
-import type { Clip, TimelineModel, Track } from './types.js';
+import { frameUs, snapToFrame } from './time.js';
+import type { Clip, TimelineModel, Track, Transition } from './types.js';
 
 export function clipDuration(c: Clip): number {
   return c.sourceEnd - c.sourceStart;
@@ -86,5 +87,56 @@ export function validateTimeline(m: TimelineModel): string[] {
     errors.push('TL-INV-4: durationProgram stale');
   }
 
+  // TL-INV-5(B4): 전환은 존재하는 클립의 '뒤' 경계만, 경계당 1개, D ≤ min(양쪽 길이).
+  if (m.transitions && m.transitions.length > 0) {
+    const order = videoClips(m);
+    const idxOf = new Map(order.map((c, i) => [c.id, i]));
+    const seen = new Set<string>();
+    for (const tr of m.transitions) {
+      const i = idxOf.get(tr.afterClipId);
+      if (i === undefined) {
+        errors.push(`TL-INV-5: transition ${tr.id} references missing clip ${tr.afterClipId}`);
+        continue;
+      }
+      if (i >= order.length - 1) {
+        errors.push(`TL-INV-5: transition ${tr.id} after last clip`);
+        continue;
+      }
+      if (seen.has(tr.afterClipId)) {
+        errors.push(`TL-INV-5: duplicate transition at boundary ${tr.afterClipId}`);
+      }
+      seen.add(tr.afterClipId);
+      const maxD = Math.min(clipDuration(order[i]!), clipDuration(order[i + 1]!));
+      if (tr.durationUs < frameUs(m.fps) || tr.durationUs > maxD) {
+        errors.push(`TL-INV-5: transition ${tr.id} duration ${tr.durationUs} out of range`);
+      }
+    }
+  }
+
   return errors;
+}
+
+/**
+ * 구조 편집(컷/분할/리플) 후 전환 정합 — 깨진 참조·마지막 경계·중복은 버리고,
+ * 과대 D는 min(양쪽 길이)로 프레임 스냅 클램프(1프레임 미만이 되면 버림). 결정적.
+ */
+export function reconcileTransitions(
+  transitions: Transition[] | undefined,
+  m: TimelineModel,
+): Transition[] | undefined {
+  if (!transitions || transitions.length === 0) return undefined;
+  const order = videoClips(m);
+  const idxOf = new Map(order.map((c, i) => [c.id, i]));
+  const seen = new Set<string>();
+  const out: Transition[] = [];
+  for (const tr of transitions) {
+    const i = idxOf.get(tr.afterClipId);
+    if (i === undefined || i >= order.length - 1 || seen.has(tr.afterClipId)) continue;
+    const maxD = Math.min(clipDuration(order[i]!), clipDuration(order[i + 1]!));
+    const d = snapToFrame(Math.min(tr.durationUs, maxD), m.fps);
+    if (d < frameUs(m.fps)) continue;
+    seen.add(tr.afterClipId);
+    out.push(d === tr.durationUs ? tr : { ...tr, durationUs: d });
+  }
+  return out.length > 0 ? out : undefined;
 }

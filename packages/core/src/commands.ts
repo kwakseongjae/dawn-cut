@@ -1,5 +1,5 @@
 import { snapToFrame } from './time.js';
-import { clipDuration, recomputeDuration, videoClips } from './timeline.js';
+import { clipDuration, recomputeDuration, reconcileTransitions, videoClips } from './timeline.js';
 import type { Clip, CommandResult, TimelineModel, Track, TranscriptModel } from './types.js';
 
 /** Deep clone via structuredClone (global in Node 18+/browsers — portable). */
@@ -31,6 +31,9 @@ function rebuildGapless(model: TimelineModel, orderedClips: Clip[]): TimelineMod
     durationProgram: cursor,
   };
   next.durationProgram = recomputeDuration(next);
+  // B4: 전환 승계 — 리플 재구성에서 소실되지 않게. 깨진 참조/과대 D는 결정적으로 정합.
+  const transitions = reconcileTransitions(model.transitions, next);
+  if (transitions) next.transitions = transitions;
   return next;
 }
 
@@ -102,7 +105,11 @@ export function splitClipAt(timeline: TimelineModel, programUs: number): Timelin
     rebuilt.push({ ...c, id: `${c.id}-a`, sourceEnd: srcAt });
     rebuilt.push({ ...c, id: `${c.id}-b`, sourceStart: srcAt });
   }
-  return rebuildGapless(timeline, rebuilt);
+  // B4: 분할된 클립 '뒤' 경계의 전환은 후반부(-b) 뒤로 이동(경계 보존).
+  const remapped = timeline.transitions?.map((tr) =>
+    tr.afterClipId === target.id ? { ...tr, afterClipId: `${target.id}-b` } : tr,
+  );
+  return rebuildGapless({ ...timeline, transitions: remapped }, rebuilt);
 }
 
 /**

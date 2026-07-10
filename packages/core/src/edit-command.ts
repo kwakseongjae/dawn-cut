@@ -15,9 +15,9 @@ import { type GlossaryPair, applyGlossary } from './glossary.js';
 import { highlightCutSpans, selectHighlightWordIds } from './highlight.js';
 import { liveWords, wordToProgram } from './sync.js';
 import { validateSync } from './sync.js';
-import { validateTimeline, videoClips } from './timeline.js';
+import { reconcileTransitions, validateTimeline, videoClips } from './timeline.js';
 import { buildTranscriptModel, validateTranscript } from './transcript.js';
-import type { TimelineModel, TranscriptModel } from './types.js';
+import type { TimelineModel, TranscriptModel, Transition } from './types.js';
 
 /** AI 에이전트와 사람 GUI가 공유하는 편집 상태. (overlays는 후속 확장) */
 export interface EditorState {
@@ -156,6 +156,23 @@ const CommandSchemas = {
     type: z.literal('autoHighlight'),
     targetSeconds: z.number().positive().default(60),
   }),
+  /**
+   * 경계 전환(B4/#8) — crossfade/dipToBlack. afterClipId 생략 = 모든 내부 경계(플래너 친화:
+   * "부드럽게 이어줘"). 프로그램 길이 완전 불변(렌더가 소스 핸들로 오버랩) → TL/SYNC/EDL 무영향.
+   * 같은 경계에 다시 적용하면 교체된다.
+   */
+  addTransition: z.object({
+    type: z.literal('addTransition'),
+    kind: z.enum(['crossfade', 'dipToBlack']),
+    /** 전환 총 길이(µs). 관례 300_000~700_000 */
+    durationUs: z.number().int().positive().default(500_000),
+    afterClipId: z.string().optional(),
+  }),
+  /** 경계 전환 제거 — afterClipId 생략 = 전부. */
+  removeTransition: z.object({
+    type: z.literal('removeTransition'),
+    afterClipId: z.string().optional(),
+  }),
 } as const;
 
 export const EditCommandSchema = z.discriminatedUnion('type', [
@@ -173,6 +190,8 @@ export const EditCommandSchema = z.discriminatedUnion('type', [
   CommandSchemas.applyAutoEnhance,
   CommandSchemas.correctWord,
   CommandSchemas.autoHighlight,
+  CommandSchemas.addTransition,
+  CommandSchemas.removeTransition,
 ]);
 
 /** 직렬화 가능한 편집 명령. LLM/에이전트가 이 형태의 JSON을 생성한다. */
@@ -295,6 +314,40 @@ function reduce(state: EditorState, cmd: EditCommand): EditorState {
         ...(cmd.intensity != null ? { intensity: cmd.intensity } : {}),
       };
       return { ...state, timeline: addEffectToClips(state.timeline, cmd.clipId, effect) };
+    }
+    case 'addTransition': {
+      // 경계 전환(B4) — 길이·클립 좌표 완전 불변(렌더에서만 오버랩). 같은 경계는 교체.
+      const order = videoClips(state.timeline);
+      if (order.length < 2) return state; // 경계 없음 = no-op(플래너가 단일 클립에 시도 가능)
+      let targets: string[];
+      if (cmd.afterClipId) {
+        const i = order.findIndex((c) => c.id === cmd.afterClipId);
+        if (i < 0) throw new Error(`addTransition: unknown clip ${cmd.afterClipId}`);
+        if (i >= order.length - 1) throw new Error('addTransition: cannot add after the last clip');
+        targets = [cmd.afterClipId];
+      } else {
+        targets = order.slice(0, -1).map((c) => c.id);
+      }
+      const kept = (state.timeline.transitions ?? []).filter(
+        (tr) => !targets.includes(tr.afterClipId),
+      );
+      const added: Transition[] = targets.map((id) => ({
+        id: `tr-${id}`,
+        afterClipId: id,
+        kind: cmd.kind,
+        durationUs: cmd.durationUs,
+      }));
+      const draft: TimelineModel = { ...state.timeline, transitions: [...kept, ...added] };
+      // 과대 D는 경계 양쪽 길이로 프레임 스냅 클램프(결정적) — 그 뒤 TL-INV-5 게이트 통과.
+      const transitions = reconcileTransitions(draft.transitions, draft);
+      const { transitions: _dropA, ...bareA } = state.timeline;
+      return { ...state, timeline: transitions ? { ...bareA, transitions } : bareA };
+    }
+    case 'removeTransition': {
+      const cur = state.timeline.transitions ?? [];
+      const next = cmd.afterClipId ? cur.filter((tr) => tr.afterClipId !== cmd.afterClipId) : [];
+      const { transitions: _dropR, ...bareR } = state.timeline;
+      return { ...state, timeline: next.length > 0 ? { ...bareR, transitions: next } : bareR };
     }
     case 'applyZoom': {
       const effect: ClipEffect = {

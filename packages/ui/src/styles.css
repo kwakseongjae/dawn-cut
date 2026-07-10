@@ -831,6 +831,23 @@ body {
   background: rgba(10, 14, 26, 0.65);
   pointer-events: none;
 }
+/* B4: 경계 전환 배지 — 클립 경계 중앙의 마름모(크로스페이드=보라, 암전=검정 테두리) */
+.tr-badge {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: rgba(122, 162, 247, 0.95);
+  border: 1.5px solid var(--bg);
+  border-radius: 2px;
+  z-index: 3;
+  pointer-events: auto;
+}
+.tr-badge.dip {
+  background: #0a0e1a;
+  border-color: rgba(122, 162, 247, 0.9);
+}
 .playhead {
   position: absolute;
   top: 0;

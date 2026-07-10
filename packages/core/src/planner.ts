@@ -44,6 +44,8 @@ export const PLANNER_VERBS = [
   'highlightKeyword',
   'autoHighlight',
   'applyColorgrade',
+  'addTransition',
+  'removeTransition',
 ] as const;
 
 /**
@@ -70,6 +72,9 @@ const FEW_SHOT = [
   '요청: "60초 하이라이트로 만들어줘" → [{"type":"autoHighlight","targetSeconds":60}]',
   '요청: "핵심만 짧게 요약해줘" → [{"type":"autoHighlight"}]',
   '요청: "영화처럼 분위기 있게" → [{"type":"applyColorgrade","preset":"cinematic"}]',
+  '요청: "컷마다 부드럽게 이어줘" → [{"type":"addTransition","kind":"crossfade"}]',
+  '요청: "장면 사이 암전으로 전환해줘" → [{"type":"addTransition","kind":"dipToBlack","durationUs":600000}]',
+  '요청: "전환 다 빼줘" → [{"type":"removeTransition"}]',
   '요청: "자막 노란색으로 크고 굵게" → [{"type":"replaceSubtitleStyle","style":{"color":"yellow","fontScale":1.5,"fontWeight":"bold"}}]',
   '요청: "오늘 점심 뭐 먹지" → []',
 ].join('\n');

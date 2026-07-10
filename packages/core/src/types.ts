@@ -46,12 +46,24 @@ export interface Track {
   clips: string[]; // Clip.id, ascending timelineStart
 }
 
+// ── 전환(B4/#8) — 경계 장식. 프로그램 길이·클립 좌표 완전 불변(렌더에서만 소스 핸들 오버랩) ──
+export type TransitionKind = 'crossfade' | 'dipToBlack';
+export interface Transition {
+  id: string;
+  /** 경계 주소 = 앞 클립 id (그 클립 '뒤' 경계). 마지막 클립 뒤는 불가(TL-INV-5). */
+  afterClipId: string;
+  kind: TransitionKind;
+  durationUs: number; // 전환 총 길이(경계 양쪽에서 D/2씩)
+}
+
 export interface TimelineModel {
   schemaVersion: 1;
   fps: number;
   clips: Record<string, Clip>;
   tracks: Track[];
   durationProgram: number; // derived cache = max(clipTimelineEnd)
+  /** 경계 전환(없으면 undefined — 전환 없는 렌더 인자 바이트 동일 보장) */
+  transitions?: Transition[];
 }
 
 // ── §5 EDL (Export Decision List) ───────────────────────────────────
@@ -67,6 +79,8 @@ export interface Edl {
   fps: number;
   segments: EdlSegment[]; // ascending programStart, contiguous
   totalDuration: number; // µs == Σ segment length (EDL-INV-1)
+  /** 경계 전환 — afterIndex = 앞 세그먼트 인덱스(0..n-2). 렌더러가 xfade/fade로 구현 */
+  transitions?: Array<{ afterIndex: number; kind: TransitionKind; durationUs: number }>;
 }
 
 // ── Overlay compositing (image/sticker/gif) ────────────────────────

@@ -3,6 +3,11 @@
 > 형식: `## YYYY-MM-DD — <세션 한 줄>` + 본문 5줄 이내(한 일 / 열린 것 / 다음). **기존 항목 수정 금지.**
 > 작업 단위의 미시 기록은 여기가 아니라 각 작업 패킷(`tasks/<ID>-*.md`)의 진행 저널에.
 
+## 2026-07-10 — B4 전환(crossfade/dip) 완료 (v0.1.13) — #8 닫을 수 있음
+- 한 일: Transition 모델(TL-INV-5·reconcile·splitAt 재매핑) + 동사 16개(addTransition/removeTransition, 플래너·GBNF 개방) + 렌더 폴드(소스 핸들 오버랩 xfade — **길이 완전 불변 실증**, dip은 fade+concat) + EffectPanel/배지. 실미디어 데모(output/b4-transitions/).
+- 열린 것: 프리뷰에서 전환 재생 안 됨(C1 범위). 오디오는 오버랩 없이 afade(삭제 콘텐츠 부활 방지 — 설계 결정).
+- 다음: B5 (배속 setSpeed)
+
 ## 2026-07-10 — B2 필름스트립+파형 완료 (v0.1.12)
 - 한 일: sidecar extractThumbs(≈1장/s, 상한 120)·extractPeaks(20/s) + media:visuals IPC(mtime 캐시) + Timeline 클립 = 필름스트립+SVG 파형(preserveAspectRatio:none — 줌 무재그리기). unit 470·int 55·e2e 16·QA 8 그린. 실제 1080p 영상 캡쳐 확인(output/b2-timeline/).
 - 열린 것: 보이스(TTS) 클립 파형은 미적용(B2 범위 제외 — 후속 후보), GitHub Actions는 과금 문제로 제거됨(로컬 체인만)
