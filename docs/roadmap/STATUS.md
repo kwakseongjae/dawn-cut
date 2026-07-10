@@ -65,7 +65,7 @@
 | D3 | 템플릿 갤러리 | todo | | | dep: A5 |
 | D4 | 생성형 에셋 동사 | todo | | | dep: A4 |
 | D5 | CC0 배경 수집 | blocked | | | Pexels 키 = 사용자 액션 |
-| D6 | BGM 소스 팩 | done | (다음 커밋에 기록) | 2026-07-10 | 6무드 m4a+catalog · int 67 |
+| D6 | BGM 소스 팩 | done | 9ad0f31 | 2026-07-10 | 6무드 m4a+catalog · int 67 |
 | D7 | 브랜드 킷 | todo | | | 2026-07-10 신설 |
 | D8 | 생성 프로버넌스 + 재생성 루프 | todo | | | dep: D4 · 2026-07-10 신설 |
 
