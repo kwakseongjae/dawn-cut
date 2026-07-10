@@ -980,6 +980,50 @@ const rasterizeEmoji = (emoji: string) =>
 const rasterizeBadge = (text: string) =>
   rasterizeWith(420, 160, (ctx, w, h) => drawBadge(ctx, w, h, text));
 
+/** D7 아웃트로 카드 — dim 배경 + 로고 + 브랜드명/태그라인 + 강조 라인 (프레임 크기로 래스터). */
+async function rasterizeOutroCard(
+  brand: { name: string; tagline: string; logoPath: string | null; accentColor: string },
+  w: number,
+  h: number,
+): Promise<string> {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = 'rgba(8, 10, 18, 0.88)';
+  ctx.fillRect(0, 0, w, h);
+  const cx = w / 2;
+  let cy = h * 0.38;
+  if (brand.logoPath) {
+    try {
+      const img = await new Promise<HTMLImageElement>((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = rej;
+        i.src = `file://${brand.logoPath}`;
+      });
+      const lw = Math.min(w * 0.28, img.width);
+      const lh = (img.height / img.width) * lw;
+      ctx.drawImage(img, cx - lw / 2, cy - lh, lw, lh);
+      cy += h * 0.04;
+    } catch {
+      // 로고 로드 실패 → 텍스트만
+    }
+  }
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f4f6ff';
+  ctx.font = `700 ${Math.round(h * 0.055)}px "Apple SD Gothic Neo", Pretendard, sans-serif`;
+  ctx.fillText(brand.name || 'dawn-cut', cx, cy + h * 0.02);
+  ctx.fillStyle = brand.accentColor;
+  ctx.fillRect(cx - w * 0.06, cy + h * 0.045, w * 0.12, Math.max(3, h * 0.006));
+  if (brand.tagline) {
+    ctx.fillStyle = 'rgba(244, 246, 255, 0.75)';
+    ctx.font = `400 ${Math.round(h * 0.03)}px "Apple SD Gothic Neo", Pretendard, sans-serif`;
+    ctx.fillText(brand.tagline, cx, cy + h * 0.1);
+  }
+  return c.toDataURL('image/png');
+}
+
 function StickerPanel() {
   const { overlays, addOverlaySrc, removeOverlay, selectedOverlayId, selectOverlay } = useEditor();
   const [motion, setMotion] = useState<{ name: string; path: string }[]>([]);
@@ -1283,6 +1327,13 @@ function EffectPanel() {
     applyTransition,
     applySpeed,
     clipCount,
+    brandKit,
+    setBrandKit,
+    applyBrandWatermark,
+    applyBrandOutro,
+    applyBrandColors,
+    frameW,
+    frameH,
   } = useEditor();
   const [trKind, setTrKind] = useState<'none' | 'crossfade' | 'dipToBlack'>('none');
   const [trDur, setTrDur] = useState(500_000);
@@ -1422,6 +1473,111 @@ function EffectPanel() {
       >
         배속 적용{curSpeed !== 1 ? ` (현재 ${curSpeed}×)` : ''}
       </button>
+      <strong style={{ fontSize: 13, marginTop: 12, display: 'block' }}>브랜드 킷 (Brand)</strong>
+      <div className="ov-field" style={{ marginTop: 8 }}>
+        로고
+        <input
+          type="file"
+          accept="image/png,image/jpeg"
+          data-testid="brand-logo-input"
+          style={{ flex: 1, fontSize: 11 }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            const p = f ? filePath(f) : null;
+            if (p) setBrandKit({ logoPath: p });
+          }}
+        />
+      </div>
+      {brandKit.logoPath && (
+        <p className="muted-note" data-testid="brand-logo-set" style={{ marginTop: 4 }}>
+          로고: …{brandKit.logoPath.slice(-28)}
+        </p>
+      )}
+      <div className="ov-field" style={{ marginTop: 6 }}>
+        브랜드명
+        <input
+          type="text"
+          value={brandKit.name}
+          data-testid="brand-name"
+          placeholder="예: 던컷"
+          onChange={(e) => setBrandKit({ name: e.target.value })}
+          style={{ flex: 1 }}
+        />
+      </div>
+      <div className="ov-field" style={{ marginTop: 6 }}>
+        태그라인
+        <input
+          type="text"
+          value={brandKit.tagline}
+          data-testid="brand-tagline"
+          placeholder="예: 영상이 기기를 떠나지 않는 AI 편집"
+          onChange={(e) => setBrandKit({ tagline: e.target.value })}
+          style={{ flex: 1 }}
+        />
+      </div>
+      <div className="ov-field" style={{ marginTop: 6 }}>
+        강조색
+        <input
+          type="color"
+          value={brandKit.accentColor}
+          data-testid="brand-accent"
+          onChange={(e) => setBrandKit({ accentColor: e.target.value })}
+        />
+        코너
+        <KSelect
+          testId="brand-corner"
+          flex
+          value={brandKit.watermarkCorner}
+          onChange={(v) => setBrandKit({ watermarkCorner: v as 'tl' | 'tr' | 'bl' | 'br' })}
+          options={[
+            { value: 'tr', label: '우상단' },
+            { value: 'br', label: '우하단' },
+            { value: 'tl', label: '좌상단' },
+            { value: 'bl', label: '좌하단' },
+          ]}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+        <button
+          type="button"
+          className="btn"
+          data-testid="brand-watermark-apply"
+          disabled={!timeline || !brandKit.logoPath}
+          onClick={() => applyBrandWatermark()}
+          style={{ flex: 1, justifyContent: 'center' }}
+          title="로고를 코너 워터마크로(전체 구간, 재적용=교체)"
+        >
+          워터마크
+        </button>
+        <button
+          type="button"
+          className="btn"
+          data-testid="brand-outro-apply"
+          disabled={!timeline}
+          onClick={() => {
+            void (async () => {
+              const dataUrl = await rasterizeOutroCard(brandKit, frameW || 1280, frameH || 720);
+              const res = await window.dawn?.writeAsset(dataUrl);
+              if (res) applyBrandOutro(res.path);
+            })();
+          }}
+          style={{ flex: 1, justifyContent: 'center' }}
+          title="마지막 2초 아웃트로 카드(로고+브랜드명+태그라인)"
+        >
+          아웃트로
+        </button>
+        <button
+          type="button"
+          className="btn"
+          data-testid="brand-color-apply"
+          disabled={!timeline}
+          onClick={() => applyBrandColors()}
+          style={{ flex: 1, justifyContent: 'center' }}
+          title="자막 키워드 강조색을 브랜드 색으로(command bus·감사 기록)"
+        >
+          자막 색
+        </button>
+      </div>
       <p className="note-strong">
         미리보기는 분위기만 보여줘요. 실제 색·비율·전환은 <b>내보낼 때 정확히 적용</b>됩니다.{' '}
         <b>9:16·1:1은 화면 가운데를 기준으로 잘립니다.</b>
@@ -4307,6 +4463,11 @@ export function AppShell() {
       setPlayhead: (us: number) => useEditor.getState().setPlayhead(us),
       addOverlaySrc: (kind: 'image' | 'gif' | 'video', name: string, path: string) =>
         useEditor.getState().addOverlaySrc(kind, name, path),
+      // D7 브랜드 킷 자동화 표면(e2e) — 파일 input 경유 없이 설정 주입.
+      setBrandKit: (patch: Record<string, unknown>) =>
+        useEditor.getState().setBrandKit(patch as Partial<import('./store.js').BrandKit>),
+      applyBrandWatermark: () => useEditor.getState().applyBrandWatermark(),
+      applyBrandColors: () => useEditor.getState().applyBrandColors(),
     };
     // QA/검증용 읽기 스냅샷(상태 단언). __editor와 동일하게 무해한 자동화 표면.
     window.__dawnState = () => {

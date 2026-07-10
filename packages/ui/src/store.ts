@@ -51,6 +51,12 @@ interface EditorState {
   bgm: ProjectBgm | null;
   setBgm: (b: ProjectBgm | null) => void;
   updateBgm: (patch: Partial<ProjectBgm>) => void;
+  // D7 브랜드 킷 — 워터마크/아웃트로=오버레이 구체화, 브랜드 색=버스(setSubtitleStyle)
+  brandKit: BrandKit;
+  setBrandKit: (patch: Partial<BrandKit>) => void;
+  applyBrandWatermark: () => void;
+  applyBrandOutro: (cardPath: string) => void;
+  applyBrandColors: () => void;
   transcribeError: string | null; // 자막 생성 실패/불가 사유(사람이 읽을 메시지)
   transcript: TranscriptModel | null;
   timeline: TimelineModel | null;
@@ -277,6 +283,40 @@ const DEFAULT_CUE_LEN_US = 2_500_000; // 새 수기 자막 기본 길이 2.5초
 const uid = () => Math.random().toString(36).slice(2, 9);
 const baseName = (p: string) => p.split('/').pop() ?? p;
 
+// D7 브랜드 킷 — 앱 설정(프로젝트 아님). localStorage 영속(glossary와 동일 패턴).
+export interface BrandKit {
+  name: string;
+  tagline: string;
+  logoPath: string | null;
+  accentColor: string;
+  watermarkCorner: 'tl' | 'tr' | 'bl' | 'br';
+  watermarkOpacity: number; // 0..1
+}
+const BRAND_KEY = 'dawn.brandKit.v1';
+const DEFAULT_BRAND: BrandKit = {
+  name: '',
+  tagline: '',
+  logoPath: null,
+  accentColor: '#7aa2f7',
+  watermarkCorner: 'br',
+  watermarkOpacity: 0.6,
+};
+function loadBrandKit(): BrandKit {
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(BRAND_KEY) : null;
+    return raw ? { ...DEFAULT_BRAND, ...(JSON.parse(raw) as Partial<BrandKit>) } : DEFAULT_BRAND;
+  } catch {
+    return DEFAULT_BRAND;
+  }
+}
+function saveBrandKit(b: BrandKit): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(BRAND_KEY, JSON.stringify(b));
+  } catch {
+    // 영속 실패는 무해(세션 내 상태는 유지)
+  }
+}
+
 // '내 사전'은 미디어를 넘어 유지되도록 localStorage에 영속.
 const GLOSSARY_KEY = 'dawn.glossary';
 function loadGlossary(): GlossaryPair[] {
@@ -473,6 +513,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   hasAudio: false,
   mediaVisuals: null,
   bgm: null,
+  brandKit: loadBrandKit(),
   transcribeError: null,
   transcript: null,
   timeline: null,
@@ -1312,6 +1353,85 @@ export const useEditor = create<EditorState>((set, get) => ({
       status: 'ready',
       auditLog: appendAudit(get().auditLog, cmd, removedProgramUs),
       ...derive(after.timeline),
+    });
+  },
+  setBrandKit: (patch) => {
+    const brandKit = { ...get().brandKit, ...patch };
+    saveBrandKit(brandKit);
+    set({ brandKit });
+  },
+  applyBrandWatermark: () => {
+    // 코너 로고 워터마크 — 이미지 오버레이로 구체화(프리뷰=익스포트 패리티). 재적용=교체.
+    const { brandKit, timeline, durationProgramUs, overlays } = get();
+    if (!timeline || !brandKit.logoPath) return;
+    const margin = 0.04;
+    const scale = 0.14;
+    const corner = brandKit.watermarkCorner;
+    const x = corner === 'tl' || corner === 'bl' ? margin : 1 - margin - scale;
+    // y는 프레임 높이 기준 근사(로고 가로형 가정 — 시각적으로 코너에 안착).
+    const y = corner === 'tl' || corner === 'tr' ? margin : 1 - margin - 0.1;
+    set({
+      overlays: [
+        ...overlays.filter((o) => o.name !== 'brand-wm'),
+        {
+          id: uid(),
+          kind: 'image' as const,
+          name: 'brand-wm',
+          src: brandKit.logoPath,
+          x,
+          y,
+          scale,
+          opacity: brandKit.watermarkOpacity,
+          startUs: 0,
+          endUs: Math.max(1_000_000, durationProgramUs),
+          z: 60,
+        },
+      ],
+      status: 'ready',
+    });
+  },
+  applyBrandOutro: (cardPath) => {
+    // 마지막 2s 풀스크린 아웃트로 카드(z=90 — 자막 z=100 아래). 재적용=교체.
+    const { timeline, durationProgramUs, overlays } = get();
+    if (!timeline || durationProgramUs <= 0) return;
+    const durUs = Math.min(2_000_000, Math.max(800_000, Math.round(durationProgramUs * 0.2)));
+    set({
+      overlays: [
+        ...overlays.filter((o) => o.name !== 'brand-outro'),
+        {
+          id: uid(),
+          kind: 'image' as const,
+          name: 'brand-outro',
+          src: cardPath,
+          x: 0,
+          y: 0,
+          scale: 1,
+          opacity: 1,
+          startUs: Math.max(0, durationProgramUs - durUs),
+          endUs: durationProgramUs,
+          z: 90,
+        },
+      ],
+      status: 'ready',
+    });
+  },
+  applyBrandColors: () => {
+    // 브랜드 강조색 → 자막 스타일(버스 경유 = 감사 체인 기록).
+    const { brandKit, timeline, transcript } = get();
+    if (!timeline) return;
+    const tx = transcript ?? buildTranscriptModel([], MEDIA_ID, 'und');
+    const cmd = {
+      type: 'setSubtitleStyle',
+      patch: { emphasisColor: brandKit.accentColor, emphasizeKeywords: true },
+    } as const;
+    const { after } = applyCommand(
+      { timeline, transcript: tx, subtitleStyle: get().subtitleStyle },
+      cmd,
+    );
+    set({
+      subtitleStyle: after.subtitleStyle ?? get().subtitleStyle,
+      auditLog: appendAudit(get().auditLog, cmd, 0),
+      status: 'ready',
     });
   },
   setBgm: (b) => set({ bgm: b }),

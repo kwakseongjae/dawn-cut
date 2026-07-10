@@ -186,6 +186,10 @@ declare global {
       addManualCue: (text: string) => void;
       setPlayhead: (us: number) => void;
       addOverlaySrc: (kind: 'image' | 'gif' | 'video', name: string, path: string) => void;
+      // D7 브랜드 킷 자동화 표면.
+      setBrandKit: (patch: Record<string, unknown>) => void;
+      applyBrandWatermark: () => void;
+      applyBrandColors: () => void;
     };
     // QA/검증용 읽기 스냅샷(상태 단언). 무해한 자동화 표면.
     __dawnState?: () => Record<string, unknown>;
